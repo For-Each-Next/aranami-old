@@ -14,7 +14,7 @@ from uuid import uuid4
 
 import polars as pl
 
-from data.articles import b_listings as assessment_inference
+from data.articles import rating_history as assessment_inference
 from data.articles.authorship_store import CONTRIBUTOR_SCHEMA
 from data.articles.storage import DEFAULT_ROOT
 from data.reports import ReportResult, ReportStore

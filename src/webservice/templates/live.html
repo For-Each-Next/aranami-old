@@ -1,1 +1,1 @@
-{% include "includes/routines.html" %}{% include "includes/uptime.html" %}{% include "includes/server.html" %}{% include "includes/dataset_updates.html" %}
+{% include "includes/routines.html" %}{% include "includes/uptime.html" %}{% include "includes/server.html" %}{% if not structured_updates %}{% include "includes/dataset_updates.html" %}{% endif %}

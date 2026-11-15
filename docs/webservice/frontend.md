@@ -347,3 +347,12 @@ prove real-device touch or screen-reader behavior.
 
 Historical Codex and Vue notices remain at `/codex-license.html`; local icons retain their
 credit tables. [Branding](branding.md) owns artwork and attribution.
+
+Live file updates use compact JSON observations rendered by the browser. The
+initial page preloads its completed-file list with a content key. HTTP and
+WebSocket refreshes omit that list when the key is unchanged, while current
+work and clocks continue updating. Reconciliation indexes sibling keys once
+and preserves unchanged DOM nodes, open dialogs and focus. Temporary status
+read failures retain the last accepted snapshot and report reconnection.
+File safety and availability checks share metadata only within one read;
+subsequent reads still detect deletions and symlinks.

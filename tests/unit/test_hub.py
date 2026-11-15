@@ -40,62 +40,6 @@ class TestHubDispatch(TestCase):
     """Share one disposable source cycle between both outputs."""
 
     @staticmethod
-    def test_b_collection_yields_to_ordinary_work_and_hour_boundaries() -> (
-        None
-    ):
-        """Give foreground collection priority over B attempts."""
-        clock = Mock(UTC=dt.UTC)
-        clock.datetime.now.return_value = dt.datetime(
-            2026,
-            11,
-            10,
-            12,
-            59,
-            tzinfo=dt.UTC,
-        )
-        with (
-            patch.object(hub, "dt", clock),
-            patch.object(hub, "read_status") as status,
-            patch.object(hub, "get_boot_id", return_value="current"),
-        ):
-            assert hub._yield_b_authorship()
-            status.assert_not_called()
-            clock.datetime.now.return_value = dt.datetime(
-                2026,
-                11,
-                10,
-                13,
-                0,
-                tzinfo=dt.UTC,
-            )
-            assert hub._yield_b_authorship()
-            clock.datetime.now.return_value = dt.datetime(
-                2026,
-                11,
-                10,
-                13,
-                1,
-                tzinfo=dt.UTC,
-            )
-            for task, boot, expected in (
-                ("website", "current", True),
-                ("newsletter-history", "current", False),
-                ("project-data", "current", True),
-                ("website", "previous", False),
-            ):
-                for outcome in ("queued", "running"):
-                    status.return_value = {
-                        "executions": {
-                            "run": {
-                                "task_id": task,
-                                "boot_id": boot,
-                                "outcome": outcome,
-                            },
-                        },
-                    }
-                    assert hub._yield_b_authorship() is expected
-
-    @staticmethod
     def test_hourly_recognition_uses_a_fresh_source_cycle() -> None:
         """Retain project evidence without regenerating drafts."""
         stamp = dt.datetime(2026, 10, 31, 13, tzinfo=dt.UTC)
@@ -150,14 +94,7 @@ class TestHubDispatch(TestCase):
                 "collect_article_history",
                 side_effect=collect,
             ) as archive,
-            patch.object(
-                hub,
-                "enrich_authorship",
-                side_effect=lambda events, _site, **_options: events,
-            ) as authorship,
             patch.object(hub, "enrich_milestones") as recognition,
-            patch.object(hub, "refresh_current_corrections"),
-            patch.object(hub, "refresh_quality_author_activity") as activity,
             patch.object(hub, "sync_current_assessments") as assessments,
             patch.object(hub, "reconcile_scope") as scope,
             patch.object(hub, "refresh_newsletter") as newsletter,
@@ -174,13 +111,8 @@ class TestHubDispatch(TestCase):
         )
         assert archive.call_count == 2  # ruff: ignore[magic-value-comparison]
         assert history_scope.call_count == 2  # ruff: ignore[magic-value-comparison]
-        assert authorship.call_count == recognition.call_count == 2  # ruff: ignore[magic-value-comparison]
+        assert recognition.call_count == 2  # ruff: ignore[magic-value-comparison]
         assert assessments.call_count == 2  # ruff: ignore[magic-value-comparison]
-        assert activity.call_args_list == [call(site.return_value)] * 2
-        assert authorship.call_args.kwargs == {
-            "max_requests": 10,
-            "attempt_path": Path("cache/article-authorship-attempts"),
-        }
         assert recognition.call_args.kwargs == {"max_requests": 10}
         assert assessments.call_args.args[0].equals(members)
         assert assessments.call_args.args[1] == hub.MILESTONES_PATH

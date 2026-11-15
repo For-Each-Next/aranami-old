@@ -1,4 +1,4 @@
-"""Collect B/BL dates from the latest continuous talk range.
+"""Collect article/list rating dates from continuous talk ranges.
 
 Paced exact-parent scans checkpoint each prefix in Parquet. Unchanged
 talks reuse proof across article edits; unknown history stays pending.
@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 import polars as pl
 from sqlalchemy.exc import SQLAlchemyError
 
-from data.articles import b_listings as store
+from data.articles import rating_history as store
 from shared.assessment_profiles import assessment_profile
 from shared.sources.assessment_history import (
     HistoryBudget,
@@ -78,7 +78,7 @@ def _members(
     parser: str,
     now: dt.datetime,
 ) -> pl.DataFrame:
-    """Select B/BL articles with exact talk identities.
+    """Select unreviewed article/list grades with exact talk identities.
 
     Returns:
         Complete current consumer cohort in the owner's member schema.
@@ -298,11 +298,11 @@ def _attempt_batch(
     except OSError, ValueError, SQLAlchemyError:
         if attempted:
             _LOG.warning(
-                "B-listing source batch failed; retained parsed progress.",
+                "Rating-history batch failed; retained parsed progress.",
             )
         else:
             _LOG.warning(
-                "B-listing replica unavailable; using SDK history.",
+                "Rating-history replica unavailable; using SDK history.",
             )
             rows = []
             for row in members.values():
@@ -314,7 +314,7 @@ def _attempt_batch(
                     )
                 except Exception as error:  # ruff: ignore[blind-except] - Preserve independent source coverage.
                     _LOG.warning(
-                        "B listing history unavailable for page %s (%s).",
+                        "Rating history unavailable for page %s (%s).",
                         row["page_id"],
                         type(error).__name__,
                     )
@@ -330,7 +330,7 @@ def _attempt_batch(
     ]
 
 
-def refresh_b_listings(  # ruff: ignore[too-many-arguments] - Explicit source, runtime and admission bounds.
+def refresh_rating_history(  # ruff: ignore[too-many-arguments] - Explicit source, runtime and admission bounds.
     site: BaseSite,
     membership: pl.DataFrame,
     *,
@@ -339,7 +339,7 @@ def refresh_b_listings(  # ruff: ignore[too-many-arguments] - Explicit source, r
     time_budget: float = 30,
     should_yield: Callable[[], bool] | None = None,
 ) -> None:
-    """Refresh the B cohort and checkpoint bounded history scans.
+    """Refresh article/list ratings with bounded history checkpoints.
 
     Args:
         site: Existing Chinese Wikipedia client.
@@ -417,7 +417,7 @@ def refresh_b_listings(  # ruff: ignore[too-many-arguments] - Explicit source, r
             )
     except Exception as error:  # ruff: ignore[blind-except] - Optional B history preserves newsletter collection.
         _LOG.warning(
-            "B listing collection unavailable (%s).",
+            "Rating history collection unavailable (%s).",
             type(error).__name__,
             exc_info=True,
         )

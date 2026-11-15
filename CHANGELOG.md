@@ -5,6 +5,27 @@ v0.8.8 was consolidated into the v0.9.2 release.
 
 ## Until 0.10
 
+### 0.9.18 (2026-11-15 04:00 UTC)
+
+Overview: Named assessment evidence Rating history and deferred article/list
+statistics until regular collection and reports were idle, while making live
+updates compact and allowing independent reports to run concurrently.
+
+- Renamed B-listings to Rating history while preserving saved evidence,
+  resumable scans and distinct reviewed-grade and banner-transition dates.
+- Moved reviewed-grade authorship and correction audits to the idle worker;
+  placed text lengths, rating histories and authorship after regular reports.
+- Removed bulk revision-body and raw-text scans from primary collection so
+  individual reports can read their exact required revisions independently.
+- Yielded between text measurements and attribution attempts, retained partial
+  progress and removed statistics projection and chart work from startup.
+- Ran independent on-wiki reports concurrently after required collection and
+  newsletter facts, while keeping article statistics at lower priority.
+- Sent live file observations as compact JSON, reused preloaded completed rows
+  and preserved running information through refresh delays and read failures.
+- Reused path metadata within each validated read and reconciled keyed browser
+  rows without repeated sibling scans, preserving full saved results.
+
 ### 0.9.17 (2026-11-14 17:20 UTC)
 
 Overview: Made manual dataset updates observable, limited recent results to two

@@ -16,12 +16,12 @@ import polars as pl
 
 from data.articles import (
     authorship_store,
-    b_listings,
     current_authorship,
     current_quality as store,
     history_store,
     quality_analysis,
     quality_authors,
+    rating_history,
 )
 from data.articles.storage import AUTHORSHIP_PATH, HISTORY_PATH
 from data.reports import ReportResult, ReportStore
@@ -312,11 +312,11 @@ class CurrentQualityTests(TestCase):
         with (
             patch.object(history_store, "load", return_value=history),
             patch.object(
-                b_listings,
+                rating_history,
                 "load",
                 return_value={
                     "inference": pl.DataFrame(
-                        schema=b_listings.INFERENCE_SCHEMA,
+                        schema=rating_history.INFERENCE_SCHEMA,
                     ),
                 },
             ),
@@ -335,7 +335,7 @@ class CurrentQualityTests(TestCase):
         """Retain exact scan clocks and list-grade equivalence."""
         acquired = _NOW - dt.timedelta(hours=3)
         inference = {
-            **dict.fromkeys(b_listings.INFERENCE_SCHEMA),
+            **dict.fromkeys(rating_history.INFERENCE_SCHEMA),
             "page_id": 2,
             "talk_page_id": 202,
             "scanned_talk_rev_id": 302,
@@ -381,12 +381,12 @@ class CurrentQualityTests(TestCase):
         with (
             patch.object(history_store, "load", return_value=history),
             patch.object(
-                b_listings,
+                rating_history,
                 "load",
                 return_value={
                     "inference": pl.DataFrame(
                         [inference],
-                        schema=b_listings.INFERENCE_SCHEMA,
+                        schema=rating_history.INFERENCE_SCHEMA,
                     ),
                 },
             ),
@@ -398,12 +398,12 @@ class CurrentQualityTests(TestCase):
             ) == acquired - dt.timedelta(hours=1)
             inference["banner_transition_status"] = "partial"
             with patch.object(
-                b_listings,
+                rating_history,
                 "load",
                 return_value={
                     "inference": pl.DataFrame(
                         [inference],
-                        schema=b_listings.INFERENCE_SCHEMA,
+                        schema=rating_history.INFERENCE_SCHEMA,
                     ),
                 },
             ):

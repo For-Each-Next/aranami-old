@@ -4370,14 +4370,14 @@
     "zh-hant": "大小"
   },
   "routine.quality-authorship": {
-    "en": "Quality author statistics",
-    "zh-hans": "典优条目作者统计",
-    "zh-hant": "典優條目作者統計"
+    "en": "Article authorship and rating history",
+    "zh-hans": "条目作者与评级历史",
+    "zh-hant": "條目作者與評級歷史"
   },
   "routine.quality-analysis": {
-    "en": "Quality article analysis",
-    "zh-hans": "高品质条目分析",
-    "zh-hant": "高品質條目分析"
+    "en": "Article/list text lengths",
+    "zh-hans": "条目与列表字数",
+    "zh-hant": "條目與列表字數"
   },
   "quality_analysis.grade_comparison": {
     "en": "By quality",

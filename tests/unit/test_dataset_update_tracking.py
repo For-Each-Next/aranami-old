@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 import polars as pl
 
+from data.runtime import dataset_updates as update_store
 from data.runtime.dataset_updates import read_updates, save_run
 from runtime.collection_status import collection_run
 from runtime.dataset_updates import DatasetUpdateRun, resumed_dataset_updates
@@ -65,6 +66,46 @@ class TestDatasetUpdateTracking(TestCase):
             Its validated predecessor and current records.
         """
         return read_updates(self.runtime)["tasks"]["quality-analysis"]
+
+    def test_read_reuses_path_metadata_and_detects_later_deletion(
+        self,
+    ) -> None:
+        """Check ancestors once per read and detect later deletions."""
+        path = self.runtime / "data/raw/shared.parquet"
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b"saved")
+        run = _run(1, finished=True)
+        run["files"]["one"] = {
+            **_file("data/raw/shared.parquet", "succeeded"),
+            "finished_at": run["finished_at"],
+        }
+        save_run(self.runtime, run)
+        original = Path.lstat
+        calls = []
+
+        def observe(
+            candidate: Path,
+            *args: object,
+            **kwargs: object,
+        ) -> object:
+            """Count metadata calls while reading the actual filesystem.
+
+            Returns:
+                The real non-following file observation.
+            """
+            calls.append(candidate)
+            return original(candidate, *args, **kwargs)
+
+        with patch.object(update_store.Path, "lstat", observe):
+            saved = read_updates(self.runtime)
+        assert saved["tasks"]["quality-analysis"]["current"]["files"]["one"][
+            "available"
+        ]
+        assert calls.count(path) == 1
+        path.unlink()
+        assert not read_updates(self.runtime)["tasks"]["quality-analysis"][
+            "current"
+        ]["files"]["one"]["available"]
 
     def test_finished_collection_closes_unstarted_files_as_unknown(
         self,

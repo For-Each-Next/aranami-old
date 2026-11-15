@@ -113,6 +113,7 @@ class CollectionDefinition:
         cutoff: Source boundary or freshness rule, separate from the
             actual time collection finishes.
         idle: Wait outside workers until ordinary work finishes.
+        idle_priority: Lower values run first within the idle queue.
     """
 
     cutoff: str
@@ -120,6 +121,7 @@ class CollectionDefinition:
     minute: int = 0
     interval: float | None = None
     idle: bool = False
+    idle_priority: int = 0
 
 
 # Article/list grades verified against the project's category tree.
@@ -172,6 +174,7 @@ COLLECTION_DEFINITIONS: dict[str, CollectionDefinition] = {
     "quality-analysis": CollectionDefinition(
         minute=2,
         idle=True,
+        idle_priority=1,
         cutoff=(
             "Current quality membership and exact changed article revisions; "
             "retain precomputed Parquet summaries for saved-data web reads."
@@ -180,12 +183,27 @@ COLLECTION_DEFINITIONS: dict[str, CollectionDefinition] = {
     "quality-authorship": CollectionDefinition(
         minute=2,
         idle=True,
+        idle_priority=1,
         cutoff=(
-            "Latest continuous B/BL talk ranges and inferred article cutoffs; "
-            "resume bounded cached history and listing-time attribution."
+            "Article/list rating histories and exact attribution cutoffs; "
+            "resume all-grade authorship after regular work finishes."
         ),
     ),
 }
+
+
+def idle_priority(name: str) -> int:
+    """Order optional article statistics after regular idle reports.
+
+    Args:
+        name: Configured collection or report identifier.
+
+    Returns:
+        Collection priority, or the regular report priority of zero.
+    """
+    definition = COLLECTION_DEFINITIONS.get(name)
+    return definition.idle_priority if definition is not None else 0
+
 
 PROJECT_DATA_SCOPES: tuple[tuple[str, str], ...] = (
     ("zh", "电子游戏"),

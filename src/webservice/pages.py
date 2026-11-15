@@ -1631,6 +1631,49 @@ def render_live_status(
     return _render("live.html", context)
 
 
+def render_live_update(
+    status: Record,
+    config: Record,
+    locale: str,
+) -> Record:
+    """Return file observations beside small status fragments.
+
+    Args:
+        status: Validated saved runtime observations.
+        config: Current source version and report definitions.
+        locale: Authored browser locale.
+
+    Returns:
+        Status HTML plus JSON file rows for browser-side rendering.
+        Unchanged completed lists can be omitted.
+    """
+    page = _Page(locale)
+    context = {"t": _messages(locale), "structured_updates": True}
+    context.update(page.live_status(status, config, dt.datetime.now(dt.UTC)))
+    updates = context["server"]["dataset_updates"]
+    updates["labels"] = {
+        key: page.interface.text(f"dataset_updates.{key}")
+        for key in (
+            "started",
+            "finished",
+            "baseline",
+            "used_by",
+            "succeeded",
+            "failed",
+            "running",
+            "scheduled",
+            "waiting",
+            "elapsed",
+            "new_shape",
+            "no_previous",
+            "no_planned",
+            "unavailable",
+        )
+    }
+    updates["labels"]["unknown"] = page.interface.text("data.unknown")
+    return {"html": _render("live.html", context), "updates": updates}
+
+
 def render_consistency_checks(  # ruff: ignore[too-many-arguments]
     snapshot: Record | None,
     status: Record | None,

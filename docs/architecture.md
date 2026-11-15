@@ -110,9 +110,9 @@ observation time. Required datasets commit before a consumer can prepare.
 | Newsletter facts | Daily idle after 00:00 and due retries; daily membership plus retained evidence |
 | DYK checks | Hourly :00 in the deferred queue; batch-check revisions and reuse unchanged parses |
 | Article evidence | Hourly :00; midnight uses daily membership, later hours may use temporary observations |
-| Quality analysis | Hourly idle; shared current membership and retained talk history, with changed article bodies measured in a bounded child process |
-| Quality authors | Hourly idle; cached B/BL talk ranges and listing-time attribution in a separate bounded child process |
-| Assessment lists and English comparisons | Idle after 00:00, sequentially; daily Chinese membership |
+| Quality analysis | Hourly idle after regular reports; shared current membership and retained talk history, with changed article bodies measured in a bounded child process |
+| Quality authors | Hourly idle after regular reports; rating histories and all-grade attribution in a separate bounded child process |
+| Assessment lists and English comparisons | Idle after 00:00, independently; daily Chinese membership |
 | New-page discovery | Idle after 00:00; hourly retries while behind; independent creation/conversion sources enriched with daily assessments |
 | Pageviews | Normally 19:00; hourly :00 retries while behind |
 | Website | Every UTC hour :00; startup recovery does not move the next boundary |
@@ -132,7 +132,8 @@ categories, including matching pages outside project membership. Null category
 placeholders distinguish known uncategorized pages from uncovered IDs.
 
 Collectors reuse the hourly Parquet, then `newsletter-daily` prepares daily facts,
-and only then do deferred report consumers run. Waiting phases occupy no executor
+and only then do independent deferred report consumers run concurrently.
+Article statistics wait behind regular reports and never run during hub startup. Waiting phases occupy no executor
 threads. New hourly collection can start while an earlier publication finishes.
 Adapters supplement only page IDs or custom categories absent from central
 coverage, using read-only replica queries. Daily consumers retain their exact

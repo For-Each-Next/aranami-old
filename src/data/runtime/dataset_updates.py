@@ -15,6 +15,7 @@ import json
 import os
 import re
 import shutil
+import stat
 from pathlib import Path
 from threading import RLock
 
@@ -36,7 +37,29 @@ _ID = re.compile(r"[0-9a-f]{32}")
 _STATES = {"pending", "running", "succeeded", "failed", "unknown"}
 
 
-def public_path(path: Path, runtime: Path) -> str | None:
+def _file_info(
+    path: Path,
+    checked: dict[Path, os.stat_result | None],
+) -> os.stat_result | None:
+    """Read each file or shared ancestor once within one validated read.
+
+    Returns:
+        Current non-following metadata, or none for a missing path.
+    """
+    if path not in checked:
+        try:
+            checked[path] = path.lstat()
+        except OSError:
+            checked[path] = None
+    return checked[path]
+
+
+def public_path(
+    path: Path,
+    runtime: Path,
+    *,
+    checked: dict[Path, os.stat_result | None] | None = None,
+) -> str | None:
     """Return an existing or intended public Parquet path, when safe."""
     candidate = path if path.is_absolute() else runtime / path
     try:
@@ -48,15 +71,17 @@ def public_path(path: Path, runtime: Path) -> str | None:
         ("data", "raw"),
         ("data", "parsed"),
     } or relative.parts[:1] == ("cache",)
+    checked = {} if checked is None else checked
     if (
         relative.suffix != ".parquet"
         or ".." in relative.parts
         or not public_root
         or any(part.startswith(".") for part in relative.parts)
         or any(
-            parent.is_symlink()
+            info is not None and stat.S_ISLNK(info.st_mode)
             for parent in (candidate, *candidate.parents)
             if parent != runtime.parent and parent.is_relative_to(runtime)
+            for info in (_file_info(parent, checked),)
         )
     ):
         return None
@@ -158,7 +183,11 @@ def _validate_time(value: object) -> None:
         raise ValueError(message)
 
 
-def _validate_file(row: dict, runtime: Path) -> None:
+def _validate_file(
+    row: dict,
+    runtime: Path,
+    checked: dict[Path, os.stat_result | None],
+) -> None:
     """Check paths, shapes and timestamps independently of task success.
 
     Raises:
@@ -171,7 +200,7 @@ def _validate_file(row: dict, runtime: Path) -> None:
         if observed is None:
             continue
         if (
-            public_path(Path(observed["filename"]), runtime)
+            public_path(Path(observed["filename"]), runtime, checked=checked)
             != observed["filename"]
         ):
             message = "Invalid dataset-update file path."
@@ -185,8 +214,11 @@ def _validate_file(row: dict, runtime: Path) -> None:
         _validate_time(row.get(field))
 
 
-def _validate(value: dict, runtime: Path) -> None:
+def _validate(value: dict, runtime: Path) -> dict[Path, os.stat_result | None]:
     """Reject unsafe or unbounded persisted dataset observations.
+
+    Returns:
+        File metadata reusable only during this same observation read.
 
     Raises:
         ValueError: Saved identities, counts or files are invalid.
@@ -197,6 +229,7 @@ def _validate(value: dict, runtime: Path) -> None:
     ):
         message = "Invalid dataset-update schema."
         raise ValueError(message)
+    checked: dict[Path, os.stat_result | None] = {}
     tasks = value["tasks"]
     if not isinstance(tasks, dict) or len(tasks) > _MAX_TASKS:
         message = "Invalid dataset-update task count."
@@ -224,11 +257,16 @@ def _validate(value: dict, runtime: Path) -> None:
                 message = "Dataset-update file bound exceeded."
                 raise ValueError(message)
             for row in run["files"].values():
-                _validate_file(row, runtime)
-    _validate_recent(value.get("recent", []), runtime)
+                _validate_file(row, runtime, checked)
+    _validate_recent(value.get("recent", []), runtime, checked)
+    return checked
 
 
-def _validate_recent(recent: list, runtime: Path) -> None:
+def _validate_recent(
+    recent: list,
+    runtime: Path,
+    checked: dict[Path, os.stat_result | None],
+) -> None:
     """Check independently retained completed file observations.
 
     Raises:
@@ -247,7 +285,7 @@ def _validate_recent(recent: list, runtime: Path) -> None:
             message = "Invalid recent dataset-update identity."
             raise ValueError(message)
         row = item["file"]
-        _validate_file(row, runtime)
+        _validate_file(row, runtime, checked)
         if (
             row["state"] not in {"succeeded", "failed", "unknown"}
             or row.get("finished_at") is None
@@ -258,14 +296,19 @@ def _validate_recent(recent: list, runtime: Path) -> None:
         filenames.add(row["filename"])
 
 
-def _available(run: dict, runtime: Path) -> None:
+def _available(
+    run: dict,
+    runtime: Path,
+    checked: dict[Path, os.stat_result | None],
+) -> None:
     """Recheck links without changing their historical observations."""
     for row in run["files"].values():
         for observed in (row, row.get("baseline")):
             if observed is not None:
-                observed["available"] = (
-                    runtime / observed["filename"]
-                ).is_file()
+                info = _file_info(runtime / observed["filename"], checked)
+                observed["available"] = info is not None and stat.S_ISREG(
+                    info.st_mode,
+                )
 
 
 def read_updates(runtime: Path) -> dict:
@@ -276,15 +319,15 @@ def read_updates(runtime: Path) -> dict:
     """
     try:
         value = read_json_object(runtime / STATE_PATH, _MAX_BYTES)
-        _validate(value, runtime)
+        checked = _validate(value, runtime)
     except OSError, ValueError, TypeError, KeyError, AttributeError:
         return _empty()
     for records in value["tasks"].values():
         for run in records.values():
             if run is not None:
-                _available(run, runtime)
+                _available(run, runtime, checked)
     for item in value.get("recent", []):
-        _available({"files": {"recent": item["file"]}}, runtime)
+        _available({"files": {"recent": item["file"]}}, runtime, checked)
     return value
 
 

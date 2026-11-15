@@ -1,7 +1,7 @@
-"""Retain B/BL talk ranges and resumable history in Parquet.
+"""Retain article/list rating ranges and resumable history in Parquet.
 
 Exact talk/parser keys reuse listing dates across subject edits.
-The established a34 report store owns locking and atomic generations.
+The report store owns locking and atomic generations.
 """
 
 from __future__ import annotations
@@ -56,7 +56,8 @@ ANCHOR_SCHEMA = {
 PROGRESS_SCHEMA = {**PROGRESS_SCHEMA, **ANCHOR_SCHEMA}
 INFERENCE_SCHEMA = {**MEMBER_SCHEMA, **PROGRESS_SCHEMA}
 _STORE_ROOT = DEFAULT_ROOT
-_KEY = "articles/b-listings/zhwiki-video-games"
+_KEY = "articles/rating-history/zhwiki-video-games"
+_LEGACY_KEY = "articles/b-listings/zhwiki-video-games"
 _MAX_ROWS = 100_000
 _MAX_BYTES = 64 * 1024 * 1024
 
@@ -72,7 +73,7 @@ def _validate(frame: pl.DataFrame) -> None:
         or frame.height > _MAX_ROWS
         or frame.estimated_size() > _MAX_BYTES
     ):
-        message = "Invalid B-listing schema or size."
+        message = "Invalid rating-history schema or size."
         raise ValueError(message)
     if (
         frame["page_id"].n_unique() != frame.height
@@ -154,7 +155,7 @@ def _validate(frame: pl.DataFrame) -> None:
             ),
         ).height
     ):
-        message = "Invalid B-listing identity or proof boundary."
+        message = "Invalid rating-history identity or proof boundary."
         raise ValueError(message)
 
 
@@ -165,6 +166,8 @@ def _read(store: ReportStore, *, locked: bool = False) -> pl.DataFrame:
         Current talk-range facts with resumable cursors.
     """
     bundle = store.read(_KEY, locked=locked)
+    if bundle is None:
+        bundle = store.read(_LEGACY_KEY)
     frame = (
         bundle.tables["inference"]
         if bundle
@@ -226,8 +229,8 @@ def checkpoint(
     """Atomically retain the cohort or one bounded history attempt.
 
     Args:
-        runtime: Runtime owner for the a34 report store.
-        members: Complete current B/BL cohort, or none to retain it.
+        runtime: Runtime owner for the report store.
+        members: Current article/list cohort, or none to retain it.
         update: Partial or completed progress for one exact member.
         completed_parser_migration: Old and new parser hashes whose
             completed proofs the acquisition owner certifies compatible.
@@ -348,7 +351,7 @@ def checkpoint(
                 nulls_equal=True,
             ).height:
                 message = (
-                    "B listing progress no longer matches its selected cohort."
+                    "Rating history progress no longer matches its cohort."
                 )
                 raise ValueError(message)
             frame = pl.concat([
@@ -359,11 +362,11 @@ def checkpoint(
         _validate(frame)
         store.write(
             _KEY,
-            ReportResult(family="b-listings", tables={"inference": frame}),
+            ReportResult(family="rating-history", tables={"inference": frame}),
             "",
             run_id=uuid4().hex,
             started_at=dt.datetime.now(dt.UTC),
-            target={"site": "zhwiki", "title": "B/BL talk listing dates"},
+            target={"site": "zhwiki", "title": "Article/list rating history"},
             locked=True,
         )
         return frame

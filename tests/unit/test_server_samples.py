@@ -52,6 +52,28 @@ class ResourceSampleTests(TestCase):
     """Accept only fresh resource observations owned by the live hub."""
 
     @staticmethod
+    def test_current_sample_refreshes_stale_scheduler_classification() -> None:
+        """Keep running information while the hub still heartbeats."""
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            samples.save_sample(
+                _RESOURCES,
+                boot_id=_BOOT,
+                observed_at=_NOW,
+                runtime=root,
+            )
+            status = _status()
+            owner = status["services"]["scheduler"]
+            owner.update(
+                freshness="stale",
+                heartbeat_at=(_NOW - dt.timedelta(minutes=5)).isoformat(),
+            )
+            with patch.object(samples, "read_status", return_value=status):
+                result = samples.read_live_status(root)
+            assert result["services"]["scheduler"]["freshness"] == "current"
+            assert owner["freshness"] == "stale"
+
+    @staticmethod
     def test_same_boot_sample_is_combined_without_writes() -> None:
         """Update resource values without rewriting status history."""
         with TemporaryDirectory() as directory:

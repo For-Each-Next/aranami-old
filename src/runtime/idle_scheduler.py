@@ -2,8 +2,8 @@
 
 Use ``IdleScheduler`` for the shared hub scheduler. Its default executor
 counts submitted collection and report work, keeps idle tasks outside
-worker threads, and starts at most one idle task after ordinary work
-finishes. New ordinary work can start while an idle task is running;
+worker threads, and admits independent reports after ordinary work
+finishes. New ordinary work can start while idle tasks are running;
 publication already in progress is never interrupted.
 """
 
@@ -18,7 +18,11 @@ from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.schedulers.base import STATE_RUNNING
 
-from shared.config import COLLECTION_DEFINITIONS, TASK_DEFINITIONS
+from shared.config import (
+    COLLECTION_DEFINITIONS,
+    TASK_DEFINITIONS,
+    idle_priority,
+)
 
 if TYPE_CHECKING:
     from threading import Event
@@ -39,7 +43,7 @@ class _Pending:
 
 
 class IdleExecutor(ThreadPoolExecutor):
-    """Run ordinary jobs first and serialize idle reports afterward."""
+    """Run collection, independent reports and statistics in order."""
 
     def __init__(self, idle_jobs: frozenset[str]) -> None:
         """Configure idle identifiers before the scheduler starts.
@@ -56,7 +60,7 @@ class IdleExecutor(ThreadPoolExecutor):
         self._failed_collections: set[str] = set()
         self._retries: dict[str, dt.datetime] = {}
         self._active_collections: set[str] = set()
-        self._idle_active: str | None = None
+        self._idle_active: set[str] = set()
         self._dispatching = 0
         self._closing = False
 
@@ -99,7 +103,7 @@ class IdleExecutor(ThreadPoolExecutor):
                 and not self._failed_collections
                 and not self._dispatching
                 and not self._ordinary
-                and self._idle_active is None
+                and not self._idle_active
                 and not self._pending
                 and not self._collections
                 and self._scheduler.state == STATE_RUNNING
@@ -138,17 +142,28 @@ class IdleExecutor(ThreadPoolExecutor):
             return
         for job_id in tuple(self._collections):
             self._start_collection(job_id)
-        if self._ordinary or self._idle_active is not None:
+        if self._ordinary or "newsletter-daily" in self._idle_active:
             return
         if not self._pending:
             return
-        job_id = (
-            "newsletter-daily"
-            if "newsletter-daily" in self._pending
-            else next(iter(self._pending))
-        )
+        self._start_ready_reports()
+
+    def _start_ready_reports(self) -> None:
+        """Admit independent reports before optional statistics."""
+        if "newsletter-daily" in self._pending:
+            self._start_idle("newsletter-daily")
+            return
+        regular = [name for name in self._pending if idle_priority(name) == 0]
+        for job_id in regular:
+            if job_id in self._pending:
+                self._start_idle(job_id)
+        if not self._idle_active and self._pending:
+            self._start_idle(min(self._pending, key=idle_priority))
+
+    def _start_idle(self, job_id: str) -> None:
+        """Submit one independent ready report or statistics worker."""
         pending = self._pending.pop(job_id)
-        self._idle_active = job_id
+        self._idle_active.add(job_id)
         try:
             super()._do_submit_job(pending.job, pending.run_times)
         except RuntimeError as error:
@@ -167,8 +182,8 @@ class IdleExecutor(ThreadPoolExecutor):
     def _completed(self, job_id: str) -> None:
         """Release one submitted invocation's activity count."""
         with self._lock:
-            if job_id == self._idle_active:
-                self._idle_active = None
+            if job_id in self._idle_active:
+                self._idle_active.remove(job_id)
             else:
                 self._ordinary -= 1
                 self._active_collections.discard(job_id)

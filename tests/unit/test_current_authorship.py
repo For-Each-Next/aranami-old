@@ -15,9 +15,9 @@ from unittest.mock import Mock, patch
 import polars as pl
 
 from data.articles import (
-    b_listings as assessment_inference,
     current_assessments,
     current_authorship as store,
+    rating_history as assessment_inference,
 )
 from data.articles.quality_authors import prepare_current_b_articles
 from shared.sources import wikiwho

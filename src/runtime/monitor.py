@@ -206,8 +206,8 @@ def start(
 
     By default, a fresh monitor checks every report immediately in live
     and preview modes. Set ``run_immediately=False`` to wait for the
-    UTC schedule. Idle daily reports wait until ordinary scheduled work
-    finishes and run one at a time. Reports may overlap; each has one
+    UTC schedule. Independent daily reports wait for required collection
+    and newsletter facts, then run concurrently. Each report retains one
     active execution. Missed runs coalesce into one invocation. Stopped
     monitors are replaced on the next call. Paused monitors are returned
     without resuming them. Reusing an active monitor leaves its jobs

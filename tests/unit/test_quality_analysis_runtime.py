@@ -227,6 +227,51 @@ class AuthorWorkerTests(TestCase):
     """Keep B attribution independent from foreground recognition."""
 
     @staticmethod
+    def test_reviewed_authorship_uses_saved_events_and_yields() -> None:
+        """Keep higher-grade credits and audits in the idle worker."""
+        site, members, events = object(), object(), object()
+        foreground = Mock(return_value=False)
+        with (
+            patch.object(worker, "monotonic", return_value=100),
+            patch.object(
+                worker,
+                "retained_article_history",
+                return_value=events,
+            ) as history,
+            patch.object(
+                worker,
+                "enrich_authorship",
+                return_value=events,
+            ) as authors,
+            patch.object(worker, "refresh_current_corrections") as corrections,
+        ):
+            worker._collect_historical_authorship(
+                site,
+                members,
+                Path(),
+                time_budget=60,
+                should_yield=foreground,
+            )
+            history.assert_called_once_with(
+                Path("data/parsed/article-history.parquet"),
+            )
+            assert authors.call_args.args == (events, site)
+            paused = authors.call_args.kwargs["should_yield"]
+            assert not paused()
+            assert corrections.call_args.args == (site, events, members)
+            foreground.return_value = True
+            assert paused()
+            history.reset_mock()
+            worker._collect_historical_authorship(
+                site,
+                members,
+                Path(),
+                time_budget=60,
+                should_yield=foreground,
+            )
+            history.assert_not_called()
+
+    @staticmethod
     def test_authorship_worker_has_larger_bounded_throughput() -> None:
         """Isolate useful bounded backfill capacity in a child."""
         child = Mock()
@@ -261,7 +306,8 @@ class AuthorWorkerTests(TestCase):
         should_yield = Mock(return_value=False)
         with (
             patch.object(worker, "monotonic", return_value=100),
-            patch.object(worker, "refresh_b_listings") as ranges,
+            patch.object(worker, "_collect_historical_authorship"),
+            patch.object(worker, "refresh_rating_history") as ranges,
             patch.object(worker, "refresh_current_authorship") as authors,
             patch.object(worker, "refresh_current_versions"),
             patch.object(
@@ -324,7 +370,8 @@ class AuthorWorkerTests(TestCase):
                         before_activity,
                     ],
                 ),
-                patch.object(worker, "refresh_b_listings"),
+                patch.object(worker, "_collect_historical_authorship"),
+                patch.object(worker, "refresh_rating_history"),
                 patch.object(worker, "refresh_current_authorship") as authors,
                 patch.object(worker, "refresh_current_versions"),
                 patch.object(
@@ -368,6 +415,31 @@ class AuthorWorkerTests(TestCase):
 
 class AnalysisAdmissionTests(TestCase):
     """Yield to ordinary work and deployment."""
+
+    @staticmethod
+    def test_pending_regular_idle_reports_interrupt_statistics() -> None:
+        """Yield before regular reports have an execution record."""
+        clock = Mock(UTC=dt.UTC)
+        clock.datetime.now.return_value.minute = 30
+        schedule = {"queued_since": "2026-11-15T03:00:00+00:00"}
+        scheduler = {
+            "boot_id": _BOOT,
+            "lifecycle": "running",
+            "schedules": {"routines": {"assessment_lists": schedule}},
+        }
+        with (
+            patch.object(worker, "dt", clock),
+            patch.object(
+                worker,
+                "read_status",
+                return_value={"services": {"scheduler": scheduler}},
+            ),
+        ):
+            assert worker._should_yield(Path(), _BOOT, Event())
+            scheduler["schedules"]["routines"] = {
+                "quality-authorship": schedule,
+            }
+            assert not worker._should_yield(Path(), _BOOT, Event())
 
     @staticmethod
     def test_clock_foreground_and_owner_lifecycle() -> None:

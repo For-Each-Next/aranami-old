@@ -61,7 +61,7 @@ from webservice.asset_cache import AssetCache
 from webservice.datasets import DatasetSelectionError, read_dataset
 from webservice.django_setup import setup_django
 from webservice.http import accepts_gzip, encoded_response, read_only_headers
-from webservice.live import LiveFeed
+from webservice.live import LiveFeed, compact_frame
 from webservice.page_cache import PageCache
 from webservice.quality_cache import QualityResourceCache
 from webservice.quality_chart_requests import (
@@ -690,7 +690,7 @@ class _PublicViews:
         self.socket_clients = 0
         self.live_feed = LiveFeed(
             lambda: read_status(self.runtime),
-            lambda status, locale: pages.render_live_status(
+            lambda status, locale: pages.render_live_update(
                 status,
                 _configuration(),
                 locale,
@@ -1729,7 +1729,13 @@ class _PublicViews:
     async def live_api(self, request: ASGIRequest) -> HttpResponseBase:
         """Return the ordered snapshot shared with WebSocket clients."""
         locale = _request_locale(request)
-        frame = await self.live_feed.snapshot(locale)
+        try:
+            frame = await self.live_feed.snapshot(locale)
+        except OSError, ValueError:
+            return _json(
+                {"error": "status_unavailable"},
+                HTTPStatus.SERVICE_UNAVAILABLE,
+            )
         etag = f'"{frame["instance"]}:{frame["sequence"]}:{locale}"'
         if request.headers.get("If-None-Match") == etag:
             return HttpResponse(
@@ -1740,7 +1746,7 @@ class _PublicViews:
                     "Vary": "Accept-Language, Cookie",
                 },
             )
-        response = _json(frame)
+        response = _json(compact_frame(frame, request.GET.get("previous")))
         response.headers["ETag"] = etag
         response.headers["Content-Language"] = Interface(locale).language_tag
         response.headers["Vary"] = "Accept-Language, Cookie"
@@ -1823,6 +1829,10 @@ class _PublicViews:
         Returns:
             The close code observed by the read-only message receiver.
         """
+        parameters = parse_qs(
+            websocket.scope.get("query_string", b"").decode("ascii"),
+        )
+        previous_key = parameters.get("previous", [None])[0]
         async with self.live_feed.subscribe(locale) as subscription:
             while not receiver.done():
                 pending = asyncio.create_task(subscription.receive())
@@ -1845,9 +1855,13 @@ class _PublicViews:
                         }
                     )
                     await asyncio.wait_for(
-                        websocket.send_json(frame),
+                        websocket.send_json(
+                            compact_frame(frame, previous_key),
+                        ),
                         timeout=_SOCKET_SEND_SECONDS,
                     )
+                    if frame.get("updates") is not None:
+                        previous_key = frame["updates"]["previous"]["key"]
                 finally:
                     if not pending.done():
                         pending.cancel()
@@ -1871,7 +1885,7 @@ def _socket_locale(websocket: LiveSocket) -> str | None:
             query.decode("ascii"),
             keep_blank_values=True,
             errors="strict",
-            max_num_fields=1,
+            max_num_fields=2,
         )
     except ValueError, UnicodeError:
         return None
@@ -1881,7 +1895,17 @@ def _socket_locale(websocket: LiveSocket) -> str | None:
             locale[0],
             locale[0],
         )
-        if set(parameters) <= {"lang"}
+        if set(parameters) <= {"lang", "previous"}
+        and (
+            "previous" not in parameters
+            or (
+                len(parameters["previous"]) == 1
+                and re.fullmatch(
+                    r"(?:none|[0-9a-f]{64})",
+                    parameters["previous"][0],
+                )
+            )
+        )
         and len(locale) == 1
         and locale[0]
         in {

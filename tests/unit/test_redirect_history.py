@@ -232,11 +232,6 @@ class RedirectHistoryTests(TestCase):
             ) as history,
             patch.object(
                 hub,
-                "enrich_authorship",
-                side_effect=lambda events, _site, **_options: events,
-            ),
-            patch.object(
-                hub,
                 "enrich_milestones",
                 side_effect=lambda events, _site, **_options: events,
             ),

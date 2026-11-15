@@ -7,7 +7,7 @@ import asyncio
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import Mock
 
-from webservice.live import LiveFeed
+from webservice.live import LiveFeed, compact_frame
 
 
 def _status(revision: int = 1) -> dict[str, object]:
@@ -182,3 +182,35 @@ class TestLiveFeed(IsolatedAsyncioTestCase):
         await self.feed.close()
         with self.assertRaises(RuntimeError):
             await self.feed.snapshot("en")
+
+    async def test_unavailable_read_cannot_erase_preloaded_running_status(
+        self,
+    ) -> None:
+        """Retain the accepted snapshot through a missing-file read."""
+        first = await self.feed.snapshot("en")
+        self.identity.return_value = 2
+        self.load.return_value = {**_status(), "availability": "unreadable"}
+        with self.assertRaises(ValueError):
+            await self.feed.snapshot("en")
+        assert self.feed.sequence == first["sequence"]
+        self.load.return_value = _status(2)
+        recovered = await self.feed.snapshot("en")
+        assert recovered["revision"] == 2
+
+    async def test_preloaded_rows_are_omitted_from_private_frames(
+        self,
+    ) -> None:
+        """Transfer compact queried rows only when the list changes."""
+        self.render.side_effect = None
+        self.render.return_value = {
+            "html": "small status fragments",
+            "updates": {
+                "previous": {"key": "c" * 64, "items": [1, 2]},
+                "current": {"items": []},
+            },
+        }
+        first = await self.feed.snapshot("en")
+        unchanged = compact_frame(first, "c" * 64)
+        assert "previous" not in unchanged["updates"]
+        assert first["updates"]["previous"]["items"] == [1, 2]
+        assert compact_frame(first, "d" * 64) == first

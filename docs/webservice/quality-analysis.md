@@ -134,7 +134,7 @@ field is filled independently rather than invalidating an attribution proof.
 A changed current revision or newly required character measurement requests only
 the missing body facts. Partial histories resume their saved predecessor cursor;
 unread candidates do not lose their next-pass priority. Presentation-only
-importance colors are excluded from the existing B-history parser identity.
+importance colors are excluded from the existing rating-history parser identity.
 
 ## Saved reports and lifecycle
 
@@ -142,7 +142,9 @@ The raw quality-analysis Parquet retains current membership and measurements.
 `data.articles.current_quality` projects it with saved attribution into the
 atomic frontend document `data/parsed/current-quality.json`, with one universal
 catalog, normal/all-class default charts, article details and author summaries.
-Startup prepares this projection from saved facts before source dispatch.
+Startup serves the existing prepared projection. New projection and chart
+preparation run only in the low-priority workers, so article statistics cannot
+delay source dispatch or on-wiki reports.
 Bounded analysis and authorship passes refresh it after their checkpoints.
 Background presentation then renders twelve localized presets into
 `data/webservice/quality-page-*.json`. Each preset contains a small initial
@@ -157,13 +159,19 @@ pan, zoom and reset. Miniature violins retain statistic tooltips and article-lis
 clicks. Matplotlib creates the geometry; browser controls manipulate its SVG.
 
 Analysis and all-grade authorship keep separate short-lived workers scheduled hourly
-at :02 UTC while ordinary work is idle. The parent retains no article bodies or
+at :02 UTC after ordinary collection and regular idle reports finish. The parent retains no article bodies or
 worker frames. Each pass checkpoints bounded work and releases parser/native
 memory on exit. Foreground work and the protected midnight window stop admission
-of new source batches. A nonblocking collection lease prevents duplicate writers.
+of new source work, including between individual text measurements.
+Queued regular idle reports also stop further statistics work; completed
+measurements and history cursors remain saved for the next pass. A nonblocking collection lease prevents duplicate writers.
+
+Reviewed-grade attribution and correction audits run in this idle pass instead
+of the regular hourly recognition scan. The first quarter of its budget serves
+saved reviewed-grade events, preserving their end-of-listing-day cutoffs.
 
 The authorship pass admits up to eighty history candidates within its overall
-240-second budget, reserving approximately ninety seconds for talk history and
+240-second budget, allowing approximately ninety seconds for talk history and
 up to forty article attempts afterward. Existing successful evidence is skipped.
 A completed history batch processes at most fifty selected revision bodies at a
 time. Native Polars pools default to two threads unless explicitly configured.
@@ -216,3 +224,10 @@ directory spans the full content width, with an 18em activity column that keeps
 the date and relative age on one line. Missing rating dates are labeled as not obtained,
 including contributor details. Detail downloads keep the count link and show
 a compact spinner with accessible loading status and visible failure feedback.
+
+The `rating-history` bundle replaces the former `b-listings` name. It covers
+B/BL and lower article/list grades using exact continuous banner transitions.
+Reviewed grades retain their independent Article history dates and explicit
+oldids or end-of-day cutoffs. Both feed the shared article statistics view.
+Existing B-listings evidence and partial scan cursors are read until the first
+checkpoint writes the renamed bundle; original evidence remains intact.

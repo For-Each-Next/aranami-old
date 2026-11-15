@@ -17,13 +17,14 @@ from pywikibot.page import Revision
 from pywikibot.site import Namespace, NamespacesDict
 from wiki_fixtures import OfflineSite
 
-from data.articles import b_listings as store
+from data.articles import rating_history as store
+from data.reports import ReportStore
 from shared.assessment_profiles import assessment_profile
 from shared.config import WEBSITE_REFRESH_INTERVALS
 from shared.sources import assessment_history as history_source
 from shared.sources.assessment_history import HistoricalRevision
 from shared.sources.quarry import assessment as replica_source
-from tasks.articles import b_listings as collector
+from tasks.articles import rating_history as collector
 from tasks.zhwiki.assessment_banner import banner_class
 
 _NOW = dt.datetime(2026, 11, 12, tzinfo=dt.UTC)
@@ -77,6 +78,33 @@ class LowerGradeListingTests(TestCase):
     """Apply the history algorithm to all requested lower grades."""
 
     @staticmethod
+    def test_renamed_store_preserves_legacy_history_and_resume_cursor() -> (
+        None
+    ):
+        """Adopt old evidence on first write and resume its scan."""
+        with TemporaryDirectory() as temporary:
+            runtime = Path(temporary)
+            members = collector._members(_membership(), "parser", _NOW)
+            with patch.object(store, "_KEY", store._LEGACY_KEY):
+                frame = store.checkpoint(runtime, members=members)
+                frame = store.checkpoint(
+                    runtime,
+                    update=frame.with_columns(
+                        pl.lit(4, dtype=pl.Int64).alias("expected_revision"),
+                        pl.lit("partial").alias("banner_transition_status"),
+                    ),
+                )
+            assert store.load(runtime)["inference"].equals(frame)
+            assert store.checkpoint(runtime).equals(frame)
+            reports = ReportStore(runtime / store._STORE_ROOT)
+            assert reports.has_data(store._KEY)
+            assert reports.has_data(store._LEGACY_KEY)
+            assert (
+                store.load(runtime)["inference"]["expected_revision"].item()
+                == 4
+            )
+
+    @staticmethod
     def test_lower_grades_use_the_same_contiguous_history_proof() -> None:
         """Prove dates for C through unassessed grades."""
         profile = assessment_profile("zhwiki", "电子游戏")
@@ -110,7 +138,7 @@ class LowerGradeListingTests(TestCase):
                 ),
             ):
                 runtime = Path(directory)
-                collector.refresh_b_listings(
+                collector.refresh_rating_history(
                     OfflineSite("zh", "wikipedia"),
                     _membership().with_columns(
                         pl.lit(label.raw_value).alias("pa_class"),
@@ -176,7 +204,7 @@ class BListingTests(TestCase):
                     "assessment_profile",
                     return_value=old,
                 ):
-                    collector.refresh_b_listings(
+                    collector.refresh_rating_history(
                         site,
                         _membership(),
                         runtime=runtime,
@@ -187,7 +215,7 @@ class BListingTests(TestCase):
                     collector,
                     "read_talk_revision_batches",
                 ) as batch:
-                    collector.refresh_b_listings(
+                    collector.refresh_rating_history(
                         site,
                         _membership(),
                         runtime=runtime,
@@ -224,11 +252,15 @@ class BListingTests(TestCase):
             ) as read,
         ):
             runtime, site = Path(temporary), OfflineSite("zh", "wikipedia")
-            collector.refresh_b_listings(site, _membership(), runtime=runtime)
+            collector.refresh_rating_history(
+                site,
+                _membership(),
+                runtime=runtime,
+            )
             revised = _membership().with_columns(
                 pl.lit(101).alias("page_revision"),
             )
-            collector.refresh_b_listings(site, revised, runtime=runtime)
+            collector.refresh_rating_history(site, revised, runtime=runtime)
             read.assert_called_once()
             row = store.load(runtime)["inference"].row(0, named=True)
             assert row["banner_entry_talk_rev_id"] == 4
@@ -240,7 +272,7 @@ class BListingTests(TestCase):
             assert list(runtime.rglob("*.parquet"))
             read.return_value = (_revision(6, "乙"),)
             changed = revised.with_columns(pl.lit(6).alias("talk_revision"))
-            collector.refresh_b_listings(site, changed, runtime=runtime)
+            collector.refresh_rating_history(site, changed, runtime=runtime)
             assert read.call_count == 2
             assert read.call_args.kwargs["stop_revision"] == 5
             assert (
@@ -251,7 +283,7 @@ class BListingTests(TestCase):
             )
             read.return_value = (_revision(8, "乙"), _revision(7, "丙"))
             changed = changed.with_columns(pl.lit(8).alias("talk_revision"))
-            collector.refresh_b_listings(site, changed, runtime=runtime)
+            collector.refresh_rating_history(site, changed, runtime=runtime)
             assert read.call_args.kwargs["stop_revision"] == 6
             assert (
                 store.load(runtime)["inference"][
@@ -283,12 +315,20 @@ class BListingTests(TestCase):
             ) as read,
         ):
             runtime, site = Path(temporary), OfflineSite("zh", "wikipedia")
-            collector.refresh_b_listings(site, _membership(), runtime=runtime)
+            collector.refresh_rating_history(
+                site,
+                _membership(),
+                runtime=runtime,
+            )
             for head in (9, 10, 10):
                 changed = _membership().with_columns(
                     pl.lit(head).alias("talk_revision"),
                 )
-                collector.refresh_b_listings(site, changed, runtime=runtime)
+                collector.refresh_rating_history(
+                    site,
+                    changed,
+                    runtime=runtime,
+                )
             assert read.call_args.kwargs["start_revision"] == 8
             assert read.call_args.kwargs["stop_revision"] == 5
             row = store.load(runtime)["inference"].row(0, named=True)
@@ -298,7 +338,7 @@ class BListingTests(TestCase):
                 pl.lit(11).alias("talk_revision"),
                 pl.lit("乙级列表").alias("pa_class"),
             )
-            collector.refresh_b_listings(site, changed, runtime=runtime)
+            collector.refresh_rating_history(site, changed, runtime=runtime)
             row = store.load(runtime)["inference"].row(0, named=True)
             assert row["banner_entry_talk_rev_id"] == 11
             assert row["banner_prior_talk_rev_id"] == 10
@@ -323,8 +363,16 @@ class BListingTests(TestCase):
             ) as read,
         ):
             runtime, site = Path(temporary), OfflineSite("zh", "wikipedia")
-            collector.refresh_b_listings(site, _membership(), runtime=runtime)
-            collector.refresh_b_listings(site, _membership(), runtime=runtime)
+            collector.refresh_rating_history(
+                site,
+                _membership(),
+                runtime=runtime,
+            )
+            collector.refresh_rating_history(
+                site,
+                _membership(),
+                runtime=runtime,
+            )
             assert read.call_args.kwargs["start_revision"] == 3
             assert (
                 store.load(runtime)["inference"][
@@ -353,7 +401,11 @@ class BListingTests(TestCase):
             ) as read,
         ):
             runtime, site = Path(temporary), OfflineSite("zh", "wikipedia")
-            collector.refresh_b_listings(site, _membership(), runtime=runtime)
+            collector.refresh_rating_history(
+                site,
+                _membership(),
+                runtime=runtime,
+            )
             assert (
                 store.load(runtime)["inference"]["reason"].item()
                 == "unknown_interval"
@@ -362,8 +414,8 @@ class BListingTests(TestCase):
             creation = _membership().with_columns(
                 pl.lit(1).alias("talk_revision"),
             )
-            collector.refresh_b_listings(site, creation, runtime=runtime)
-            collector.refresh_b_listings(site, creation, runtime=runtime)
+            collector.refresh_rating_history(site, creation, runtime=runtime)
+            collector.refresh_rating_history(site, creation, runtime=runtime)
             assert (
                 store.load(runtime)["inference"]["reason"].item()
                 == "earliest_visible"
@@ -461,13 +513,25 @@ class BListingTests(TestCase):
             ) as read,
         ):
             runtime, site = Path(temporary), OfflineSite("zh", "wikipedia")
-            collector.refresh_b_listings(site, _membership(), runtime=runtime)
+            collector.refresh_rating_history(
+                site,
+                _membership(),
+                runtime=runtime,
+            )
             before = store.load(runtime)["inference"].row(0, named=True)
             assert before["reason"] == "cohort_mismatch"
-            collector.refresh_b_listings(site, _membership(), runtime=runtime)
+            collector.refresh_rating_history(
+                site,
+                _membership(),
+                runtime=runtime,
+            )
             read.assert_called_once()
             aliases.append("Template:电子游戏专题")
-            collector.refresh_b_listings(site, _membership(), runtime=runtime)
+            collector.refresh_rating_history(
+                site,
+                _membership(),
+                runtime=runtime,
+            )
             after = store.load(runtime)["inference"].row(0, named=True)
             assert read.call_count == 2
             assert after["parser_version"] != before["parser_version"]
@@ -517,13 +581,13 @@ class BListingTests(TestCase):
                     "CONTRACT",
                     collector._COMPLETED_PROOF_PREVIOUS_CONTRACT,
                 ):
-                    collector.refresh_b_listings(
+                    collector.refresh_rating_history(
                         site,
                         _membership(),
                         runtime=runtime,
                     )
                 before = store.load(runtime)["inference"].row(0, named=True)
-                collector.refresh_b_listings(
+                collector.refresh_rating_history(
                     site,
                     _membership(),
                     runtime=runtime,
@@ -560,7 +624,7 @@ class BListingTests(TestCase):
                 "CONTRACT",
                 collector._COMPLETED_PROOF_PREVIOUS_CONTRACT,
             ):
-                collector.refresh_b_listings(
+                collector.refresh_rating_history(
                     site,
                     _membership(),
                     runtime=runtime,
@@ -573,7 +637,11 @@ class BListingTests(TestCase):
                 _revision(5, "乙"),
                 HistoricalRevision(4, 3, _NOW, "{{VG}}"),
             )
-            collector.refresh_b_listings(site, _membership(), runtime=runtime)
+            collector.refresh_rating_history(
+                site,
+                _membership(),
+                runtime=runtime,
+            )
             assert read.call_count == 2
             assert read.call_args.kwargs["start_revision"] == 5
             after = store.load(runtime)["inference"].row(0, named=True)
@@ -612,7 +680,7 @@ class BListingTests(TestCase):
                     "CONTRACT",
                     collector._COMPLETED_PROOF_PREVIOUS_CONTRACT,
                 ):
-                    collector.refresh_b_listings(
+                    collector.refresh_rating_history(
                         site,
                         _membership(),
                         runtime=runtime,
@@ -632,7 +700,7 @@ class BListingTests(TestCase):
                     "assessment_profile",
                     return_value=revised_profile,
                 ):
-                    collector.refresh_b_listings(
+                    collector.refresh_rating_history(
                         site,
                         _membership(),
                         runtime=runtime,
@@ -669,13 +737,13 @@ class BListingTests(TestCase):
                 "CONTRACT",
                 collector._COMPLETED_PROOF_PREVIOUS_CONTRACT,
             ):
-                collector.refresh_b_listings(
+                collector.refresh_rating_history(
                     site,
                     _membership(),
                     runtime=runtime,
                 )
             read.return_value = (_revision(6, "乙"),)
-            collector.refresh_b_listings(
+            collector.refresh_rating_history(
                 site,
                 _membership().with_columns(pl.lit(6).alias("talk_revision")),
                 runtime=runtime,
@@ -862,7 +930,11 @@ class BListingTests(TestCase):
         ):
             runtime = Path(temporary)
             site = OfflineSite("zh", "wikipedia")
-            collector.refresh_b_listings(site, _membership(), runtime=runtime)
+            collector.refresh_rating_history(
+                site,
+                _membership(),
+                runtime=runtime,
+            )
             row = store.load(runtime)["inference"].row(0, named=True)
             assert row["banner_transition_status"] == "proven"
             assert row["banner_entry_talk_rev_id"] == 5
@@ -889,12 +961,12 @@ class BListingTests(TestCase):
                 ) as read,
             ):
                 runtime, site = Path(temporary), OfflineSite("zh", "wikipedia")
-                collector.refresh_b_listings(
+                collector.refresh_rating_history(
                     site,
                     _membership(),
                     runtime=runtime,
                 )
-                collector.refresh_b_listings(
+                collector.refresh_rating_history(
                     site,
                     _membership(),
                     runtime=runtime,
@@ -904,10 +976,14 @@ class BListingTests(TestCase):
                 changed = _membership().with_columns(
                     pl.lit(6).alias("talk_revision"),
                 )
-                collector.refresh_b_listings(site, changed, runtime=runtime)
+                collector.refresh_rating_history(
+                    site,
+                    changed,
+                    runtime=runtime,
+                )
                 assert read.call_count == 2
                 with patch.object(collector, "CONTRACT", "changed-parser"):
-                    collector.refresh_b_listings(
+                    collector.refresh_rating_history(
                         site,
                         changed,
                         runtime=runtime,
@@ -937,12 +1013,12 @@ class BListingTests(TestCase):
                 ) as read,
             ):
                 runtime, site = Path(temporary), OfflineSite("zh", "wikipedia")
-                collector.refresh_b_listings(
+                collector.refresh_rating_history(
                     site,
                     _membership(),
                     runtime=runtime,
                 )
-                collector.refresh_b_listings(
+                collector.refresh_rating_history(
                     site,
                     _membership(),
                     runtime=runtime,

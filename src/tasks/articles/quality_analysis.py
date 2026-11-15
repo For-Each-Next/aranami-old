@@ -409,7 +409,11 @@ def _attempt(page: object | None, member: dict, site: BaseSite) -> dict:
     return {**row, "attempted_at": dt.datetime.now(dt.UTC)}
 
 
-def _batch_measurements(site: BaseSite, batch: tuple[dict, ...]) -> list[dict]:
+def _batch_measurements(
+    site: BaseSite,
+    batch: tuple[dict, ...],
+    should_yield: Callable[[], bool] | None = None,
+) -> list[dict]:
     """Preload only one small batch and release its source references.
 
     Returns:
@@ -426,10 +430,14 @@ def _batch_measurements(site: BaseSite, batch: tuple[dict, ...]) -> list[dict]:
             type(error).__name__,
         )
         pages = {}
-    return [
-        _attempt(pages.get(row["article_revision_id"]), row, site)
-        for row in batch
-    ]
+    updates = []
+    for row in batch:
+        if should_yield and should_yield():
+            break
+        updates.append(
+            _attempt(pages.get(row["article_revision_id"]), row, site),
+        )
+    return updates
 
 
 def refresh_quality_analysis(  # ruff: ignore[too-many-arguments] - Source, runtime and bounded admission are explicit.
@@ -479,6 +487,8 @@ def refresh_quality_analysis(  # ruff: ignore[too-many-arguments] - Source, runt
             members=members,
             observed_at=observed,
         )
+        if should_yield and should_yield():
+            return
         current = _resolve_listing_versions(site, current)
         current = store.checkpoint(
             runtime,
@@ -503,7 +513,9 @@ def refresh_quality_analysis(  # ruff: ignore[too-many-arguments] - Source, runt
         ):
             if monotonic() >= deadline or (should_yield and should_yield()):
                 break
-            updates = _batch_measurements(site, batch)
+            updates = _batch_measurements(site, batch, should_yield)
+            if not updates:
+                break
             store.checkpoint(
                 runtime,
                 updates=pl.DataFrame(updates, schema=store.ARTICLE_SCHEMA),

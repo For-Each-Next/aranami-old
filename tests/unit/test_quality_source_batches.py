@@ -14,19 +14,45 @@ from unittest.mock import Mock, patch
 import polars as pl
 from wiki_fixtures import OfflineSite
 
-from data.articles import b_listings as listing_store
+from data.articles import rating_history as listing_store
 from shared.assessment_profiles import assessment_profile
 from shared.sources import assessment_history, wikiwho
 from shared.sources.assessment_history import HistoryBudget
 from shared.sources.quarry import assessment as sql
 from shared.sources.revisions import RevisionContent
-from tasks.articles import b_listings, quality_analysis
+from tasks.articles import quality_analysis, rating_history
 
 _NOW = dt.datetime(2026, 11, 1, tzinfo=dt.UTC)
 
 
 class QualitySourceBatchTests(TestCase):
     """Batch source boundaries and reuse existing proof facts."""
+
+    @staticmethod
+    def test_measurements_yield_between_bodies_and_keep_partial_results() -> (
+        None
+    ):
+        """Save finished articles and leave unread articles pending."""
+        batch = tuple({"article_revision_id": key} for key in (1, 2, 3))
+        with (
+            patch.object(
+                quality_analysis,
+                "read_revision_contents",
+                return_value={},
+            ),
+            patch.object(
+                quality_analysis,
+                "_attempt",
+                return_value={"done": True},
+            ) as measure,
+        ):
+            updates = quality_analysis._batch_measurements(
+                Mock(),
+                batch,
+                Mock(side_effect=[False, True]),
+            )
+        assert updates == [{"done": True}]
+        measure.assert_called_once()
 
     @staticmethod
     def test_current_sql_revision_skips_page_info_and_latest_queries() -> None:
@@ -75,19 +101,22 @@ class QualitySourceBatchTests(TestCase):
             for label in old[dimension]:
                 label["color"] = None
                 label["color_variants"] = ()
-        contract = b_listings.CONTRACT
+        contract = rating_history.CONTRACT
         legacy = hashlib.sha256(
             json.dumps([contract, ["Template:VG"], [], old]).encode(),
         ).hexdigest()
         assert (
-            b_listings._parser_identity(
+            rating_history._parser_identity(
                 contract,
                 (["Template:VG"], [], current),
             )
             == legacy
         )
         assert (
-            b_listings._parser_identity(contract, (["Template:VG"], [], old))
+            rating_history._parser_identity(
+                contract,
+                (["Template:VG"], [], old),
+            )
             == legacy
         )
 
@@ -144,7 +173,7 @@ class QualitySourceBatchTests(TestCase):
                 },
             ) as fetch,
         ):
-            rows = b_listings._attempt_batch(
+            rows = rating_history._attempt_batch(
                 OfflineSite("zh", "wikipedia"),
                 frame,
                 ("Template:VG",),
@@ -207,7 +236,7 @@ class QualitySourceBatchTests(TestCase):
                 },
             ) as read,
         ):
-            rows = b_listings._attempt_batch(
+            rows = rating_history._attempt_batch(
                 OfflineSite("zh", "wikipedia"),
                 frame,
                 ("Template:VG",),
@@ -232,7 +261,7 @@ class QualitySourceBatchTests(TestCase):
                 },
             ) as read,
         ):
-            rows = b_listings._attempt_batch(
+            rows = rating_history._attempt_batch(
                 OfflineSite("zh", "wikipedia"),
                 rotated,
                 ("Template:VG",),
@@ -246,7 +275,7 @@ class QualitySourceBatchTests(TestCase):
             patch.object(assessment_history, "talk_revision_rows") as lookup,
             patch.object(assessment_history, "read_revision_contents") as read,
         ):
-            rows = b_listings._attempt_batch(
+            rows = rating_history._attempt_batch(
                 OfflineSite("zh", "wikipedia"),
                 frame,
                 ("Template:VG",),

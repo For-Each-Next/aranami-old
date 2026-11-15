@@ -18,7 +18,8 @@ publication. Keep wiki extraction rules and schemas in their owning packages.
   no report implementations. Jobs coordinate typed task results and outputs.
 - Use `shared.config` for scopes, destinations and independent cron triggers.
   Coalesce missed work; allow one active invocation per routine. Idle work waits
-  outside workers and runs sequentially after ordinary work.
+  outside workers. After collection and daily newsletter preparation, independent
+  reports run concurrently; optional article statistics run afterward.
 - Capture required daily inputs before dependent work. Midnight uses immutable
   daily membership; later hours may use temporary observations. Keep actual
   observation times separate from report anchors.

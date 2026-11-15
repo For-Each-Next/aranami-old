@@ -10,7 +10,7 @@
 {% macro consumers(item) -%}
 <li>{{ t.dataset_updates.used_by }}{% if item.reports %}<ul>{% for report in item.reports %}<li>{% if report.url %}<a href="{{ report.url }}">{{ report.name }}</a>{% else %}{{ report.name }}{% endif %}</li>{% endfor %}</ul>{% else %} {{ t.data.unknown }}{% endif %}</li>
 {%- endmacro %}
-<section id="dataset-updates-previous" class="dataset-updates" aria-labelledby="dataset-updates-previous-heading">
+<section id="dataset-updates-previous" class="dataset-updates" aria-labelledby="dataset-updates-previous-heading" data-live-key="{{ previous.key | default('') }}">
 <h2 id="dataset-updates-previous-heading">{{ t.dataset_updates.previous }}</h2>
 {% if previous.get('items', []) %}<ul class="dataset-update-files">
 {% for item in previous.get('items', []) %}<li data-key="{{ item.key | default(item.filename) }}">

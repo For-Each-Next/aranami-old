@@ -19,8 +19,8 @@ import polars as pl
 
 from data.articles import (
     authorship_store,
-    b_listings as assessment_inference,
     current_authorship as store,
+    rating_history as assessment_inference,
 )
 from shared.assessment_profiles import assessment_profile
 from shared.sources import wikiwho

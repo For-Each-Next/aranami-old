@@ -262,7 +262,7 @@ def _attempt(
     return refreshed, "complete"
 
 
-def enrich_authorship(  # ruff: ignore[too-many-arguments]
+def enrich_authorship(  # ruff: ignore[complex-structure,too-many-arguments] - Keep checkpoint and cooperative admission together.
     events: pl.DataFrame,
     site: BaseSite,
     *,
@@ -270,6 +270,7 @@ def enrich_authorship(  # ruff: ignore[too-many-arguments]
     attempt_path: Path | None = None,
     max_requests: int = 20,
     observe: Callable[[dict, str], None] | None = None,
+    should_yield: Callable[[], bool] | None = None,
 ) -> pl.DataFrame:
     """Add nullable authors and checkpoint bounded collection.
 
@@ -286,6 +287,8 @@ def enrich_authorship(  # ruff: ignore[too-many-arguments]
         observe: Optional callback receiving each attempted event and
             complete, unavailable, or throttled outcome. Completion
             means evidence was persisted. Callback failures propagate.
+        should_yield: Stop admitting source work for foreground work or
+            the idle worker's deadline; saved evidence remains usable.
 
     Returns:
         Original rows with nullable authors. Retain all tied greatest
@@ -337,6 +340,8 @@ def enrich_authorship(  # ruff: ignore[too-many-arguments]
         .drop("attempted_at")
         .head(max_requests)
     )
+    if should_yield and should_yield():
+        pending = pending.head(0)
     completed = []
     selections = [
         (
@@ -352,6 +357,8 @@ def enrich_authorship(  # ruff: ignore[too-many-arguments]
     ]
     with wikiwho.preloaded_listing_sources(site, selections):
         for event in pending.iter_rows(named=True):
+            if should_yield and should_yield():
+                break
             refreshed, outcome = _attempt(event, site, path)
             if refreshed is not None:
                 completed.append(refreshed)

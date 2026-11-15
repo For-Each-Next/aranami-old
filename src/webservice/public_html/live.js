@@ -335,6 +335,7 @@
         }
         const currentElement = current;
         const nextElement = next;
+        if (current.isEqualNode?.(next)) return;
         if (
             current.nodeName === "H2" &&
             currentElement.id === nextElement.id
@@ -371,14 +372,15 @@
                 currentElement.setAttribute(attribute.name, attribute.value);
             }
         }
+        const keyed = new Map(
+            [...current.childNodes].filter(node => key(node)).map(node => [key(node), node]),
+        );
         let cursor = current.firstChild;
         for (const child of next.childNodes) {
             let match = compatible(cursor, child) ? cursor : null;
             if (!match && key(child)) {
-                match =
-                    [...current.childNodes].find((node) =>
-                        compatible(node, child),
-                    ) || null;
+                const candidate = keyed.get(key(child));
+                match = candidate && compatible(candidate, child) ? candidate : null;
             }
             if (!match) {
                 match = child.cloneNode(true);
@@ -437,14 +439,82 @@
             this.failure = failure;
         }
     }
-    function applySnapshot(html) {
+    /** Build dataset rows from queried JSON without parsing repeated HTML. */
+    function datasetPatch(updates) {
+        const labels = updates.labels;
+        const element = (name, text = null, attributes = {}, children = []) => {
+            const node = document.createElement(name);
+            if (text !== null) node.textContent = text;
+            for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value);
+            for (const child of children) node.appendChild(child);
+            return node;
+        };
+        const link = (text, url, dataset = false) => {
+            if (!url) return element("span", text);
+            if (!/^(?:\/|https:\/\/)/.test(url) || url.startsWith("//")) throw new StatusError("protocol");
+            return element("a", text, {href: url, ...(dataset ? {"data-dataset-link": ""} : {})});
+        };
+        const instant = value => value?.known ? `${value.label} UTC` : labels.unknown;
+        const list = (model, current) => {
+            if (!Array.isArray(model.items)) throw new StatusError("protocol");
+            if (!model.items.length) return element("p", current ? (model.state === "unavailable" ? labels.unavailable : labels.no_planned) : labels.no_previous, {class: "context"});
+            return element("ul", null, {class: "dataset-update-files"}, model.items.map(item => {
+                const active = item.state === "running";
+                const result = current ? (active ? labels.running : item.scheduled?.known ? labels.scheduled : labels.waiting) : (item.state === "succeeded" ? labels.succeeded : item.state === "failed" ? labels.failed : labels.unknown);
+                const icon = element("span", current ? "⌛" : item.state === "succeeded" ? "✅" : item.state === "failed" ? "❌" : "?", {role: "img", "aria-label": result});
+                const title = element("strong", null, {}, [link(item.filename, current ? null : item.url, true)]);
+                const details = [];
+                const first = element("li", current && !item.started?.known ? (item.scheduled?.known ? `${labels.scheduled} ${instant(item.scheduled)}` : labels.waiting) : `${labels.started} ${instant(item.started)}`);
+                if (!item.is_task) {
+                    first.appendChild(element("span", `; ${labels.baseline} `));
+                    first.appendChild(link(item.baseline?.filename || labels.unknown, item.baseline?.url, true));
+                    if (item.baseline?.shape) first.appendChild(element("span", ` (${item.baseline.shape})`, {class: "dataset-update-shape"}));
+                }
+                details.push(first);
+                if (!current) details.push(element("li", `${result} ${instant(item.finished)}${item.shape ? `; ${labels.new_shape} ${item.shape}` : ""}`));
+                if (current && item.elapsed?.running) {
+                    const elapsed = element("span", item.elapsed.label, {"data-clock": "dataset-elapsed", "data-started-at": item.elapsed.started, "data-clock-unknown": labels.unknown, ...(updates.expires ? {"data-clock-expires": updates.expires} : {})});
+                    details.push(element("li", null, {}, [element("span", `${labels.elapsed} `), elapsed, element("span", item.activity ? ` · ${item.activity}` : "")]));
+                } else if (current && item.activity) details.push(element("li", item.activity));
+                if (!item.is_task) details.push(element("li", null, {}, [element("span", `${labels.used_by} `), item.reports?.length ? element("ul", null, {}, item.reports.map(report => element("li", null, {}, [link(report.name, report.url)]))) : element("span", labels.unknown)]));
+                return element("li", null, {"data-key": item.key || item.filename}, [element("p", null, {}, [icon, element("span", " "), title]), element("ul", null, {class: "dataset-update-details"}, details)]);
+            }));
+        };
+        const patches = [];
+        for (const kind of ["previous", "current"]) {
+            const root = document.getElementById(`dataset-updates-${kind}`);
+            const model = updates[kind];
+            if (!root || !model) continue;
+            if (kind === "previous" && model.key === root.dataset.liveKey) continue;
+            const body = element("div", null, kind === "current" && updates.expires ? {"data-observation-expires": updates.expires, "data-stale-text": labels.unavailable} : {}, [list(model, kind === "current")]);
+            patches.push(() => {
+                const previous = [...root.childNodes].find(node => node.nodeName === "DIV");
+                if (previous) reconcile(previous, body);
+                else {
+                    for (const child of [...root.childNodes]) if (child.nodeName !== "H2") child.remove();
+                    root.appendChild(body);
+                }
+                if (model.key) root.setAttribute("data-live-key", model.key);
+            });
+        }
+        return () => patches.forEach(patch => patch());
+    }
+    /** Identify the completed rows already preloaded in this page. */
+    function previousQuery() {
+        const root = document.getElementById("dataset-updates-previous");
+        if (!root) return "previous=none";
+        const key = root.dataset.liveKey;
+        return /^[0-9a-f]{64}$/.test(key || "") ? `previous=${key}` : "";
+    }
+    function applySnapshot(html, structured = false) {
         let fragments;
+        const targets = regionIds.filter(id => !structured || !id.startsWith("dataset-updates-"));
         try {
             if (typeof html !== "string" || html.length > 8 * 1024 * 1024) {
                 throw new Error("Invalid status response");
             }
             const next = new DOMParser().parseFromString(html, "text/html");
-            const parsed = regionIds.map((id) => next.getElementById(id));
+            const parsed = targets.map((id) => next.getElementById(id));
             if (parsed.some((fragment) => !fragment))
                 throw new Error("Incomplete status");
             fragments = parsed;
@@ -453,13 +523,13 @@
         }
         let nextAnchor;
         try {
-            nextAnchor = readClock(fragments[regionIds.indexOf(clockId)]);
+            nextAnchor = readClock(fragments[targets.indexOf(clockId)]);
         } catch {
             throw new StatusError("clock");
         }
         try {
             fragments.forEach((fragment, index) => {
-                reconcile(document.getElementById(regionIds[index]), fragment);
+                reconcile(document.getElementById(targets[index]), fragment);
             });
             anchor = nextAnchor;
             updateClocks();
@@ -510,7 +580,12 @@
             frame.revision < snapshotRevision
         )
             return false;
-        const applied = applySnapshot(frame.html);
+        const patch = frame.updates ? datasetPatch(frame.updates) : null;
+        const applied = applySnapshot(frame.html, Boolean(patch));
+        if (patch) {
+            patch();
+            updateClocks();
+        }
         if (applied) {
             if (snapshotInstance && snapshotInstance !== frame.instance) {
                 retiredInstances.add(snapshotInstance);
@@ -552,7 +627,8 @@
             controller.abort();
         }, requestTimeout);
         try {
-            const response = await fetch("/api/live", {
+            const known = previousQuery();
+            const response = await fetch(`/api/live${known ? `?${known}` : ""}`, {
                 cache: "no-store",
                 credentials: "same-origin",
                 headers: {
@@ -673,7 +749,7 @@
         let current;
         try {
             current = new WebSocket(
-                `${scheme}//${window.location.host}/api/live/ws?lang=${locale}`,
+                `${scheme}//${window.location.host}/api/live/ws?lang=${locale}${previousQuery() ? `&${previousQuery()}` : ""}`,
             );
         } catch {
             reportFailure("websocket", "connect");

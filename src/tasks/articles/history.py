@@ -271,6 +271,19 @@ def _refresh(
     )
 
 
+def retained_article_history(path: Path = DEFAULT_PATH) -> pl.DataFrame:
+    """Read saved events for idle attribution without source requests.
+
+    Args:
+        path: Durable article-history store in the runtime directory.
+
+    Returns:
+        Latest retained events with their saved article identities.
+    """
+    saved = load(path)
+    return _flatten(saved, saved.select("page_id", "talk_page_id", "title"))
+
+
 def _flatten(saved: pl.DataFrame, members: pl.DataFrame) -> pl.DataFrame:
     """Return recorded events under current project article titles.
 

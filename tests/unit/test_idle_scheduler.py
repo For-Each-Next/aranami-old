@@ -75,6 +75,8 @@ class TestIdleScheduler(TestCase):
         self,
     ) -> None:
         """Count later collection work before idle work starts."""
+        self._add("quality-analysis", self.second_started.set)
+        self._add("quality-authorship", self.second_started.set)
         self._add("assessment_lists", self._idle)
         self._add("project-data", self._ordinary)
         self._dispatch()
@@ -86,6 +88,9 @@ class TestIdleScheduler(TestCase):
         self.release.set()
         assert self.idle_started.wait(2)
         assert self.scheduler.pending_since("assessment_lists") is None
+        assert not self.second_started.is_set()
+        self.idle_release.set()
+        assert self.second_started.wait(2)
 
     def test_background_admission_waits_for_ordinary_and_idle_work(
         self,
@@ -246,20 +251,19 @@ class TestIdleScheduler(TestCase):
         self.release.set()
         assert self.scheduler.wait_until_idle(Event())
 
-    def test_idle_jobs_serialize_and_ordinary_work_can_still_start(
+    def test_independent_reports_overlap_and_ordinary_work_can_start(
         self,
     ) -> None:
-        """Serialize idle reports without delaying newly due work."""
+        """Run independent reports without delaying new collection."""
         self._add("assessment_lists", self._idle)
         self._add("enwp_key_articles", self.second_started.set)
         self._dispatch()
         assert self.idle_started.wait(2)
-        assert not self.second_started.is_set()
+        assert self.second_started.wait(2)
         self._add("newsletter-history", self._ordinary)
         self.scheduler._process_jobs()
         assert self.entered.wait(2)
         self.idle_release.set()
-        assert not self.second_started.is_set()
         self.release.set()
         assert self.second_started.wait(2)
 

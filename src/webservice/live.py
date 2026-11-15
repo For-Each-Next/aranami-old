@@ -59,7 +59,7 @@ class LiveFeed:
     def __init__(
         self,
         load_status: Callable[[], dict[str, object]],
-        render_status: Callable[[dict[str, object], str], str],
+        render_status: Callable[[dict[str, object], str], str | dict],
         identity: Callable[[], object],
         *,
         check_seconds: float = 1,
@@ -69,7 +69,7 @@ class LiveFeed:
 
         Args:
             load_status: Validated read-only status loader.
-            render_status: Render a saved observation for one locale.
+            render_status: Render localized HTML or structured updates.
             identity: Saved-file identity, including missing state.
             check_seconds: Delay between shared file-identity checks.
             refresh_seconds: Maximum age before freshness is recomputed.
@@ -176,6 +176,9 @@ class LiveFeed:
         The caller holds the feed lock. Reads and rendering run outside
         the event-loop thread. Failed work changes neither the accepted
         sequence nor the previously prepared frames.
+
+        Raises:
+            ValueError: A previously available status became unreadable.
         """
         identity = await asyncio.to_thread(self._identity)
         now = asyncio.get_running_loop().time()
@@ -195,6 +198,13 @@ class LiveFeed:
             if changed
             else self._status
         )
+        if (
+            self._status is not None
+            and self._status.get("availability") == "available"
+            and status.get("availability") != "available"
+        ):
+            message = "Saved status is temporarily unavailable."
+            raise ValueError(message)
         sequence = self.sequence + int(changed)
         render_tasks = [
             asyncio.to_thread(self._frame, status, locale, sequence)
@@ -228,7 +238,8 @@ class LiveFeed:
         Raises:
             ValueError: Content is invalid or exceeds its bound.
         """
-        html = self._render_status(status, locale)
+        rendered = self._render_status(status, locale)
+        html = rendered["html"] if isinstance(rendered, dict) else rendered
         if not isinstance(html, str) or len(html.encode()) > _MAX_HTML_BYTES:
             message = "Live status rendering exceeded its contract."
             raise ValueError(message)
@@ -241,6 +252,11 @@ class LiveFeed:
             "revision": status.get("revision"),
             "observed_at": status["as_of"],
             "html": html,
+            **(
+                {"updates": rendered["updates"]}
+                if isinstance(rendered, dict)
+                else {}
+            ),
         }
 
     async def _watch(self) -> None:
@@ -269,3 +285,26 @@ class LiveFeed:
                             "sequence": self.sequence,
                             "error": "status_unavailable",
                         })
+
+
+def compact_frame(frame: dict, previous_key: str | None) -> dict:
+    """Omit completed file rows already preloaded by this browser.
+
+    Args:
+        frame: Complete latest shared observation.
+        previous_key: Browser's exact completed-list content identity.
+
+    Returns:
+        An independent compact envelope; shared frames stay complete.
+    """
+    updates = frame.get("updates")
+    if updates is None or (
+        previous_key != "none" and updates["previous"]["key"] != previous_key
+    ):
+        return frame
+    return {
+        **frame,
+        "updates": {
+            key: value for key, value in updates.items() if key != "previous"
+        },
+    }

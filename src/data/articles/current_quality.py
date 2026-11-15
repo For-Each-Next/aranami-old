@@ -16,12 +16,12 @@ from data.articles import (
     assessment_comparison,
     authorship_corrections,
     authorship_store,
-    b_listings,
     current_authorship,
     history_store,
     quality_analysis,
     quality_authors,
     quality_selection,
+    rating_history,
 )
 from data.articles.storage import AUTHORSHIP_PATH, DEFAULT_ROOT, HISTORY_PATH
 from data.reports import ReportStore
@@ -874,7 +874,7 @@ def _listing_date_clock(
     )
     profile = assessment_profile("zhwiki", "电子游戏")
     inferred = (
-        b_listings
+        rating_history
         .load(runtime)["inference"]
         .filter(
             (pl.col("banner_transition_status") == "proven")

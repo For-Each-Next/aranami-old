@@ -542,6 +542,10 @@ class PublicWebsiteTests(unittest.TestCase):  # ruff: ignore[too-many-public-met
             assert "Running" in first["html"]
             assert 'id="live-uptime"' in first["html"]
             assert headers["Cache-Control"] == "no-store"
+            key = first["updates"]["previous"]["key"]
+            compact = json.loads(self.request("/api/live?previous=" + key)[2])
+            assert "previous" not in compact["updates"]
+            assert 'id="dataset-updates-previous"' not in compact["html"]
             record.update(
                 outcome="succeeded",
                 updated_count=0,
@@ -565,12 +569,18 @@ class PublicWebsiteTests(unittest.TestCase):  # ruff: ignore[too-many-public-met
             assert translated["html"] != second["html"]
             assert self.request("/api/live", "HEAD")[2] == b""
             assert self.request("/api/live", "POST")[0] == 405
+            saved_status = status_path(self.runtime).read_bytes()
             status_path(self.runtime).write_text("invalid")
             assert (
                 json.loads(self.request("/api/status")[2])["availability"]
                 == "corrupt"
             )
-            assert json.loads(self.request("/api/live")[2])["store_id"] is None
+            assert self.request("/api/live")[0] == 503
+            status_path(self.runtime).write_bytes(saved_status)
+            assert (
+                json.loads(self.request("/api/live")[2])["store_id"]
+                == first["store_id"]
+            )
         assert not (self.runtime / "cache").exists()
 
     def test_log_selection_filter_limits_and_full_download(self) -> None:
@@ -1141,7 +1151,7 @@ class PublicSocketTests(unittest.TestCase):
             ),
             patch("webservice.server._SOCKET_HEARTBEAT_SECONDS", 0.02),
             patch(
-                "webservice.pages.render_live_status",
+                "webservice.pages.render_live_update",
                 return_value="initial",
             ) as render,
             self.client.websocket_connect(

@@ -119,6 +119,7 @@ class Element {
         this.childNodes.splice(index, 0, node);
         node.parent = this;
     }
+    appendChild(node) { this.insertBefore(node, null); return node; }
     remove() {
         if (this.parent) {
             this.parent.childNodes.splice(this.parent.childNodes.indexOf(this), 1);
@@ -187,6 +188,7 @@ function fixture(offset = 0, completed = false, logs = false, resources = false,
     const previousUpdates = new Element("SECTION", {id: "dataset-updates-previous"}, "Previous files");
     const currentUpdates = new Element("SECTION", {id: "dataset-updates-current"}, "", [datasetHeading, datasetBody]);
     const document = {
+        createElement: name => new Element(name.toUpperCase()),
         hidden: false,
         documentElement: { lang: "en" },
         roots: footerOnly ? [uptime] : [root, uptime, ...(resources ? [runtime] : []), ...(datasetUpdates ? [previousUpdates, currentUpdates] : [])],
@@ -863,7 +865,7 @@ test("legacy uptime fragments retain their existing full-duration template", asy
 test("native WebSocket pushes preserve controls and use the page locale", async () => {
     const page = browser(false, false, { websocket: true, language: "ZH_HANT" });
     const socket = page.sockets[0];
-    assert.equal(socket.url, "wss://aranami.toolforge.org/api/live/ws?lang=zh-hant");
+    assert.equal(socket.url, "wss://aranami.toolforge.org/api/live/ws?lang=zh-hant&previous=none");
     socket.open();
     page.popup.open = true;
     page.document.activeElement = page.button;
@@ -879,7 +881,7 @@ test("native WebSocket pushes preserve controls and use the page locale", async 
     assert.equal(page.notice.hidden, true);
     assert.equal(page.requests.length, 1);
     const plain = browser(false, false, { websocket: true, protocol: "http:" });
-    assert.equal(plain.sockets[0].url, "ws://aranami.toolforge.org/api/live/ws?lang=en");
+    assert.equal(plain.sockets[0].url, "ws://aranami.toolforge.org/api/live/ws?lang=en&previous=none");
 });
 
 test("HTTP verifies healthy pushes every thirty seconds despite heartbeats", async () => {
@@ -1242,4 +1244,20 @@ test("expired dataset evidence stops elapsed clocks and cannot retain a running 
     assert.equal(page.datasetHeading.getAttribute("aria-label"), "Planned updates");
     assert.equal(page.datasetBody.textContent, "Progress unknown");
     assert.equal(page.document.getElementById("dataset-elapsed"), null);
+});
+
+test("compact queried rows retain preloaded files and update running work over time", async () => {
+    const page = browser(true, true, {datasetUpdates: true});
+    page.previousUpdates.setAttribute("data-live-key", "c".repeat(64));
+    const labels = Object.fromEntries(["started", "finished", "baseline", "used_by", "succeeded", "failed", "running", "scheduled", "waiting", "elapsed", "new_shape", "no_previous", "no_planned", "unavailable", "unknown"].map(key => [key, key]));
+    const row = {key: "worker", filename: "Article authorship", is_task: true, state: "running", started: {known: true, label: "12:00:00"}, elapsed: {running: true, started: stamp(0), label: "0:00.00"}, activity: "Reading history"};
+    await page.respond(fixture(0, false, true, true, false, true), {json: async () => page.envelope(fixture(0, false, true, true), {updates: {labels, current: {items: [row]}, expires: stamp(120000)}})});
+    assert.equal(page.previousUpdates.textContent, "Previous files");
+    assert.match(page.currentUpdates.textContent, /Reading history/);
+    page.jump(20000);
+    await page.respond(fixture(20000, false, true, true), {json: async () => page.envelope(fixture(20000, false, true, true), {updates: {labels, current: {items: [{...row, activity: "Attributing revision"}]}, expires: stamp(140000)}})});
+    assert.match(page.currentUpdates.textContent, /Attributing revision/);
+    assert.doesNotMatch(page.currentUpdates.textContent, /Reading history/);
+    assert.equal(page.previousUpdates.textContent, "Previous files");
+    assert.ok(page.requests.some(request => String(request.url).includes("previous=" + "c".repeat(64))));
 });

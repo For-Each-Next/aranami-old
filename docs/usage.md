@@ -81,6 +81,8 @@ facts are under `data/parsed/`; report results and newsletter archives are under
 | `pageviews` | 19:00 normally; hourly :00 retries while behind | Project and task-force rankings from verified traffic |
 | `pexbot` | Daily idle after 00:00 | Delegated maintenance refresh requests |
 | Newsletter collection | Daily idle after 00:00, due retries | Updated saved facts for eligible unpublished drafts |
+| `quality-analysis` collection | Hourly :02, idle after reports | Saved article/list text lengths |
+| `quality-authorship` collection | Hourly :02, idle after reports | Rating histories and all-grade authorship |
 | Website collection | Every hour :00 | Saved reviews, showcases and maintenance data |
 
 Collection identifiers are scheduler work, not `run_once(tasks=...)` wiki-task
@@ -88,7 +90,8 @@ names. All daily consumers obtain their required committed project data before
 preparation. Page lists are collected first, followed by source data and then
 dependent reports. Hourly work at midnight uses the daily observation; later
 hours share disposable current-hour Parquet. Startup recovery does not move
-the next hourly boundary. Idle reports run one at a time. PexBot skips reports
+the next hourly boundary. Independent reports run concurrently after source collection and daily
+newsletter preparation. Article statistics wait until those reports finish. PexBot skips reports
 updated by it within the preceding 24 hours.
 
 Each filename names the completed UTC day, captured at the next midnight.

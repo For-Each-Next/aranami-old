@@ -69,8 +69,9 @@ def read_live_status(runtime: Path) -> dict:
         A read-only derived status view. Missing, stale, malformed or
         different-boot samples leave the original saved status intact.
     """
+    updates = read_updates(runtime.absolute())
     status = read_status(runtime)
-    status["dataset_updates"] = read_updates(runtime.absolute())
+    status["dataset_updates"] = updates
     status["dataset_updates"]["planned"] = planned_updates(
         runtime.absolute(),
         status,
@@ -106,6 +107,9 @@ def read_live_status(runtime: Path) -> dict:
                 **service,
                 "resources": resources,
                 "heartbeat_at": sample["observed_at"],
+                "freshness": "current"
+                if now - observed <= dt.timedelta(seconds=90)
+                else "stale",
             },
         },
     }

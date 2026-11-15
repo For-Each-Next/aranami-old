@@ -168,6 +168,29 @@ class AuthorshipTests(TestCase):  # ruff: ignore[too-many-public-methods]
         self.tokens.assert_called_once_with("Article", 1, 20, 30)
         self.text.assert_called_once_with(self.site, "Article", 1, 20)
 
+    def test_foreground_work_stops_between_listing_attempts(self) -> None:
+        """Yield between attempts when foreground work arrives."""
+        with (
+            patch.object(
+                wikiwho,
+                "preloaded_listing_sources",
+                return_value=nullcontext(),
+            ),
+            patch(
+                "tasks.articles.authorship._attempt",
+                return_value=(None, "unavailable"),
+            ) as attempt,
+        ):
+            result = enrich_authorship(
+                _retry_events(3),
+                self.site,
+                path=self.path,
+                should_yield=Mock(side_effect=[False, False, True]),
+            )
+        attempt.assert_called_once()
+        assert result.height == 3
+        assert not self.path.exists()
+
     def test_new_listing_requires_separate_evidence(self) -> None:
         """A later promotion needs its own evidence."""
         self.enrich()

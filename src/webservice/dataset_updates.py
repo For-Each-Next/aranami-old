@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import datetime as dt
+from hashlib import sha256
 from typing import TYPE_CHECKING
 from urllib.parse import urlencode
 
 from shared.config import COLLECTION_DEFINITIONS, TASK_DEFINITIONS
+from shared.support.files import encode_json
 from webservice.job_history import source_description
 from webservice.presentation import catalog, timestamp, title_url, utc_time
 
@@ -93,6 +95,7 @@ def _reports(filename: str, interface: Interface) -> list[dict]:
             "current-quality",
             "current-authorship",
             "article-authorship",
+            "rating-history",
             "b-listing",
         )
     ):
@@ -361,8 +364,14 @@ def dataset_updates_context(
         _active_until(execution, scheduler, now)
         for execution in active_runs.values()
     ]
+    previous = _recent_items(interface, status, now)
     return {
-        "previous": {"items": _recent_items(interface, status, now)},
+        "previous": {
+            "items": previous,
+            "key": sha256(
+                encode_json([interface.locale, previous]),
+            ).hexdigest(),
+        },
         "current": {
             "items": current,
             "state": "running"

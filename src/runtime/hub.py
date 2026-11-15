@@ -32,7 +32,6 @@ from data.caching.project_observations import (
 )
 from data.runtime.events import event_extra
 from data.runtime.logs import open_run_log
-from data.runtime.status import get_boot_id, read_status
 from runtime import monitor
 from runtime.collection_status import collection_run
 from runtime.consistency_repairs import (
@@ -51,7 +50,6 @@ from runtime.project_observations import (
     project_cycle,
 )
 from runtime.quality_analysis import (
-    refresh_startup_quality,
     schedule_quality_analysis,
 )
 from shared.assessment_profiles import assessment_profile
@@ -60,19 +58,13 @@ from shared.deployment import project_version
 from shared.identity import configure_pywikibot
 from shared.sources.cycle import source_cycle
 from shared.sources.quarry.projects import query_pages_by_wikiproject
-from tasks import (
-    project_data as project_capture,
-    revisions as revision_collection,
-)
-from tasks.articles.authorship import enrich_authorship
-from tasks.articles.authorship_provenance import refresh_current_corrections
+from tasks import project_data as project_capture
 from tasks.articles.history import (
     DEFAULT_PATH,
     collect_article_history,
     history_membership,
 )
 from tasks.articles.milestones import enrich_milestones
-from tasks.articles.quality_authors import refresh_quality_author_activity
 from tasks.enwiki import talks as english_talks
 from tasks.website.collect import (
     add_refresh_arguments,
@@ -204,27 +196,10 @@ def refresh_newsletter(updater: DashboardUpdater) -> None:
         )
 
 
-def _yield_b_authorship() -> bool:
-    """Give hourly and midnight foreground work priority.
-
-    Returns:
-        Whether a new B attribution should wait for another pass.
-    """
-    if dt.datetime.now(dt.UTC).minute in {59, 0}:
-        return True
-    status = read_status(Path.cwd())
-    return any(
-        row.get("boot_id") == get_boot_id()
-        and row.get("task_id") != "newsletter-history"
-        and row.get("outcome") in {"queued", "running"}
-        for row in status.get("executions", {}).values()
-    )
-
-
 def refresh_article_history() -> None:
     """Maintain project recognition evidence in an hourly pass.
 
-    Preserve all recorded years and fill missing credits incrementally.
+    Preserve recorded years; idle workers fill missing author credits.
     Newsletter preparation reads the saved evidence separately.
     """
     with (
@@ -246,12 +221,6 @@ def refresh_article_history() -> None:
             now=dt.datetime.now(dt.UTC),
             path=DEFAULT_PATH,
         )
-        events = enrich_authorship(
-            events,
-            site,
-            max_requests=10,
-            attempt_path=Path("cache/article-authorship-attempts"),
-        )
         enrich_milestones(events, site, max_requests=10)
         sync_current_assessments(
             membership,
@@ -259,20 +228,13 @@ def refresh_article_history() -> None:
             observed_at=dt.datetime.now(dt.UTC),
             profile=assessment_profile(site.dbName(), "电子游戏"),
         )
-        refresh_current_corrections(
-            site,
-            events,
-            membership,
-            should_yield=_yield_b_authorship,
-        )
-        refresh_quality_author_activity(site)
         _LOGGER.info(
             "Hourly recognition scan retained %d project events.",
             events.height,
         )
 
 
-def refresh_project_data() -> None:  # ruff: ignore[complex-structure]
+def refresh_project_data() -> None:
     """Capture configured projects independently before daily consumers.
 
     Startup recovery captures only the actual current UTC boundary.
@@ -314,20 +276,6 @@ def refresh_project_data() -> None:  # ruff: ignore[complex-structure]
                     chinese_members = members
             except Exception as error:
                 _LOGGER.exception("Project snapshot failed: %s", project)
-                failures.append(error)
-                execution.fail(error)
-        if chinese_members is not None:
-            try:
-                revision_collection.prefetch(
-                    pywikibot.Site("zh", "wikipedia"),
-                    chinese_members,
-                )
-                if instant.hour == 0 and not failures:
-                    revision_collection.prune_daily(instant.date())
-            except Exception as error:
-                _LOGGER.exception(
-                    "Revision prefetch failed; dependent reports will wait.",
-                )
                 failures.append(error)
                 execution.fail(error)
         for language, frames in memberships.items():
@@ -562,7 +510,6 @@ def run(config: HubConfig) -> None:
             updater.start()
             resources.callback(updater.stop)
             refresh_saved_repairs(config.output)
-            refresh_startup_quality(Path.cwd())
 
         scheduler = monitor.start(
             dry=config.dry,

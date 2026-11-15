@@ -29,32 +29,29 @@ lazy from polars.exceptions import PolarsError
 from data.runtime.status import get_boot_id, read_status
 from runtime.collection_status import collection_run
 from runtime.dataset_updates import resumed_dataset_updates
-from shared.config import COLLECTION_DEFINITIONS
-lazy from data.articles import (
-    current_assessments,
-    current_authorship,
-    history_store,
-    quality_analysis as analysis_store,
-)
+from shared.config import COLLECTION_DEFINITIONS, idle_priority
 lazy from data.articles.current_quality import (
     refresh_saved_quality as _refresh_saved_quality,
 )
-lazy from data.articles.storage import HISTORY_PATH
+lazy from data.articles.storage import AUTHORSHIP_PATH, HISTORY_PATH
 lazy from data.collection_leases import collection_lease
-lazy from data.observations import membership_observed_at
 lazy from runtime.project_observations import project_cycle
 lazy from shared.identity import configure_pywikibot
 lazy from shared.sources.quarry.projects import query_pages_by_wikiproject
-lazy from tasks.articles.b_listings import refresh_b_listings
+lazy from tasks.articles.authorship import enrich_authorship
+lazy from tasks.articles.authorship_provenance import (
+    refresh_current_corrections,
+)
 lazy from tasks.articles.current_authorship import (
     refresh_current_authorship,
     refresh_current_versions,
 )
+lazy from tasks.articles.history import retained_article_history
 lazy from tasks.articles.quality_analysis import (
-    prepare_membership,
     refresh_quality_analysis as collect,
 )
 lazy from tasks.articles.quality_authors import refresh_quality_author_activity
+lazy from tasks.articles.rating_history import refresh_rating_history
 lazy from webservice.quality_pages import prepare_quality_pages
 
 if TYPE_CHECKING:
@@ -77,52 +74,6 @@ _AUTHOR_RANGE_PAGES = 80
 _AUTHOR_TIME_BUDGET = 240
 _AUTHOR_WORKER_TIMEOUT = 360
 _LOG = logging.getLogger(__name__)
-
-
-def refresh_startup_quality(runtime: Path) -> bool:
-    """Prepare the full saved current cohort before idle source work.
-
-    Args:
-        runtime: Owner of shared metadata and retained source evidence.
-
-    Returns:
-        Whether the unified projection was refreshed. Current-hour
-        membership comes from its shared cache or read-only SQL, without
-        article bodies, listing lookups or new authorship acquisition.
-        Source failures preserve the previous cohort and report.
-    """
-    try:  # ruff: ignore[too-many-statements-in-try-clause] - Keep optional cohort acquisition within the startup failure boundary.
-        if analysis_store.quality_analysis_identity(runtime) == (None,):
-            return False
-        configure_pywikibot()
-        instant = dt.datetime.now(dt.UTC)
-        with project_cycle(now=instant):
-            site = pywikibot.Site("zh", "wikipedia")
-            membership = query_pages_by_wikiproject(site, "电子游戏")
-            observed = membership_observed_at(site.dbName(), "电子游戏")
-            if observed is None:
-                observed = current_assessments.load(
-                    runtime / current_assessments.DEFAULT_PATH,
-                )["observed_at"].max()
-            observed = observed or instant
-            members = prepare_membership(
-                membership,
-                history_store.load(runtime / HISTORY_PATH),
-                observed,
-                current_authorship.load(runtime)["members"],
-            )
-            analysis_store.checkpoint(
-                runtime,
-                members=members,
-                observed_at=observed,
-            )
-    except Exception as error:  # ruff: ignore[blind-except] - Optional metadata bootstrap must never stop hub startup.
-        _LOG.warning(
-            "Current-quality startup cohort unavailable (%s).",
-            type(error).__name__,
-            exc_info=True,
-        )
-    return refresh_saved_quality(runtime)
 
 
 def refresh_saved_quality(runtime: Path) -> bool:
@@ -174,6 +125,13 @@ def _should_yield(
         or scheduler.get("lifecycle") != "running"
     ):
         return True
+    if any(
+        row.get("queued_since") is not None
+        and idle_priority(name) < idle_priority(task_id)
+        for schedules in scheduler.get("schedules", {}).values()
+        for name, row in schedules.items()
+    ):
+        return True
     return any(
         row.get("boot_id") == owner
         and row.get("task_id") != task_id
@@ -207,7 +165,7 @@ def refresh_quality_analysis() -> None:
 
 
 def refresh_quality_authorship() -> None:
-    """Advance B listing-time credits in a disposable idle worker.
+    """Advance all-grade rating dates and credits in an idle worker.
 
     Larger bounded passes avoid a two-article hourly cold-cache limit.
     Unchanged talk and article revisions reuse the saved Parquet facts.
@@ -329,7 +287,8 @@ def _collect(
                     time_budget=time_budget,
                     should_yield=should_yield,
                 )
-            refresh_saved_quality(runtime)
+            if not should_yield():
+                refresh_saved_quality(runtime)
 
 
 def _collect_authorship(  # ruff: ignore[too-many-arguments] - Preserve explicit scope, runtime and request bounds.
@@ -343,7 +302,14 @@ def _collect_authorship(  # ruff: ignore[too-many-arguments] - Preserve explicit
 ) -> None:
     """Spend unused range time on attribution within one deadline."""
     deadline = monotonic() + time_budget
-    refresh_b_listings(
+    _collect_historical_authorship(
+        site,
+        membership,
+        runtime,
+        time_budget=time_budget * 0.25,
+        should_yield=should_yield,
+    )
+    refresh_rating_history(
         site,
         membership,
         runtime=runtime,
@@ -369,6 +335,47 @@ def _collect_authorship(  # ruff: ignore[too-many-arguments] - Preserve explicit
     )
     if monotonic() < deadline and not should_yield():
         refresh_quality_author_activity(site, runtime=runtime)
+
+
+def _collect_historical_authorship(
+    site: BaseSite,
+    membership: pl.DataFrame,
+    runtime: Path,
+    *,
+    time_budget: float,
+    should_yield: Callable[[], bool],
+) -> None:
+    """Fill reviewed-grade credits during the low-priority idle pass."""
+    deadline = monotonic() + time_budget
+
+    def paused() -> bool:
+        """Stop before another listing when regular work or time is due.
+
+        Returns:
+            Whether the remaining optional source work must wait.
+        """
+        return monotonic() >= deadline or should_yield()
+
+    if paused():
+        return
+    events = retained_article_history(runtime / HISTORY_PATH)
+    events = enrich_authorship(
+        events,
+        site,
+        path=runtime / AUTHORSHIP_PATH,
+        max_requests=10,
+        attempt_path=runtime / "cache/article-authorship-attempts",
+        should_yield=paused,
+    )
+    if not paused():
+        refresh_current_corrections(
+            site,
+            events,
+            membership,
+            runtime=runtime,
+            max_seconds=max(0, deadline - monotonic()),
+            should_yield=paused,
+        )
 
 
 def schedule_quality_analysis(

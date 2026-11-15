@@ -169,7 +169,7 @@ contains `schema`, `wiki`, `revision_id`, `page_id`, `title`, `timestamp`,
 Unavailable/suppressed revisions retain an explicit unavailable outcome and no
 old body. Available bodies are checked against their saved digest.
 
-The initial text-statistics analysis records `raw_characters`,
+Optional retained text-statistics analysis records `raw_characters`,
 `raw_han_characters` and `source_bytes`. Domain parsers then save article history,
 prose, listing and attribution evidence in their owned Parquet tables. Parser
 contract changes can reparse retained bodies without downloading them again.
@@ -379,8 +379,10 @@ Universal selection obtains B/BL listing evidence from a separate
 membership, the first talk revision of the latest continuous B/BL banner range,
 its exact UTC assessment timestamp, the article cutoff revision and timestamp,
 and successful
-attribution keyed by `(page_id, revision_id)`. A separate B-listings report
-retains parsed talk ranges and resumable exact-parent scan progress in Parquet.
+attribution keyed by `(page_id, revision_id)`. The `rating-history` report
+retains parsed talk ranges for B/BL and lower grades plus resumable exact-parent
+scan progress in Parquet. It reads the former `b-listings` bundle when the new
+bundle is absent and preserves its evidence and cursor on the first checkpoint.
 
 Only the article revision at or before the saved assessment instant contributes
 to B/BL statistics; its UTC timestamp supplies the displayed B-Class date. Later
@@ -627,3 +629,9 @@ They are consumed by both the wiki newsletter and the newsletter webpage:
 There are no separate `music-*.parquet`, `company-*.parquet` or biography
 full-page files in the current collection contract. The saved observations
 retain these classification facts without requiring render-time SQL.
+
+Primary project collection retains membership, revision IDs and categories. It
+does not scan or prefetch every article body before releasing reports. Consumers
+read exact required bodies on demand; article-statistics workers fill their
+measurements and attribution only during idle time. Existing revision bodies and
+analysis evidence remain reusable.

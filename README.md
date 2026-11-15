@@ -1,7 +1,7 @@
 # Aranami
 
-Aranami v0.9.16 retires the category-maintenance catalogue, unifies article-class
-selection and stores prepared frontend documents as JSON. The [CHANGELOG](CHANGELOG.md) records completed work.
+Aranami v0.9.18 collects article statistics during idle time and names saved
+assessment evidence Rating history. The [CHANGELOG](CHANGELOG.md) records completed work.
 The original v0.9.8 release remains available in its Git tag.
 
 Aranami (荒波, “rough waves”) maintains Wikipedia project reports and provides
@@ -45,9 +45,9 @@ their saved facts; delayed drafts can continue improving.
 | Assessment log | Idle after 00:00 | Adjacent-day membership/class/importance changes |
 | Newsletter facts | Idle after 00:00 and due retries | Eligible quarterly and annual draft data |
 | DYK checks | Deferred every hour :00 | Current nominees and completed dates, with unchanged source parses reused |
-| Article evidence | Every hour :00 | Retained recognition evidence and quality-author activity |
-| Quality analysis | Every hour :02, idle after ordinary work | Cached article metrics and precomputed chart summaries |
-| Quality authors | Every hour :02, idle after ordinary work | Resumable B/BL listing histories, article cutoffs and authorship |
+| Article evidence | Every hour :00 | Retained recognition evidence |
+| Quality analysis | Every hour :02, idle after reports | Cached article metrics and precomputed chart summaries |
+| Quality authors | Every hour :02, idle after reports | Rating histories, article cutoffs and all-grade authorship |
 | New pages | Idle after 00:00; hourly retries while behind | Created pages and redirect conversions selected by project keywords |
 | Assessment lists / English comparisons | Idle after 00:00 | Quality, review and bilingual project reports |
 | Pageviews | 19:00 normally, :00 retries while behind | Daily and longer-period project/task-force rankings |

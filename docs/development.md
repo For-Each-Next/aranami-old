@@ -67,7 +67,9 @@ Daily schema/storage changes start in `data.project_data`; acquisition belongs
 to `tasks.project_data`, and source selection to `runtime.project_observations`.
 Keep the primary project capture ordinary at 00:00:00 UTC. Daily consumers,
 including assessment logs and newsletter facts, use the shared idle executor
-and read the committed Parquet snapshot. Declare idle collection jobs through
+and read the committed Parquet snapshot. Independent reports can run concurrently
+after the daily newsletter barrier; article statistics have lower idle priority.
+Declare idle collection jobs through
 `CollectionDefinition.idle`; never block a worker while waiting for capture.
 Use explicit Polars schemas and native joins, aggregations and expressions.
 Eager source adapters remain eager; lazy scans
