@@ -96,10 +96,13 @@ class TestIdleScheduler(TestCase):
         self,
     ) -> None:
         """Admit the scanner after the complete work queue drains."""
+        self._add("quality-analysis", self.second_started.set)
         self._add("assessment_lists", self._idle)
         self._add("website", self._ordinary)
         self._dispatch()
         assert self.entered.wait(2)
+        assert self.idle_started.wait(2)
+        assert not self.second_started.is_set()
         admitted = Event()
         stop = Event()
 
@@ -113,11 +116,10 @@ class TestIdleScheduler(TestCase):
         try:
             assert not self.scheduler._work.is_idle()
             assert not admitted.is_set()
-            self.release.set()
-            assert self.idle_started.wait(2)
-            assert not self.scheduler._work.is_idle()
-            assert not admitted.is_set()
             self.idle_release.set()
+            assert not self.second_started.is_set()
+            self.release.set()
+            assert self.second_started.wait(2)
             assert admitted.wait(2)
         finally:
             stop.set()
@@ -364,7 +366,7 @@ class TestIdleScheduler(TestCase):
     def test_shutdown_discards_pending_and_drains_active_work(self) -> None:
         """Discard waiting publications while shutdown joins workers."""
         self._add("assessment_lists", self._idle)
-        self._add("website", self._ordinary)
+        self._add("project-data", self._ordinary)
         self._dispatch()
         assert self.entered.wait(2)
         self.scheduler.pause()

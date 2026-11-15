@@ -133,7 +133,8 @@ placeholders distinguish known uncategorized pages from uncovered IDs.
 
 Collectors reuse the hourly Parquet, then `newsletter-daily` prepares daily facts,
 and only then do independent deferred report consumers run concurrently.
-Article statistics wait behind regular reports and never run during hub startup. Waiting phases occupy no executor
+Website refreshes run independently of on-wiki reports. Article statistics wait
+behind ordinary work and regular reports and never run during hub startup. Waiting phases occupy no executor
 threads. New hourly collection can start while an earlier publication finishes.
 Adapters supplement only page IDs or custom categories absent from central
 coverage, using read-only replica queries. Daily consumers retain their exact

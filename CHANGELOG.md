@@ -5,7 +5,7 @@ v0.8.8 was consolidated into the v0.9.2 release.
 
 ## Until 0.10
 
-### 0.9.18 (2026-11-15 04:00 UTC)
+### 0.9.18 (2026-11-15 04:13 UTC)
 
 Overview: Named assessment evidence Rating history and deferred article/list
 statistics until regular collection and reports were idle, while making live
@@ -20,7 +20,8 @@ updates compact and allowing independent reports to run concurrently.
 - Yielded between text measurements and attribution attempts, retained partial
   progress and removed statistics projection and chart work from startup.
 - Ran independent on-wiki reports concurrently after required collection and
-  newsletter facts, while keeping article statistics at lower priority.
+  newsletter facts; removed the unrelated website-refresh barrier and kept
+  article statistics at lower priority.
 - Sent live file observations as compact JSON, reused preloaded completed rows
   and preserved running information through refresh delays and read failures.
 - Reused path metadata within each validated read and reconciled keyed browser

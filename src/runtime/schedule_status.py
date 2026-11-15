@@ -123,6 +123,7 @@ def _write_schedule(
             "cutoff": definition.cutoff,
             "idle": definition.idle,
             "idle_priority": definition.idle_priority,
+            "blocks_reports": definition.blocks_reports,
             "queued_since": queued.isoformat() if queued is not None else None,
         }
     observed = utc_now()

@@ -114,6 +114,7 @@ class CollectionDefinition:
             actual time collection finishes.
         idle: Wait outside workers until ordinary work finishes.
         idle_priority: Lower values run first within the idle queue.
+        blocks_reports: Reports require this collection to finish.
     """
 
     cutoff: str
@@ -122,6 +123,7 @@ class CollectionDefinition:
     interval: float | None = None
     idle: bool = False
     idle_priority: int = 0
+    blocks_reports: bool = True
 
 
 # Article/list grades verified against the project's category tree.
@@ -169,6 +171,7 @@ COLLECTION_DEFINITIONS: dict[str, CollectionDefinition] = {
         ),
     ),
     "website": CollectionDefinition(
+        blocks_reports=False,
         cutoff="Refresh due datasets independently after their last success.",
     ),
     "quality-analysis": CollectionDefinition(

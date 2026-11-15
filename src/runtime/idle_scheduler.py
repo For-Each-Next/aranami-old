@@ -142,7 +142,13 @@ class IdleExecutor(ThreadPoolExecutor):
             return
         for job_id in tuple(self._collections):
             self._start_collection(job_id)
-        if self._ordinary or "newsletter-daily" in self._idle_active:
+        dependencies = {
+            name
+            for name in self._active_collections
+            if (definition := COLLECTION_DEFINITIONS.get(name)) is None
+            or definition.blocks_reports
+        }
+        if dependencies or "newsletter-daily" in self._idle_active:
             return
         if not self._pending:
             return
@@ -157,7 +163,7 @@ class IdleExecutor(ThreadPoolExecutor):
         for job_id in regular:
             if job_id in self._pending:
                 self._start_idle(job_id)
-        if not self._idle_active and self._pending:
+        if not self._ordinary and not self._idle_active and self._pending:
             self._start_idle(min(self._pending, key=idle_priority))
 
     def _start_idle(self, job_id: str) -> None:
