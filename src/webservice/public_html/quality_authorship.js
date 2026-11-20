@@ -229,7 +229,7 @@ export function initializeQualityAuthorship(root = document) {
             page = 1;
             render();
         });
-        if (originalRows.length > 10) host.append(pager);
+        host.append(pager);
 
         /** Reorder existing escaped cells and show only the selected page. */
         function render() {
@@ -253,9 +253,7 @@ export function initializeQualityAuthorship(root = document) {
             page = Math.min(page, Math.max(1, Math.ceil(rows.length / size)));
             const start = (page - 1) * size;
             for (const [position, row] of rows.entries()) {
-                row.hidden =
-                    originalRows.length > 10 &&
-                    (position < start || position >= start + size);
+                row.hidden = position < start || position >= start + size;
                 row.cells[0].textContent = String(position + 1);
                 tbody.append(row);
             }

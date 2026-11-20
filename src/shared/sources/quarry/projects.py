@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Literal
 import polars as pl
 import pywikibot
 from pywikibot.site import Namespace
-from sqlalchemy import and_, func, literal, or_, select, tuple_, union_all
+from sqlalchemy import and_, func, literal, or_, select, tuple_
 
 from shared.config import PROJECT_DATA_TASKFORCES
 from shared.sources.cycle import (
@@ -782,18 +782,15 @@ def category_members(
 def category_observations(
     site: BaseSite,
     category_titles: Iterable[str],
-    page_ids: Iterable[int],
 ) -> pl.DataFrame:
-    """Read project categories and complete lists in one SQL call.
+    """Read complete membership for the named categories only.
 
     Args:
         site: Wiki whose indexed page and category metadata is read.
         category_titles: Categories needing complete global membership.
-        page_ids: Project subject and talk IDs requiring all categories.
 
     Returns:
-        Category/page identities and replica page_latest. Known pages
-        without categories retain a null category placeholder.
+        Category/page identities and replica page_latest.
     """
     names = [
         pywikibot.Page(site, name, Namespace.CATEGORY).title(
@@ -802,7 +799,6 @@ def category_observations(
         )
         for name in category_titles
     ]
-    ids = list(dict.fromkeys(page_ids))
     page, links, target = tables.Page, tables.Categorylinks, tables.Linktarget
     article = tables.Page.__table__.alias("article")
     columns = (
@@ -818,20 +814,6 @@ def category_observations(
         article.c.page_namespace == Namespace.MAIN,
         article.c.page_title == page.page_title,
     )
-    project_rows = (
-        select(*columns, literal(value=True).label("categories_complete"))
-        .select_from(page)
-        .outerjoin(links, links.cl_from == page.page_id)
-        .outerjoin(
-            target,
-            and_(
-                target.lt_id == links.cl_target_id,
-                target.lt_namespace == Namespace.CATEGORY,
-            ),
-        )
-        .outerjoin(article, article_join)
-        .where(page.page_id.in_(ids))
-    )
     category_rows = (
         select(*columns, literal(value=False).label("categories_complete"))
         .select_from(target)
@@ -841,7 +823,6 @@ def category_observations(
         .where(
             target.lt_namespace == Namespace.CATEGORY,
             target.lt_title.in_(names),
-            page.page_id.not_in(ids),
         )
     )
     schema = _MEMBER_SCHEMA | {
@@ -853,7 +834,7 @@ def category_observations(
     return (
         _replica(site.dbName())
         .query(
-            union_all(project_rows, category_rows),
+            category_rows,
             schema_overrides=schema,
             purpose="category_members",
             scope={
@@ -1208,6 +1189,7 @@ def _tag_rows(
                 category=True,
                 page_kind=page_kind,
             ),
+            names=names,
         ).filter(pl.col("name").is_in(names))
     return _tag_rows_query(
         site,

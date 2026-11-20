@@ -147,28 +147,25 @@ def _proofs(
         .alias("grade"),
         pl.col("listed_date").alias("date"),
     ).explode("grade")
-    high = (
-        high
-        .filter(
-            pl.col("contract").is_in(authorship_store.CURRENT_CONTRACTS)
-            & (pl.col("action") == "added"),
-        )
-        .join(
-            selected.filter(pl.col("grade").is_in(_QUALITY)),
-            on=["page_id", "grade", "date"],
-            how="inner",
-        )
-        .sort("fetched_at")
-        .unique(subset=["page_id"], keep="last")
-        .select(
-            "page_id",
-            pl.col("creation_revision").alias("authorship_start_revision"),
-            pl.col("listing_revision").alias("authorship_end_revision"),
-            pl.col("creation").alias("authorship_start_timestamp"),
-            pl.col("cutoff").alias("authorship_end_timestamp"),
-            pl.col("eligible_bytes").alias("authorship_eligible_bytes"),
-            "contributors",
-        )
+    relevant = high.filter(
+        pl.col("contract").is_in(authorship_store.CURRENT_CONTRACTS)
+        & (pl.col("action") == "added"),
+    ).join(
+        selected.filter(pl.col("grade").is_in(_QUALITY)),
+        on=["page_id", "grade", "date"],
+        how="inner",
+    )
+    high = authorship_store.preferred_observations(
+        relevant,
+        ["page_id"],
+    ).select(
+        "page_id",
+        pl.col("creation_revision").alias("authorship_start_revision"),
+        pl.col("listing_revision").alias("authorship_end_revision"),
+        pl.col("creation").alias("authorship_start_timestamp"),
+        pl.col("cutoff").alias("authorship_end_timestamp"),
+        pl.col("eligible_bytes").alias("authorship_eligible_bytes"),
+        "contributors",
     )
     b = (
         b_tables["members"]

@@ -909,7 +909,7 @@ def homepage_sections(  # ruff: ignore[too-many-locals]
     candidates.extend(
         item
         for item in current["items"] or []
-        if item.get("date") == today.isoformat()
+        if item.get("displayed_on", item.get("date")) == today.isoformat()
         or (
             item.get("kind") == "history"
             and item.get("date_kind") == "scheduled"

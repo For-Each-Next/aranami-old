@@ -1,7 +1,7 @@
 /** Render saved service, report and dataset update observations. */
 import { jsx, iconHref, attribute, clockAttributes, display, format, hasContent } from "./rendering.js";
 import { Fragment } from "@vue/runtime-dom";
-import { popup, Time } from "./shared.jsx";
+import { popup, TablePager, Time } from "./shared.jsx";
 
 export function instant(context, stamp) {
     const { t } = context;
@@ -29,16 +29,6 @@ export function baseline(context, item) {
                     ) : (
                         display(item?.baseline?.filename)
                     )}
-                    {hasContent(item?.baseline?.shape) ? (
-                        <>
-                            {" "}
-                            <span class="dataset-update-shape">
-                                {"("}
-                                {display(item?.baseline?.shape)}
-                                {")"}
-                            </span>
-                        </>
-                    ) : null}
                 </>
             ) : (
                 t.data.unknown
@@ -65,7 +55,7 @@ export function consumers(context, item) {
                     ))}
                 </ul>
             ) : (
-                t.data.unknown
+                <div class="dataset-update-note">{t.dataset_updates.no_reports}</div>
             )}
         </li>
     );
@@ -77,89 +67,6 @@ export function DatasetUpdates(context) {
         ((previous) =>
             ((current) => (
                 <>
-                    <section
-                        id="dataset-updates-previous"
-                        class="dataset-updates"
-                        aria-labelledby="dataset-updates-previous-heading"
-                        data-live-key={attribute(previous?.key ?? "")}
-                    >
-                        <h2 id="dataset-updates-previous-heading">
-                            {display(t.dataset_updates.previous)}
-                        </h2>
-                        {hasContent(previous?.["items"] ?? []) ? (
-                            <ul class="dataset-update-files">
-                                {(previous?.["items"] ?? [] ?? []).map((item, itemIndex) => (
-                                    <li
-                                        key={itemIndex}
-                                        data-key={attribute(item?.key ?? item?.filename)}
-                                    >
-                                        <p>
-                                            <span
-                                                role="img"
-                                                aria-label={attribute(
-                                                    item?.state === "succeeded"
-                                                        ? t.dataset_updates.succeeded
-                                                        : item?.state === "failed"
-                                                          ? t.dataset_updates.failed
-                                                          : t.data.unknown,
-                                                )}
-                                            >
-                                                {display(
-                                                    item?.state === "succeeded"
-                                                        ? "✅"
-                                                        : item?.state === "failed"
-                                                          ? "❌"
-                                                          : "?",
-                                                )}
-                                            </span>{" "}
-                                            <strong>
-                                                {hasContent(item?.url) ? (
-                                                    <a
-                                                        href={attribute(item?.url)}
-                                                        data-dataset-link={""}
-                                                    >
-                                                        {display(item?.filename)}
-                                                    </a>
-                                                ) : (
-                                                    display(item?.filename)
-                                                )}
-                                            </strong>
-                                        </p>
-                                        <ul class="dataset-update-details">
-                                            <li>
-                                                {display(t.dataset_updates.started)}{" "}
-                                                {instant(context, item?.started)}
-                                                {"; "}
-                                                {baseline(context, item)}
-                                            </li>
-                                            <li>
-                                                {display(
-                                                    item?.state === "succeeded"
-                                                        ? t.dataset_updates.succeeded
-                                                        : item?.state === "failed"
-                                                          ? t.dataset_updates.failed
-                                                          : t.dataset_updates.finished,
-                                                )}{" "}
-                                                {instant(context, item?.finished)}
-                                                {hasContent(item?.shape) ? (
-                                                    <>
-                                                        {"; "}
-                                                        {display(t.dataset_updates.new_shape)}{" "}
-                                                        <span class="dataset-update-shape">
-                                                            {display(item?.shape)}
-                                                        </span>
-                                                    </>
-                                                ) : null}
-                                            </li>
-                                            {consumers(context, item)}
-                                        </ul>
-                                    </li>
-                                ))}
-                            </ul>
-                        ) : (
-                            <p class="context">{display(t.dataset_updates.no_previous)}</p>
-                        )}
-                    </section>
                     <section
                         id="dataset-updates-current"
                         class="dataset-updates"
@@ -265,6 +172,78 @@ export function DatasetUpdates(context) {
                                 </p>
                             )}
                         </div>
+                    </section>
+                    <section
+                        id="dataset-updates-previous"
+                        class="dataset-updates"
+                        aria-labelledby="dataset-updates-previous-heading"
+                        data-live-key={attribute(previous?.key ?? "")}
+                    >
+                        <h2 id="dataset-updates-previous-heading">
+                            {display(t.dataset_updates.previous)}
+                        </h2>
+                        {hasContent(previous?.["items"] ?? []) ? (
+                            <ul class="dataset-update-files">
+                                {(previous?.["items"] ?? [] ?? []).map((item, itemIndex) => (
+                                    <li
+                                        key={itemIndex}
+                                        data-key={attribute(item?.key ?? item?.filename)}
+                                    >
+                                        <p>
+                                            <span
+                                                role="img"
+                                                aria-label={attribute(
+                                                    item?.state === "succeeded"
+                                                        ? t.dataset_updates.succeeded
+                                                        : item?.state === "failed"
+                                                          ? t.dataset_updates.failed
+                                                          : t.data.unknown,
+                                                )}
+                                            >
+                                                {display(
+                                                    item?.state === "succeeded"
+                                                        ? "✅"
+                                                        : item?.state === "failed"
+                                                          ? "❌"
+                                                          : "?",
+                                                )}
+                                            </span>{" "}
+                                            <strong>
+                                                {hasContent(item?.url) ? (
+                                                    <a
+                                                        href={attribute(item?.url)}
+                                                        data-dataset-link={""}
+                                                    >
+                                                        {display(item?.filename)}
+                                                    </a>
+                                                ) : (
+                                                    display(item?.filename)
+                                                )}
+                                            </strong>
+                                        </p>
+                                        <ul class="dataset-update-details">
+                                            <li>
+                                                {display(t.dataset_updates.started)}{" "}
+                                                {instant(context, item?.started)}
+                                                <div class="dataset-update-note">{baseline(context, item)}</div>
+                                            </li>
+                                            <li>
+                                                {t.dataset_updates.finished}{" "}
+                                                {instant(context, item?.finished)}
+                                                {hasContent(item?.shape) ? (
+                                                    <div class="dataset-update-note dataset-update-shape">
+                                                        {display(item?.shape)}
+                                                    </div>
+                                                ) : null}
+                                            </li>
+                                            {consumers(context, item)}
+                                        </ul>
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : (
+                            <p class="context">{display(t.dataset_updates.no_previous)}</p>
+                        )}
                     </section>
                 </>
             ))(updates?.current ?? {}))(updates?.previous ?? {}))(server?.dataset_updates ?? {});
@@ -474,79 +453,50 @@ export function execution_row(context, event) {
 }
 
 export function ReportLog(context) {
-    const { events, history_pagination, t } = context;
+    const { events, history_pagination, language_tag, t } = context;
     return (
         <section class="section-flat" aria-labelledby="recent-events">
             <h2 id="recent-events">{t.reports.log}</h2>
             <p class="page-description">{t.reports.history_note}</p>
-            {hasContent(events) ? (
-                <div
-                    data-execution-history={""}
-                    data-page={attribute(history_pagination?.page)}
-                    data-total={attribute(history_pagination?.total)}
-                    data-url={attribute(history_pagination?.url)}
-                    data-first={t.reports.first}
-                    data-last={t.reports.last}
-                    data-next={t.backlog.next}
-                    data-prev={t.backlog.previous}
-                    data-rows={t.reports.rows}
-                    data-page-size={t.reports.page_size}
-                    data-page-status={t.reports.page_status}
-                >
-                    <div class="ui-table">
-                        <div
-                            class="ui-table__table-wrapper table-scroll"
-                            tabindex="0"
-                            role="region"
-                            aria-label={t.reports.log}
-                        >
-                            <table class="ui-table__table logs-table">
-                                <caption class="visually-hidden">{t.reports.log}</caption>
-                                <thead>
-                                    <tr>
-                                        <th scope="col">{t.logs.started_at}</th>
-                                        <th scope="col">{t.logs.task_label}</th>
-                                        <th scope="col">{t.logs.status}</th>
-                                        <th scope="col" class="ui-table__table__cell--align-number">
-                                            {display(t.logs.duration_label)}
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {(events ?? []).map((event, eventIndex) => (
-                                        <Fragment key={eventIndex}>
-                                            {execution_row(context, event)}
-                                        </Fragment>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
+            {hasContent(events) ? null : <p class="context">{t.reports.empty}</p>}
+            <div
+                data-execution-history={""}
+                data-page={attribute(history_pagination?.page)}
+                data-total={attribute(history_pagination?.total)}
+            >
+                <div class="ui-table">
+                    <div
+                        class="ui-table__table-wrapper table-scroll"
+                        tabindex="0"
+                        role="region"
+                        aria-label={t.reports.log}
+                    >
+                        <table class="ui-table__table logs-table">
+                            <caption class="visually-hidden">{t.reports.log}</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">{t.logs.started_at}</th>
+                                    <th scope="col">{t.logs.task_label}</th>
+                                    <th scope="col">{t.logs.status}</th>
+                                    <th scope="col" class="ui-table__table__cell--align-number">
+                                        {display(t.logs.duration_label)}
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {(events ?? []).map((event, eventIndex) => (
+                                    <Fragment key={eventIndex}>
+                                        {execution_row(context, event)}
+                                    </Fragment>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
-                    <nav class="ui-table-pager history-pagination" aria-label={t.reports.log}>
-                        {hasContent(history_pagination?.previous) ? (
-                            <a
-                                class="ui-button"
-                                aria-label={attribute(t.backlog.previous)}
-                                href={attribute(history_pagination?.previous)}
-                            >
-                                {t.backlog.previous}
-                            </a>
-                        ) : null}
-                        <span>{display(history_pagination?.label)}</span>
-                        {hasContent(history_pagination?.next) ? (
-                            <a
-                                class="ui-button"
-                                aria-label={attribute(t.backlog.next)}
-                                href={attribute(history_pagination?.next)}
-                            >
-                                {t.backlog.next}
-                            </a>
-                        ) : null}
-                    </nav>
                 </div>
-            ) : (
-                <p class="context">{t.reports.empty}</p>
-            )}
+                <TablePager paging={history_pagination} action="/reports/#recent-events"
+                            fields={{ lang: language_tag }} css="history-pagination"
+                            title={t.reports.log} t={t} />
+            </div>
         </section>
     );
 }
@@ -695,7 +645,7 @@ export function Runtime(context) {
                     </colgroup>
                     <tbody>
                         <tr>
-                            <th scope="row">{t.server.state}</th>
+                            <th scope="row">{t.server.hub}</th>
                             <td>
                                 <span
                                     id="server-state"
@@ -724,6 +674,20 @@ export function Runtime(context) {
                                             </>
                                         ) : null}
                                         {display(server?.closing)}
+                                    </span>
+                                ) : null}
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">{t.observability.service_name.web}</th>
+                            <td>
+                                {display(server?.web?.state)}
+                                {server?.web?.observed?.known ? (
+                                    <span class="server-start">
+                                        {display(server.opening)}
+                                        {t.server.observed}
+                                        {Time({ ...context, time: server.web.observed })}
+                                        {display(server.closing)}
                                     </span>
                                 ) : null}
                             </td>

@@ -1,6 +1,6 @@
 """Collect article/list rating dates from continuous talk ranges.
 
-Paced exact-parent scans checkpoint each prefix in Parquet. Unchanged
+Paced exact-parent scans checkpoint the accumulated batch. Unchanged
 talks reuse proof across article edits; unknown history stays pending.
 """
 
@@ -404,16 +404,17 @@ def refresh_rating_history(  # ruff: ignore[too-many-arguments] - Explicit sourc
             .sort("attempted_at", "page_id", nulls_last=False)
             .head(max_requests)
         )
-        for row in _attempt_batch(
+        rows = _attempt_batch(
             site,
             pending,
             aliases,
             budget,
             shell_aliases,
-        ):
+        )
+        if rows:
             store.checkpoint(
                 runtime,
-                update=pl.DataFrame([row], schema=store.INFERENCE_SCHEMA),
+                update=pl.DataFrame(rows, schema=store.INFERENCE_SCHEMA),
             )
     except Exception as error:  # ruff: ignore[blind-except] - Optional B history preserves newsletter collection.
         _LOG.warning(

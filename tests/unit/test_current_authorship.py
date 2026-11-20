@@ -141,6 +141,8 @@ def _evidence(
                         "name": name,
                         "tokens": 1,
                         "bytes": count,
+                        "characters": count,
+                        "raw_bytes": count,
                         "share": count / total,
                     }
                     for editor, name, count in shares

@@ -205,6 +205,8 @@ def read_categories(
     database: str,
     page_ids: list[int],
     read: Callable[[list[int]], pl.DataFrame],
+    *,
+    names: tuple[str, ...] | None = None,
 ) -> pl.DataFrame:
     """Reuse all categories of covered pages and supplement missing IDs.
 
@@ -215,6 +217,16 @@ def read_categories(
     saved = _category_snapshot(database)
     if saved is None:
         return read(page_ids)
+    if names is not None and set(names) <= saved[1]:
+        return (
+            saved[0]
+            .filter(
+                pl.col("page_id").is_in(page_ids)
+                & pl.col("name").is_in(names),
+            )
+            .select("page_id", "name")
+            .unique()
+        )
     requested = pl.DataFrame(
         {"page_id": page_ids},
         schema={"page_id": pl.Int64},

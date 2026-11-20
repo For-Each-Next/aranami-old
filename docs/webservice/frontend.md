@@ -246,10 +246,11 @@ verified review anchors. Latest activity links to the editor's contributions and
 remains a separately saved public-edit observation; missing dates stay unknown.
 Page requests never query Wikipedia or the replicas.
 
-The universal class matrix selects any combination of article and list grades.
-Prepared normal and all-class presets share the same catalog; there is no
-separate B-class switch. Contributor tables retain one total count. Main-page
-highlights refresh hourly; newsletter facts keep their independent daily cadence.
+The class matrix defaults to high-quality grades and can select every article
+and list grade. Both selections use the same saved catalog. Plain searches fold
+Simplified and Traditional characters. The regex option matches the titles as
+written. Table footers retain the page size and navigation after an empty search.
+Main-page highlights refresh hourly. Newsletter facts keep their daily cadence.
 
 B/BL listing dates use the first talk revision of the latest continuous
 literal B/BL banner range, including page creation when fully visible.
@@ -259,7 +260,10 @@ are absent, six literal `b1`–`b6` values of `yes` or `y` establish B for this
 historical inference; missing grades without a complete checklist are unassessed.
 Hidden text, conflicting banners and dynamic grades remain unknown.
 Authorship uses the exact article revision at or before that UTC timestamp.
-The same greater-than-33% main-contributor rule applies. Dates link to the entry talk
+The Article Statistics page requires over 33% of eligible content and at least
+500 attributed characters for main credit. The detail table retains editors
+with at least 10% and shows attributed source characters excluding references
+and bytes including references. Dates link to the entry talk
 revision. Parquet retains exact talk identities, timestamps, article cutoffs
 and contributor evidence; unchanged talk/parser keys reuse saved results even
 after article edits. Compatible parser updates retain completed proofs and

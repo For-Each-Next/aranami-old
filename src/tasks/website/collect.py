@@ -275,7 +275,7 @@ def _report_plan(
             else (
                 "zhwiki-video-games-consistency:article-history-projection:"
                 "numbered-notices:archive-hooks:quality-history-actions:3:"
-                "section0-repairs:4:banner-order:2:full-cache"
+                "section0-repairs:4:banner-order:3:full-cache"
             )
             if name == "consistency"
             else "zh:all-access:user:top1000:limit12:lookback7:script-extracts"
@@ -290,7 +290,7 @@ def _report_plan(
                 f"upcoming-days:{_UPCOMING_DAYS}"
             )
             if name == "recognized"
-            else f"days:{days}:complete-extracts:future-anniversaries:2"
+            else f"days:{days}:complete-extracts:active-news-first-day:1"
             if name == "news_history"
             else f"days:{days}:script-extracts:closed-passed-dyk-queue:1"
             if name == "dyk"
@@ -497,6 +497,78 @@ def _retained_events(
     )
 
 
+def _dashboard_news(
+    read: WikiReader,
+    members: set[str],
+    start: dt.date,
+    end: dt.date,
+    previous: dict | None,
+) -> list[dict[str, str]]:
+    """Keep the first observed day of each still-displayed news item.
+
+    Returns:
+        Active articles with separate dates for appearance and display
+        observation. Verified continuity allows reuse across refreshes.
+    """
+    today = end - dt.timedelta(days=1)
+    saved = (
+        {
+            row["title"]: row
+            for row in previous["homepage"]["news"]
+            if row.get("displayed_on")
+        }
+        if previous
+        else {}
+    )
+    begin = (
+        min(
+            today,
+            dt.date.fromisoformat(previous["period"]["end"])
+            - dt.timedelta(days=1),
+        )
+        if previous
+        else start
+    )
+    begin = max(start, begin)
+
+    def collect(since: dt.date, cohort: set[str]) -> list[dict[str, str]]:
+        """Read active homepage news for these members.
+
+        Returns:
+            Active appearances and their dates in the requested window.
+        """
+        return homepage.collect_news(
+            since,
+            end,
+            cohort,
+            read,
+            url=partial(page_url, read.site),
+            resolve=read.resolve,
+            resolve_many=read.resolve_many,
+            history=read.history,
+            active=True,
+        )
+
+    rows = collect(begin, members)
+    carried = {
+        row["title"]
+        for row in rows
+        if row["date_kind"] == "window_start" and row["title"] not in saved
+    }
+    earlier = (
+        {row["title"]: row for row in collect(start, carried)}
+        if carried and begin > start
+        else {}
+    )
+    for row in rows:
+        if row["date_kind"] == "window_start":
+            old = saved.get(row["title"]) or earlier.get(row["title"])
+            if old:
+                row.update(date=old["date"], date_kind=old["date_kind"])
+        row["displayed_on"] = today.isoformat()
+    return rows
+
+
 def _collect_report(  # ruff: ignore[too-many-arguments]
     name: str,
     read: WikiReader,
@@ -512,6 +584,7 @@ def _collect_report(  # ruff: ignore[too-many-arguments]
     today_history_path: Path | None = None,
     article_history_cache: dict[str, pl.DataFrame],
     shared_homepage: dict | None = None,
+    previous_data: dict | None = None,
 ) -> object:
     """Collect and validate one complete independent source result.
 
@@ -597,6 +670,13 @@ def _collect_report(  # ruff: ignore[too-many-arguments]
     else:
         displays = {}
         for section in APPEARANCE_SECTIONS[name]:
+            if section == "news":
+                displays[section] = _assessed_section(
+                    section,
+                    _dashboard_news(read, members, start, end, previous_data),
+                    membership,
+                )
+                continue
             bounds = (
                 (end, end + dt.timedelta(days=_UPCOMING_DAYS))
                 if section == "upcoming"
@@ -606,8 +686,6 @@ def _collect_report(  # ruff: ignore[too-many-arguments]
                 if section == "good"
                 else (today, end + dt.timedelta(days=2))
                 if section == "history"
-                else (today, end)
-                if section == "news"
                 else (start, end)
             )
             options = (
@@ -620,7 +698,7 @@ def _collect_report(  # ruff: ignore[too-many-arguments]
                 else {"scheduled_from": end}
                 if section == "history"
                 else {}
-                if section in {"upcoming", "news", "history"}
+                if section == "upcoming"
                 else {"read_at": read.at}
             )
             displays[section] = _assessed_section(
@@ -702,6 +780,7 @@ def collect_dashboard(  # ruff: ignore[too-many-arguments, too-many-statements, 
         "cache/today-in-history",
     ),
     draft_archive_path: Path | None = DRAFT_ARCHIVE_PATH,
+    prepare_newsletter: Callable[[dict], None] | None = None,
 ) -> dict[str, object]:
     """Refresh due Chinese reports and preserve independent successes.
 
@@ -717,6 +796,7 @@ def collect_dashboard(  # ruff: ignore[too-many-arguments, too-many-statements, 
         history_path: Canonical article history, or none in memory.
         today_history_path: Wiki-wide OTD cache, or none for memory.
         draft_archive_path: Independent daily JSON facts, or none.
+        prepare_newsletter: Optional asset preparation for saved issues.
 
     Returns:
         Schema-two snapshot with actual successful refresh timestamps,
@@ -826,6 +906,7 @@ def collect_dashboard(  # ruff: ignore[too-many-arguments, too-many-statements, 
                     shared_homepage=_shared_homepage(plan)
                     if name == "newsletter"
                     else None,
+                    previous_data=record["data"],
                 )
                 report_progress("preparing")
                 if extracts is not None:
@@ -857,6 +938,8 @@ def collect_dashboard(  # ruff: ignore[too-many-arguments, too-many-statements, 
                     failed=False,
                 )
                 save_report_cache(plan["paths"][name], record)
+                if name == "newsletter" and prepare_newsletter is not None:
+                    prepare_newsletter(data)
                 _LOGGER.info(
                     "Updated website %s: %d records.",
                     _REPORT_LABELS[name],

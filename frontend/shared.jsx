@@ -1,7 +1,45 @@
 /** Render shared dialogs, timestamps and editor article tables. */
-import { jsx, iconHref, attribute, display, hasContent, OptionalLink } from "./rendering.js";
+import { jsx, iconHref, attribute, display, format, hasContent, OptionalLink } from "./rendering.js";
 import { Fragment } from "@vue/runtime-dom";
 import { AssessmentChips } from "./articles.jsx";
+
+/** Present bounded server pages with the same controls as local tables. */
+export function TablePager({ paging, action, fields, title, css, dataset, t }) {
+    const navigation = [
+        ["first", t.reports.first],
+        ["previous", t.backlog.previous],
+        ["next", t.backlog.next],
+        ["last", t.reports.last],
+    ];
+    return (
+        <nav class={`ui-table-pager ${css}`} aria-label={title}>
+            <form class="page-size ui-table-pager__start" action={action} method="get">
+                {Object.entries(fields).map(([name, value]) => (
+                    <input key={name} name={name} value={attribute(value)} type="hidden" />
+                ))}
+                <label>
+                    {t.reports.page_size}{" "}
+                    <select name="size" value={paging?.size}>
+                        {(paging?.size_choices ?? []).map(count => (
+                            <option key={count} value={count}>{format(t.reports.rows, { count })}</option>
+                        ))}
+                    </select>
+                </label>
+            </form>
+            <div class="ui-table-pager__center">{display(paging?.label)}</div>
+            <div class="ui-table-pager__end">
+                {navigation.map(([key, label]) => paging?.[key] ? (
+                    <a key={key} href={attribute(paging[key])} aria-label={label}
+                       class="ui-button ui-button--fake-button ui-button--fake-button--enabled"
+                       rel={key === "previous" ? "prev" : key === "next" ? "next" : undefined}
+                       data-dataset-page={dataset ? "" : undefined}>{label}</a>
+                ) : (
+                    <button key={key} type="button" class="ui-button" disabled>{label}</button>
+                ))}
+            </div>
+        </nav>
+    );
+}
 
 export function ArticleSummary(context) {
     const { card } = context;

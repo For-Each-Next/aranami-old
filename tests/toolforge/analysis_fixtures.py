@@ -119,6 +119,8 @@ def _authorship_rows(
                 "name": primary,
                 "tokens": 50,
                 "bytes": 500,
+                "characters": 500,
+                "raw_bytes": 550,
                 "share": 0.50,
             },
             {
@@ -126,6 +128,8 @@ def _authorship_rows(
                 "name": "Author_B",
                 "tokens": 25,
                 "bytes": 250,
+                "characters": 100,
+                "raw_bytes": 280,
                 "share": 0.25,
             },
             {
@@ -133,6 +137,8 @@ def _authorship_rows(
                 "name": "Boundary_Editor",
                 "tokens": 10,
                 "bytes": 100,
+                "characters": 40,
+                "raw_bytes": 110,
                 "share": 0.10,
             },
             {
@@ -140,6 +146,8 @@ def _authorship_rows(
                 "name": None,
                 "tokens": 15,
                 "bytes": 150,
+                "characters": 60,
+                "raw_bytes": 160,
                 "share": 0.15,
             },
         ]

@@ -43,7 +43,7 @@ class TestAttributionPresentation(TestCase):
     @staticmethod
     def test_credit_cards_keep_authors_sources_and_thumbnail_art() -> None:
         """Display every credited image with all attribution fields."""
-        for kind, count in (("content", 13), ("maintenance", 23)):
+        for kind, count in (("content", 15), ("maintenance", 23)):
             output = render_attribution(_PATHS[kind], "en")
             assert output.count('class="ui-card attribution-card"') == count
             assert output.count('class="attribution-details ') == count

@@ -119,11 +119,14 @@ def prepare_quality_articles(
     )
     if listings.is_empty() or evidence.is_empty():
         return pl.DataFrame(schema=ARTICLE_SCHEMA)
+    preferred = authorship_store.preferred_observations(
+        evidence.filter(
+            pl.col("contract").is_in(authorship_store.CURRENT_CONTRACTS),
+        ),
+        _KEY,
+    )
     contributors = (
-        evidence
-        .filter(pl.col("contract").is_in(authorship_store.CURRENT_CONTRACTS))
-        .sort("fetched_at")
-        .unique(subset=_KEY, keep="last")
+        preferred
         .select(*_KEY, "contributors", "eligible_bytes")
         .join(listings, on=_KEY, how="inner", validate="1:1")
         .explode("contributors", empty_as_null=False)

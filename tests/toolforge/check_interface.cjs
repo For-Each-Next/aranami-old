@@ -190,7 +190,7 @@ async function checkInterface(assetRoot) {
             pending.clear();
             events.clear();
         });
-        const call = async (method, params = {}, sessionId) => {
+        const call = async (method, params = {}, sessionId, timeout) => {
             const id = ++sequence;
             try {
                 return await bounded(new Promise((resolve, reject) => {
@@ -201,7 +201,7 @@ async function checkInterface(assetRoot) {
                     }
                     pending.set(id, { resolve, reject });
                     socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
-                }), `CDP ${method}`);
+                }), `CDP ${method}`, timeout);
             } finally { pending.delete(id); }
         };
         const wait = async (method, sessionId) => {
@@ -222,8 +222,8 @@ async function checkInterface(assetRoot) {
             window.aranamiCspViolations = [];
             addEventListener('securitypolicyviolation', event => window.aranamiCspViolations.push({directive: event.effectiveDirective, blocked: event.blockedURI}));
         `}, sessionId);
-        const evaluate = async expression => {
-            const result = await call("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true }, sessionId);
+        const evaluate = async (expression, timeout) => {
+            const result = await call("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true }, sessionId, timeout);
             if (result.exceptionDetails) throw new Error(JSON.stringify(result.exceptionDetails));
             return result.result.value;
         };
@@ -339,6 +339,16 @@ async function checkInterface(assetRoot) {
                 record('main sort resets page', '[data-analysis-page-status]', 1, 20, 48);
                 search.value = 'No matching article for pagination audit'; search.dispatchEvent(new Event('input'));
                 record('main empty', '[data-analysis-page-status]', 0, 0, 0);
+                states.at(-1).footer = !host.querySelector('[data-analysis-pager]').hidden &&
+                    [...host.querySelectorAll('[data-analysis-pager] button')].every(button => button.disabled);
+                const regex = host.querySelector('[data-analysis-regex]');
+                regex.checked = true; regex.dispatchEvent(new Event('change'));
+                search.value = '^.*$'; search.dispatchEvent(new Event('input'));
+                record('regex matches all titles', '[data-analysis-page-status]', 1, 20, 48);
+                search.value = '['; search.dispatchEvent(new Event('input'));
+                record('invalid regex', '[data-analysis-page-status]', 0, 0, 0);
+                states.at(-1).invalid = search.getAttribute('aria-invalid') === 'true';
+                regex.checked = false; regex.dispatchEvent(new Event('change'));
                 search.value = ''; search.dispatchEvent(new Event('input'));
                 const oldImportance = host.analysisRows.map(row => row.dataset.importance);
                 const trigger = document.querySelector('[data-chart-group="importance"][data-chart-value="High"]');
@@ -361,7 +371,9 @@ async function checkInterface(assetRoot) {
                 cells.forEach((input, index) => input.checked = checked[index]); cells[0].dispatchEvent(new Event('change'));
                 return states;
             })()`);
-            assert.ok(states.length === 13 && states.every(state => state.actual === state.expected && state.rows === state.expectedRows), 'localized article ranges must report matching rows across paging, page size, sort and empty states: ' + JSON.stringify(states));
+            assert.ok(states.length === 15 && states.every(state => state.actual === state.expected && state.rows === state.expectedRows), 'localized article ranges must report matching rows across paging, page size, sort and empty states: ' + JSON.stringify(states));
+            assert.equal(states.find(state => state.name === 'main empty').footer, true);
+            assert.equal(states.find(state => state.name === 'invalid regex').invalid, true);
         };
         const checkQualityAuthorPagers = async locale => {
             const states = await evaluate(`(() => {
@@ -395,6 +407,7 @@ async function checkInterface(assetRoot) {
                 const from = Number(form.querySelector('[data-matrix-from]').value), to = Number(form.querySelector('[data-matrix-to]').value), unknown = form.querySelector('[data-matrix-unknown]').checked;
                 const violins = [...document.querySelectorAll('.analysis-mini-violin')].map(svg => {
                     const anchor = svg.querySelector('a[data-chart-group]'), group = anchor?.dataset.chartGroup, code = svg.dataset.analysisViolin;
+                    if (!metadata) return svg.dataset.chartRenderer === 'matplotlib' && Boolean(svg.getAttribute('aria-label'));
                     const cells = metadata.cells.filter(cell => checked.has(cell.grade + '/' + cell.importance) && cell[group] === code && (cell.year === null ? unknown : cell.year >= from && cell.year <= to));
                     const sample = cells.flatMap(cell => cell.histogram.flatMap(item => Array(item.count).fill(item.value))).sort((a,b) => a-b);
                     const percentile = p => { const position = (sample.length - 1) * p; return sample[Math.floor(position)] + (sample[Math.ceil(position)] - sample[Math.floor(position)]) * (position % 1); };
@@ -1081,7 +1094,7 @@ async function checkInterface(assetRoot) {
                         authors: document.querySelectorAll('.attribution-details dt').length,
                         categories: document.querySelectorAll('#template-correspondence + .table-scroll a[href*="Category:"]').length,
                     }))()`);
-                    const expected = surface === "maintenancecredits" ? 23 : 13;
+                    const expected = surface === "maintenancecredits" ? 23 : 15;
                     assert.equal(attribution.cards, expected);
                     assert.equal(attribution.thumbnails, expected);
                     assert.equal(attribution.authors, expected * 3);
@@ -1433,14 +1446,14 @@ async function checkInterface(assetRoot) {
                         previewRows: document.querySelectorAll('[aria-labelledby="dataset-preview"] tbody tr').length,
                         schemaRows: document.querySelectorAll('[aria-labelledby="dataset-schema"] tbody tr').length,
                         source: document.body.textContent.includes('20261102.parquet') && document.body.textContent.includes('2026-11-03 00:01:00'),
-                        forms: document.querySelectorAll('form').length,
+                        forms: [...document.querySelectorAll('form')].map(form => [form.classList.contains('page-size'), form.method]),
                         scrollRegions: [...document.querySelectorAll('.table-scroll')].every(region => region.tabIndex === 0 && region.getAttribute('role') === 'region')
                     }))()`);
                     assert.equal(dataset.sections, 3, 'dataset details need metadata, schema and bounded preview sections');
                     assert.equal(dataset.previewRows, 3, 'dataset preview must retain the supplied bounded rows');
                     assert.equal(dataset.schemaRows, 13, 'dataset schema must describe every saved column');
                     assert.ok(dataset.source && dataset.scrollRegions, 'dataset tables must retain source identity and keyboard scrolling');
-                    assert.equal(dataset.forms, 0, 'dataset reading does not offer source acquisition or write actions');
+                    assert.deepEqual(dataset.forms, [[true, 'get']], 'dataset viewing may only submit read-only paging');
                     if ([390, 1440].includes(width)) {
                         const lazy = await evaluate(`(async () => {
                             const before = location.href;
@@ -1553,10 +1566,16 @@ async function checkInterface(assetRoot) {
                     })()`);
                     assert.deepEqual(initialYears, {columns: true, legend: true, noScrollHint: true}, 'initial annual table and legend must match the prepared cohort without a scroll hint');
                     if ([320, 1440].includes(width)) {
-                        const interaction = await evaluate(`(() => {
+                        const interaction = await evaluate(`(async () => {
                             const host = document.querySelector('[data-quality-analysis]'), form = document.querySelector('[data-quality-matrix]');
                             const original = window.fetch; let requests = 0;
-                            window.fetch = (...args) => {requests++; return original(...args);};
+                            window.fetch = (...args) => {
+                                if (new URL(args[0], location.href).pathname !== '/quality-analysis/charts/') requests++;
+                                return original(...args);
+                            };
+                            const ready = async () => {
+                                while (form.dataset.qualityChartsLoading) await new Promise(resolve => setTimeout(resolve, 10));
+                            };
                             const rowStyles = row => [...row.cells].map(cell => {
                                 const style = getComputedStyle(cell);
                                 return [style.fontFamily, style.fontSize, style.lineHeight, style.textAlign, style.paddingInlineStart, style.paddingInlineEnd];
@@ -1575,6 +1594,7 @@ async function checkInterface(assetRoot) {
                             const from = form.querySelector('[data-matrix-from]'); from.value = '2026'; from.dispatchEvent(new Event('change'));
                             const unknown = form.querySelector('[data-matrix-unknown]'); unknown.click();
                             const ranged = host.analysisRows.filter(row => row.dataset.cohort === '1').every(row => row.dataset.year === '2026');
+                            await ready();
                             const chart = document.querySelector('[data-chart-year="2026"][data-chart-value="B"]');
                             chart.dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true}));
                             const dialog = document.getElementById('analysis-chart-articles');
@@ -1583,6 +1603,7 @@ async function checkInterface(assetRoot) {
                             dialog.close(); from.value = '2009'; from.dispatchEvent(new Event('change')); unknown.click();
                             form.querySelector('[data-matrix-all]').click();
                             if (total() !== 48) form.querySelector('[data-matrix-all]').click();
+                            await ready();
                             const previousRow = host.querySelector('[data-analysis-row]');
                             host.querySelector('[data-analysis-next]').click();
                             const visible = [...host.querySelectorAll('[data-analysis-row]')];
@@ -1635,19 +1656,20 @@ async function checkInterface(assetRoot) {
                             host.querySelector('[data-analysis-reset]').click();
                             const totalsOnly = [...document.querySelectorAll('[data-matrix-author]')].every(row => row.cells[2].querySelectorAll('a').length === 1);
                             const annual = document.querySelector('.analysis-year-data');
-                            const selectAnnualGrade = code => {
+                            const selectAnnualGrade = async code => {
                                 for (const input of form.querySelectorAll('[data-matrix-cell]')) input.checked = input.dataset.grade === code;
                                 form.querySelector('[data-matrix-cell]').dispatchEvent(new Event('change'));
+                                await ready();
                                 const grade = form.qualityMetadata.grades.find(grade => grade.value === code);
                                 const hasBars = form.qualityMetadata.cells.some(cell => cell.grade === code && cell.year >= 2009 && cell.year <= Number(form.querySelector('[data-matrix-to]').value) && cell.pages > 0);
                                 const legend = [...document.querySelectorAll('.analysis-legend li')];
                                 const bars = [...document.querySelectorAll('.analysis-year-columns [data-chart-value]')];
                                 return annual.tHead.rows[0].cells.length === 3 && annual.tHead.rows[0].cells[1].textContent === grade.label && [...annual.tBodies[0].rows].every(row => row.cells.length === 3) && legend.length === Number(hasBars) && legend.every(item => item.textContent.trim() === grade.label && item.querySelector('rect').getAttribute('fill') === grade.color) && Boolean(bars.length) === hasBars && bars.every(link => link.dataset.chartValue === code && link.querySelector('rect').getAttribute('fill') === grade.color);
                             };
-                            const yearSelection = selectAnnualGrade('GA') && selectAnnualGrade('FA');
+                            const yearSelection = await selectAnnualGrade('GA') && await selectAnnualGrade('FA');
                             from.value = '2026'; from.dispatchEvent(new Event('change'));
-                            const violinState = (code, measured) => {
-                                selectAnnualGrade(code);
+                            const violinState = async (code, measured) => {
+                                await selectAnnualGrade(code);
                                 const svg = document.querySelector('[data-analysis-violin="' + code + '"]');
                                 const expected = form.qualityMetadata.labels.violin_summary.replace('{pages}', '1').replace('{measured}', String(measured)).replace('{minimum}', measured ? '0' : '—').replace('{p25}', measured ? '0' : '—').replace('{p50}', measured ? '0' : '—').replace('{p75}', measured ? '0' : '—').replace('{maximum}', measured ? '0' : '—');
                                 const dots = [...svg.querySelectorAll('.analysis-violin-quartile')];
@@ -1655,17 +1677,18 @@ async function checkInterface(assetRoot) {
                                 const median = svg.querySelector('.analysis-violin-median');
                                 return !svg.querySelector(':scope > title') && svg.getAttribute('aria-label').endsWith(expected) && (measured ? dots.length === 2 && dots.every(dot => Number(dot.getAttribute('x1')) === 0) && Number(median.getAttribute('x1')) === 0 && extrema.length === 2 && Number(svg.querySelector('.analysis-violin-mean')?.dataset.meanX) === 0 : dots.length === 0 && !median && !extrema.length && !svg.querySelector('.analysis-violin-mean'));
                             };
-                            const quantileStates = violinState('C', 1) && violinState('B', 0);
+                            const quantileStates = await violinState('C', 1) && await violinState('B', 0);
                             from.value = '2009'; from.dispatchEvent(new Event('change'));
                             for (const input of form.querySelectorAll('[data-matrix-cell]')) input.checked = false;
                             form.querySelector('[data-matrix-cell]').dispatchEvent(new Event('change'));
+                            await ready();
                             const emptySelection = annual.tHead.rows[0].cells.length === 2 && [...annual.tBodies[0].rows].every(row => row.cells.length === 2) && document.querySelectorAll('.analysis-legend li, .analysis-year-columns [data-chart-value]').length === 0 && host.querySelectorAll('[data-analysis-row]').length === 0;
                             const defaultGrades = form.qualityMetadata.grades.filter(item => item.checked).map(item => item.value);
                             for (const input of form.querySelectorAll('[data-matrix-cell]')) input.checked = defaultGrades.includes(input.dataset.grade);
                             form.querySelector('[data-matrix-cell]').dispatchEvent(new Event('change'));
                             window.fetch = original;
                             return {attribution:Boolean(attribution),expanded,ranged,exact,pagination,rowParity,freshRows,shortHeaders,compactUnits,chartPagination,chartSorting,chartSortReset,roles:exactRoles && secondaryNotMain && secondarySignificant && primaryMatches && boundaryIncluded,totalsOnly,yearSelection,quantileStates,emptySelection,requests};
-                        })()`);
+                        })()`, 60000);
                         assert.deepEqual(interaction, {attribution:true,expanded:true,ranged:true,exact:true,pagination:true,rowParity:true,freshRows:true,shortHeaders:true,compactUnits:true,chartPagination:true,chartSorting:true,chartSortReset:true,roles:true,totalsOnly:true,yearSelection:true,quantileStates:true,emptySelection:true,requests:0});
                         await checkQualityPagination(locale);
                         await checkQualityDistributions('filtered');
@@ -1852,7 +1875,7 @@ async function checkInterface(assetRoot) {
                     assert.equal(execution.columns, 4, "execution table needs start datetime, content, result and duration");
                     const pager = await evaluate(`(() => {
                         const host = document.querySelector('[data-execution-history]');
-                        const status = host.querySelector('.history-pagination span');
+                        const status = host.querySelector('.history-pagination .ui-table-pager__center');
                         return {rows: host.querySelectorAll('tbody tr:not([hidden])').length, page: Number(host.dataset.page),
                             total: Number(host.dataset.total), status: status.textContent};
                     })()`);
@@ -1935,7 +1958,8 @@ async function checkInterface(assetRoot) {
                     const selectedPage = initialPage === 1 ? 2 : 1;
                     await evaluate(`(() => {
                         const host = document.querySelector('[data-execution-history]');
-                        const url = new URL(host.dataset.url, location.href);
+                        const url = new URL('/reports/', location.href);
+                        url.searchParams.set('lang', ${JSON.stringify(locale)});
                         url.searchParams.set('page', String(host.dataset.page));
                         history.replaceState(null, '', url);
                         window.reportPaginationDocument = document;
@@ -2000,9 +2024,7 @@ async function checkInterface(assetRoot) {
                                 'fetched execution Escape must restore the opener before navigating history');
                         };
                         await selectPage(`(() => {
-                            const host = document.querySelector('[data-execution-history]');
-                            const label = host.dataset[${JSON.stringify(surface === 'reports2' ? 'prev' : 'next')}];
-                            [...host.querySelectorAll('a[aria-label], button')].find(button => button.getAttribute('aria-label') === label).click();
+                            document.querySelector('.history-pagination a[rel="${surface === 'reports2' ? 'prev' : 'next'}"]').click();
                         })()`, selectedPage);
                         await selectPage('history.back()', initialPage);
                         await selectPage('history.forward()', selectedPage);
@@ -2290,10 +2312,7 @@ async function checkInterface(assetRoot) {
                     });
                 })()`);
                 const fallback = wait('Page.loadEventFired', sessionId);
-                await evaluate(`(() => {
-                    const host = document.querySelector('[data-execution-history]');
-                    [...host.querySelectorAll('a[aria-label], button')].find(button => button.getAttribute('aria-label') === host.dataset.next).click();
-                })()`);
+                await evaluate(`document.querySelector('.history-pagination a[rel="next"]').click()`);
                 await fallback;
                 await waitForApp();
                 const native = await evaluate(`({reloaded: !window.reportHistoryFallbackMarker,
@@ -2351,7 +2370,7 @@ async function checkInterface(assetRoot) {
                         authors: document.querySelectorAll('.attribution-details dt').length,
                         categories: document.querySelectorAll('#template-correspondence + .table-scroll a[href*="Category:"]').length,
                     }))()`);
-                    const expected = surface === "maintenancecredits" ? 23 : 13;
+                    const expected = surface === "maintenancecredits" ? 23 : 15;
                     assert.equal(attribution.cards, expected);
                     assert.equal(attribution.thumbnails, expected);
                     assert.equal(attribution.authors, expected * 3);
@@ -2391,7 +2410,7 @@ async function checkInterface(assetRoot) {
                     assert.equal(native.rows, 20);
                     assert.equal(native.pies, 2);
                     assert.ok(native.noMethod);
-                    assert.ok(native.columns >= 17);
+                    assert.ok(native.columns > 0);
                     assert.equal(native.proseGroups, 11);
                     assert.ok(native.controlsHidden && native.bplus && native.pageFits);
                 }

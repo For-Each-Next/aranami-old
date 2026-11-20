@@ -291,9 +291,9 @@ class AuthorWorkerTests(TestCase):
             worker.refresh_quality_authorship()
         command = spawn.call_args.args[0]
         assert command[command.index("--task") + 1] == "quality-authorship"
-        assert command[command.index("--max-pages") + 1] == "80"
-        assert command[command.index("--time-budget") + 1] == "240"
-        child.wait.assert_called_once_with(timeout=360)
+        assert command[command.index("--max-pages") + 1] == "120"
+        assert command[command.index("--time-budget") + 1] == "360"
+        child.wait.assert_called_once_with(timeout=480)
         execution.assert_called_once_with(
             "quality-authorship",
             trigger="scheduled",

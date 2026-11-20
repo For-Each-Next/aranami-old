@@ -9,13 +9,12 @@ temporary source reads.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from contextlib import contextmanager
 from functools import partial
 from pathlib import Path
 from threading import RLock
 from typing import TYPE_CHECKING
-
-import polars as pl
 
 from data import project_data
 from data.articles import assessment_comparison, current_assessments
@@ -26,7 +25,7 @@ from data.observations import (
     record_project_snapshot,
 )
 from data.revisions import RevisionStore
-from shared.config import ASSESSMENT_CATEGORIES
+from shared.config import ARTICLE_GRADE_CATEGORIES
 from shared.sources.cycle import source_cycle
 from shared.sources.quarry.projects import (
     category_observations,
@@ -40,6 +39,7 @@ from tasks import project_data as project_capture
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    import polars as pl
     from pywikibot.site import BaseSite
 
 DAILY_REPORTS = frozenset({
@@ -50,20 +50,45 @@ DAILY_REPORTS = frozenset({
     "pageviews",
 })
 _HOURLY_LOCK = RLock()
+_LOG = logging.getLogger(__name__)
+
+
+def link_rollover_membership(
+    site: BaseSite,
+    project: str,
+    boundary: dt.date,
+    *,
+    dry: bool = False,
+) -> None:
+    """Alias the completed capture for hourly data previews."""
+    runtime = Path.cwd()
+    archive = project_data.snapshot_path(
+        site.dbName(),
+        project,
+        boundary,
+        runtime=runtime,
+        dry=dry,
+    )
+    try:
+        hourly_cache.link_daily_archive(archive, runtime, dry=dry)
+    except OSError:
+        _LOG.warning(
+            "Could not link hourly membership to the daily capture for %s.",
+            project,
+            exc_info=True,
+        )
 
 
 def collect_project_categories(
     site: BaseSite,
-    memberships: list[pl.DataFrame],
     *,
     now: dt.datetime,
     assessment_members: pl.DataFrame | None = None,
 ) -> None:
-    """Collect all category links and configured lists in one SQL query.
+    """Collect the categories used by the grade comparison.
 
     Args:
         site: Wiki supplying replica category and revision metadata.
-        memberships: Completed project lists from the hourly phase.
         now: Actual UTC collection time selecting the cache contract.
         assessment_members: Chinese Video games membership for a
             bidirectional grade comparison, absent for other projects.
@@ -72,26 +97,12 @@ def collect_project_categories(
     with _HOURLY_LOCK:
         if not cache.read(path).is_empty():
             return
-        ids = (
-            pl
-            .concat([
-                frame.select("page_id")
-                for members in memberships
-                for frame in (
-                    members.select("page_id"),
-                    members.select(pl.col("talk_page_id").alias("page_id")),
-                )
-            ])
-            .drop_nulls()
-            .unique()["page_id"]
-            .to_list()
-        )
         previous = hourly_cache.category_cache(
             site.dbName(),
             now - dt.timedelta(hours=1),
         )[1]
         dataset_activity("begin", path, baseline=previous)
-        frame = category_observations(site, ASSESSMENT_CATEGORIES, ids)
+        frame = category_observations(site, ARTICLE_GRADE_CATEGORIES)
         if assessment_members is not None and site.dbName() == "zhwiki":
             assessment_comparison.save(
                 assessment_members,
@@ -121,7 +132,7 @@ def _hourly_categories(
     if frame.is_empty():
         return None
     return frame, frozenset(
-        name.replace(" ", "_") for name in ASSESSMENT_CATEGORIES
+        name.replace(" ", "_") for name in ARTICLE_GRADE_CATEGORIES
     )
 
 
@@ -147,6 +158,14 @@ def collect_project_membership(
     Raises:
         ValueError: Fresh project membership is empty or incomplete.
     """
+    if now.hour == 0 and now.date() >= project_data.ACTIVATION_DATE:
+        return _daily_membership(
+            site,
+            project,
+            now=now,
+            dry=dry,
+            rollover=True,
+        )
     cache, path = hourly_cache.cache(site.dbName(), project, now, dry=dry)
     retain_assessments = (
         not dry and site.dbName() == "zhwiki" and project == "电子游戏"
@@ -170,30 +189,13 @@ def collect_project_membership(
             dry=dry,
         )[1]
         dataset_activity("begin", path, baseline=previous)
-        reader = (
-            partial(_daily_membership, now=now, dry=dry)
-            if now.hour == 0 and now.date() >= project_data.ACTIVATION_DATE
-            else None
-        )
-        with source_cycle(membership_reader=reader, share_project_groups=True):
+        with source_cycle(share_project_groups=True):
             frame = query_pages_by_wikiproject(site, project)
         if frame.is_empty():
             message = "Hourly membership has no complete project rows."
             raise ValueError(message)
         if retain_assessments:
             observed_at = dt.datetime.now(dt.UTC)
-            if reader is not None:
-                snapshot = project_data.read_snapshot(
-                    site.dbName(),
-                    project,
-                    now.date(),
-                )
-                if snapshot is None:
-                    message = "Current assessments require the saved capture."
-                    raise ValueError(message)
-                observed_at = dt.datetime.fromisoformat(
-                    snapshot.manifest["calculated_at"],
-                )
             current_assessments.save(
                 current_assessments.DEFAULT_PATH,
                 frame,
@@ -206,13 +208,14 @@ def collect_project_membership(
         return restored
 
 
-def _daily_membership(
+def _daily_membership(  # ruff: ignore[too-many-arguments] - Explicit boundary and rollover policy.
     site: BaseSite,
     project: str,
     *,
     now: dt.datetime,
     dry: bool,
     boundary_date: dt.date | None = None,
+    rollover: bool = False,
 ) -> pl.DataFrame:
     """Read or capture one boundary without recursively selecting it.
 
@@ -245,6 +248,16 @@ def _daily_membership(
         "rev_id": "page_revision",
         "talk_page_rev": "talk_revision",
     })
+    if rollover:
+        link_rollover_membership(site, project, now.date(), dry=dry)
+        if not dry and site.dbName() == "zhwiki" and project == "电子游戏":
+            current_assessments.save(
+                current_assessments.DEFAULT_PATH,
+                frame,
+                observed_at=dt.datetime.fromisoformat(
+                    manifest["calculated_at"],
+                ),
+            )
     record_page_inputs(site.dbName(), project, frame)
     return frame
 

@@ -193,6 +193,20 @@ export function Newsletter(context) {
                               <h2 id={"newsletter-heading-" + attribute(draftIndex + 1)}>
                                   {display(draft?.heading)}
                               </h2>
+                              {(draft?.charts ?? []).length ? (
+                                  <div class="newsletter-charts">
+                                      {draft.charts.map((chart) => (
+                                          <figure key={chart.filename} lang={attribute(chart.language)}>
+                                              <img src={attribute(chart.url)} alt={attribute(chart.title)} loading="lazy" />
+                                              <figcaption>
+                                                  <a href={attribute(chart.url)} download={attribute(chart.filename)}>
+                                                      {display(chart.title)} · {display(chart.label)}
+                                                  </a>
+                                              </figcaption>
+                                          </figure>
+                                      ))}
+                                  </div>
+                              ) : null}
                               {NewsletterDraft({
                                   ...context,
                                   draft: draft,

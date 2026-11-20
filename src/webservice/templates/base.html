@@ -13,7 +13,7 @@
   {% block assets %}{% endblock %}
   <title>{{ heading }} · Aranami</title>
 </head>
-<body data-heading-copy-label="{{ t.nav.copy_section_link }}" data-heading-copy-success="{{ t.nav.section_link_copied }}" data-heading-copy-failure="{{ t.nav.section_link_fallback }}" data-heading-permalink-label="{{ t.nav.section_permalink }}" data-heading-page-permalink-label="{{ t.nav.page_permalink }}" data-heading-copy-close="{{ t.ops.close }}">
+<body data-heading-copy-label="{{ t.nav.copy_section_link }}" data-heading-copy-success="{{ t.nav.section_link_copied }}" data-heading-copy-failure="{{ t.nav.section_link_fallback }}" data-heading-permalink-label="{{ t.nav.section_permalink }}" data-heading-page-permalink-label="{{ t.nav.page_permalink }}" data-heading-copy-close="{{ t.ops.close }}" data-table-page-labels='{{ [t.reports.page_size, t.reports.page_status, t.reports.first, t.backlog.previous, t.backlog.next, t.reports.last] | tojson }}'>
   <a href="#main" class="skip">{{ t.nav.skip }}</a>
   <header class="masthead">
     <div class="shell header-inner">

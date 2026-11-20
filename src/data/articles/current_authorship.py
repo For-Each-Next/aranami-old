@@ -15,7 +15,11 @@ from uuid import uuid4
 import polars as pl
 
 from data.articles import rating_history as assessment_inference
-from data.articles.authorship_store import CONTRIBUTOR_SCHEMA
+from data.articles.authorship_store import (
+    CONTRIBUTOR_SCHEMA,
+    complete_contributor_evidence,
+    restore_contributor_characters,
+)
 from data.articles.storage import DEFAULT_ROOT
 from data.reports import ReportResult, ReportStore
 from shared.assessment_profiles import assessment_profile
@@ -303,6 +307,8 @@ def _validate(tables: dict[str, pl.DataFrame]) -> None:
         )
         | ~pl.col("editor").str.contains(r"^([1-9][0-9]*|0\|[^\x00-\x20]+)$")
         | (pl.col("tokens") == 0)
+        | (pl.col("characters") > pl.col("bytes")).fill_null(value=False)
+        | (pl.col("bytes") > pl.col("raw_bytes")).fill_null(value=False)
         | ~pl.col("share").is_finite()
         | ~pl.col("share").is_between(0, 1)
         | (
@@ -353,6 +359,7 @@ def _read(
         }
     )
     tables.setdefault("targets", pl.DataFrame(schema=TARGET_SCHEMA))
+    tables["evidence"] = restore_contributor_characters(tables["evidence"])
     legacy_evidence = {
         name: dtype
         for name, dtype in EVIDENCE_SCHEMA.items()
@@ -435,15 +442,16 @@ def load(runtime: Path) -> dict[str, pl.DataFrame]:
     return _read(ReportStore(runtime / _STORE_ROOT))
 
 
-def checkpoint(
+def checkpoint(  # ruff: ignore[too-many-arguments] - Single atomic checkpoint for the cohort and attempts.
     runtime: Path,
     *,
     members: pl.DataFrame | None = None,
     targets: pl.DataFrame | None = None,
     evidence: pl.DataFrame | None = None,
     attempted: dict[str, int | None] | None = None,
-) -> None:
-    """Atomically retain one cohort refresh or attribution attempt.
+    attempts: pl.DataFrame | None = None,
+) -> dict[str, pl.DataFrame]:
+    """Atomically retain a cohort or batch of attribution results.
 
     Args:
         runtime: Toolforge runtime containing the separate current
@@ -454,13 +462,16 @@ def checkpoint(
         targets: Current-revision cohort for hourly attribution.
         evidence: Successful exact-revision evidence, when available.
         attempted: Page and revision identity attempted in this pass.
+        attempts: Batched attempt times from a collection pass.
 
-    Old successful revisions remain durable. A failed attempt changes
-    only retry order. Concurrent writers merge under the bundle lock.
+    Returns:
+        The selected tables, including earlier exact revisions. A failed
+        attempt changes retry order and preserves existing evidence.
     """
     store = ReportStore(runtime / _STORE_ROOT)
     with store.locked(_KEY):
         tables = _read(store, locked=True)
+        previous_tables = tables.copy()
         if members is not None:
             previous = tables["members"]["observed_at"].max()
             latest = members["observed_at"].max()
@@ -506,7 +517,17 @@ def checkpoint(
             tables["evidence"] = (
                 pl
                 .concat([tables["evidence"], evidence])
-                .sort("fetched_at", maintain_order=True)
+                .with_columns(
+                    pl
+                    .col("creation_revision", "creation_timestamp")
+                    .max()
+                    .over(KEY),
+                )
+                .sort(
+                    pl.col("contract") == CONTRACT,
+                    "fetched_at",
+                    maintain_order=True,
+                )
                 .unique(subset=KEY, keep="last", maintain_order=True)
             )
         if attempted is not None:
@@ -514,9 +535,13 @@ def checkpoint(
                 [{**attempted, "attempted_at": dt.datetime.now(dt.UTC)}],
                 schema=ATTEMPT_SCHEMA,
             )
+            attempts = (
+                update if attempts is None else pl.concat([attempts, update])
+            )
+        if attempts is not None:
             tables["attempts"] = (
                 pl
-                .concat([tables["attempts"], update])
+                .concat([tables["attempts"], attempts])
                 .sort("attempted_at")
                 .unique(subset=KEY, keep="last", maintain_order=True)
             )
@@ -532,12 +557,17 @@ def checkpoint(
                 nulls_equal=True,
             )
             .join(
-                tables["evidence"].select(KEY),
+                complete_contributor_evidence(tables["evidence"]).select(KEY),
                 on=KEY,
                 how="anti",
                 nulls_equal=True,
             )
         )
+        if all(
+            table.equals(previous_tables[name])
+            for name, table in tables.items()
+        ):
+            return tables
         _validate(tables)
         store.write(
             _KEY,
@@ -548,6 +578,7 @@ def checkpoint(
             target={"site": "zhwiki", "title": "B-class authorship"},
             locked=True,
         )
+        return tables
 
 
 def pending(tables: dict[str, pl.DataFrame]) -> pl.DataFrame:
@@ -564,7 +595,7 @@ def pending(tables: dict[str, pl.DataFrame]) -> pl.DataFrame:
         tables["members"]
         .filter(pl.col("listing_timestamp").is_not_null())
         .join(
-            tables["evidence"].select(KEY),
+            complete_contributor_evidence(tables["evidence"]).select(KEY),
             on=KEY,
             how="anti",
             nulls_equal=True,

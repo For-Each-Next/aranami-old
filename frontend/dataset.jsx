@@ -1,6 +1,7 @@
 /** Show metadata, schema and preview rows for a selected dataset. */
 import { jsx, attribute, defaultContents, display, format, hasContent } from "./rendering.js";
 import { Fragment } from "@vue/runtime-dom";
+import { TablePager } from "./shared.jsx";
 
 export function DatasetContents(context) {
     const { dataset, t } = context;
@@ -22,7 +23,7 @@ export function DatasetContents(context) {
 }
 
 export function Dataset(context) {
-    const { dataset, t } = context;
+    const { dataset, language_tag, t } = context;
     return hasContent(dataset) ? (
         <>
             <div
@@ -94,7 +95,6 @@ export function Dataset(context) {
                 </section>
                 <section class="section-flat" aria-labelledby="dataset-preview">
                     <h2 id="dataset-preview">{t.data.preview}</h2>
-                    <p>{display(dataset?.preview_note)}</p>
                     <div class="ui-table dataset-preview-table">
                         <div
                             class="ui-table__table-wrapper table-scroll"
@@ -133,87 +133,28 @@ export function Dataset(context) {
                             </table>
                         </div>
                     </div>
-                </section>
-                <nav class="ui-table-pager dataset-pagination" aria-label={t.data.preview}>
-                    <span>
-                        {display(
-                            format(t.data.page, {
-                                page: dataset?.page,
-                                total: dataset?.page_count,
-                            }),
-                        )}
-                    </span>
-                    <div class="ui-table-pager__start">
-                        {hasContent(dataset?.first) ? (
-                            <>
-                                <a
-                                    class="ui-button ui-button--fake-button ui-button--fake-button--enabled"
-                                    data-dataset-page={""}
-                                    href={attribute(dataset?.first)}
-                                >
-                                    {t.backlog.first}
+                    <TablePager paging={dataset} action="/data/" css="dataset-pagination"
+                                fields={{ file: dataset.file, lang: language_tag }}
+                                title={t.data.preview} dataset={true} t={t} />
+                    {dataset.page_count > 1 ? (
+                        <nav class="dataset-page-numbers ui-table-pager__center" aria-label={format(t.data.page, {
+                            page: dataset.page, total: dataset.page_count,
+                        })}>
+                            {dataset.page_links.map(link => link.number === dataset.page ? (
+                                <span key={link.number} class="ui-button ui-button--fake-button" aria-current="page">
+                                    {link.number}
+                                </span>
+                            ) : (
+                                <a key={link.number} class="ui-button ui-button--fake-button ui-button--fake-button--enabled"
+                                   data-dataset-page={""} href={attribute(link.url)} aria-label={format(t.data.page, {
+                                       page: link.number, total: dataset.page_count,
+                                   })}>
+                                    {link.number}
                                 </a>
-                                <a
-                                    class="ui-button ui-button--fake-button ui-button--fake-button--enabled"
-                                    data-dataset-page={""}
-                                    href={attribute(dataset?.previous)}
-                                >
-                                    {t.backlog.previous}
-                                </a>
-                            </>
-                        ) : null}
-                    </div>
-                    {dataset?.page_count > 1 ? (
-                        <div class="ui-table-pager__center">
-                            {(dataset?.page_links ?? []).map((link, linkIndex) => (
-                                <Fragment key={linkIndex}>
-                                    {link?.number === dataset?.page ? (
-                                        <span
-                                            class="ui-button ui-button--fake-button"
-                                            aria-current="page"
-                                        >
-                                            {display(link?.number)}
-                                        </span>
-                                    ) : (
-                                        <a
-                                            class="ui-button ui-button--fake-button ui-button--fake-button--enabled"
-                                            data-dataset-page={""}
-                                            href={attribute(link?.url)}
-                                            aria-label={attribute(
-                                                format(t.data.page, {
-                                                    page: link?.number,
-                                                    total: dataset?.page_count,
-                                                }),
-                                            )}
-                                        >
-                                            {display(link?.number)}
-                                        </a>
-                                    )}
-                                </Fragment>
                             ))}
-                        </div>
+                        </nav>
                     ) : null}
-                    <div class="ui-table-pager__end">
-                        {hasContent(dataset?.last) ? (
-                            <>
-                                <a
-                                    class="ui-button ui-button--fake-button ui-button--fake-button--enabled"
-                                    data-dataset-page={""}
-                                    href={attribute(dataset?.next)}
-                                >
-                                    {t.backlog.next}
-                                </a>
-                                <a
-                                    class="ui-button ui-button--fake-button ui-button--fake-button--enabled"
-                                    data-dataset-page={""}
-                                    href={attribute(dataset?.last)}
-                                >
-                                    {t.backlog.last}
-                                </a>
-                            </>
-                        ) : null}
-                    </div>
-                </nav>
+                </section>
             </div>
         </>
     ) : (

@@ -26,7 +26,7 @@ def _time(value: str | None) -> dict:
     return {"known": label != "—", "value": value, "label": label}
 
 
-def _shape(row: dict) -> str | None:
+def _shape(row: dict, interface: Interface) -> str | None:
     """Format only shapes explicitly observed in a saved file.
 
     Returns:
@@ -34,7 +34,11 @@ def _shape(row: dict) -> str | None:
     """
     rows, columns = row.get("rows"), row.get("columns")
     return (
-        f"{rows:,} \u00d7 {columns:,}"
+        interface.text(
+            "dataset_updates.shape",
+            rows=f"{rows:,}",
+            columns=f"{columns:,}",
+        )
         if rows is not None and columns is not None
         else None
     )
@@ -160,11 +164,10 @@ def _item(
                 baseline["filename"],
             ),
             "url": _url(baseline, interface),
-            "shape": _shape(baseline),
         }
         if baseline
         else None,
-        "shape": _shape(row),
+        "shape": _shape(row, interface),
         "elapsed": {
             "started": row.get("started_at"),
             "running": running,

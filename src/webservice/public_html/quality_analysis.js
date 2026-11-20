@@ -2,6 +2,7 @@
 import { compareValues, initializeQualityAuthorship } from "./quality_authorship.js";
 import { initializeQualityCoverage } from "./quality_coverage.js";
 import { initializeQualityChartControls } from "./quality_chart_controls.js";
+import { traditional } from "./quality_search_characters.js";
 import { initializeQualityMatrix, initializeQualitySelection, prepareCatalogRows, catalogRows, articleElement, qualityMetadata, loadQualityMetadata } from "./quality_matrix.js";
 
 /** Keep the prepared overview usable while its full catalog loads after paint. */
@@ -73,11 +74,40 @@ export function articleContributorRoles(row) {
     };
 }
 
+/** Use one comparison form for both Traditional and Simplified input. */
+function foldedSearch(value, locale) {
+    return value.normalize("NFKC").replace(/\p{Script=Han}/gu, character =>
+        traditional[character] || character).toLocaleLowerCase(locale);
+}
+
+/** Compile a regex once per input change, or match literal text. */
+export function searchMatcher(value, regex, locale, whole = false) {
+    const query = value.trim();
+    if (!query) return () => true;
+    if (regex) {
+        try {
+            const pattern = new RegExp(query, "iu");
+            return candidate => pattern.test(candidate);
+        } catch (error) {
+            if (error instanceof SyntaxError) return null;
+            throw error;
+        }
+    }
+    const needle = foldedSearch(query, locale);
+    return candidate => {
+        const text = foldedSearch(candidate, locale);
+        return whole ? text === needle : text.includes(needle);
+    };
+}
+
 /** Match an author only within the selected contribution type. */
 export function contributorMatches(roles, author, role, locale) {
-    const name = author.trim().toLocaleLowerCase(locale);
-    return !name || [...(roles[role] || []), ...(role === "main" ? roles.mainLabels || [] : [])]
-        .some(value => value.toLocaleLowerCase(locale) === name);
+    if (!author.trim()) return true;
+    return contributorsForRole(roles, role).some(searchMatcher(author, false, locale, true));
+}
+
+function contributorsForRole(roles, role) {
+    return [...(roles[role] || []), ...(role === "main" ? roles.mainLabels || [] : [])];
 }
 
 /** Enhance the native table while preserving its escaped cells and links. */
@@ -91,6 +121,8 @@ export function initializeQualityAnalysis(previous = {}) {
     const body = table.tBodies[0];
     const headings = [...table.querySelectorAll("thead th")];
     const search = host.querySelector("[data-analysis-search]");
+    const regex = host.querySelector("[data-analysis-regex]");
+    const regexError = host.querySelector("[data-analysis-regex-error]");
     const grade = host.querySelector("[data-analysis-grade-filter]");
     const importance = host.querySelector("[data-analysis-importance-filter]");
     const author = host.querySelector("[data-analysis-author]");
@@ -109,6 +141,7 @@ export function initializeQualityAnalysis(previous = {}) {
     const empty = host.querySelector("[data-analysis-no-matches]");
     const locale = document.documentElement.lang;
     search.value = previous.search ?? search.value;
+    if (regex) regex.checked = previous.regex ?? regex.checked;
     grade.value = previous.grade ?? grade.value;
     importance.value = previous.importance ?? importance.value;
     if (author) author.value = previous.author ?? author.value;
@@ -124,14 +157,20 @@ export function initializeQualityAnalysis(previous = {}) {
 
     /** Apply filters before ordering and pagination, retaining stable ties. */
     function render() {
-        const query = search.value.trim().toLocaleLowerCase(locale);
+        const titleMatches = searchMatcher(search.value, regex?.checked, locale);
+        const authorMatches = searchMatcher(author?.value || "", regex?.checked, locale, true);
+        for (const [input, matcher] of [[search, titleMatches], [author, authorMatches]]) {
+            if (matcher) input?.removeAttribute("aria-invalid");
+            else input?.setAttribute("aria-invalid", "true");
+        }
+        if (regexError) regexError.hidden = Boolean(titleMatches && authorMatches);
+        const roleName = role?.value || "main";
         const selected = rows.filter((row) =>
             (row.dataset.cohort !== "0") &&
-            contributorMatches(contributors.get(row), author?.value || "", role?.value || "main", locale) &&
+            authorMatches && (!author?.value.trim() || contributorsForRole(contributors.get(row), roleName).some(authorMatches)) &&
             (!grade.value || row.dataset.grade === grade.value) &&
             (!importance.value || row.dataset.importance === importance.value) &&
-            (!query || `${row.dataset.title} ${row.cells[1].dataset.sort}`
-                .toLocaleLowerCase(locale).includes(query)));
+            titleMatches && (titleMatches(row.dataset.title || "") || titleMatches(row.cells[1].dataset.sort || "")));
         selected.sort((left, right) =>
             compareAnalysisRows(left, right, column, descending, locale));
         const limit = size.value === "all" ? Math.max(1, selected.length) : Number(size.value);
@@ -154,7 +193,7 @@ export function initializeQualityAnalysis(previous = {}) {
             .replace("{end}", String(Math.min(start + limit, selected.length)))
             .replace("{total}", String(selected.length));
         empty.hidden = selected.length !== 0;
-        pager.hidden = selected.length <= limit;
+        pager.hidden = false;
         actions[0].disabled = actions[1].disabled = page <= 1;
         actions[2].disabled = actions[3].disabled = page >= pages;
         headings.forEach((heading, index) => {
@@ -162,7 +201,7 @@ export function initializeQualityAnalysis(previous = {}) {
                 (descending ? "descending" : "ascending") : "none");
         });
     }
-    [search, grade, importance, size, author, role].filter(Boolean).forEach((control) => {
+    [search, regex, grade, importance, size, author, role].filter(Boolean).forEach((control) => {
         control.addEventListener(control === search || control === author ? "input" : "change", () => {
             if (control === role) suggestContributors();
             page = 1;
@@ -190,6 +229,7 @@ export function initializeQualityAnalysis(previous = {}) {
     }));
     host.querySelector("[data-analysis-reset]").addEventListener("click", () => {
         search.value = grade.value = importance.value = "";
+        if (regex) regex.checked = false;
         if (author) author.value = "";
         if (role) role.value = "main";
         suggestContributors();
@@ -321,6 +361,7 @@ function analysisState() {
     const value = name => host.querySelector(`[data-analysis-${name}]`)?.value;
     return {
         search: value("search"), grade: value("grade-filter"),
+        regex: host.querySelector("[data-analysis-regex]")?.checked,
         importance: value("importance-filter"), size: value("size"),
         author: value("author"), role: value("author-role"),
         column: Number(host.dataset.analysisColumn || 4),

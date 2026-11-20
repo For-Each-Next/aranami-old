@@ -37,6 +37,7 @@ def _record(
     appearances: tuple[HomepageAppearance, ...] = (),
     *,
     banner_aliases: dict[str, tuple[str, ...]] | None = None,
+    archive_title: str | None = None,
 ) -> dict:
     """Prepare source facts from a real leading-section fixture.
 
@@ -48,6 +49,8 @@ def _record(
         [HomepageAppearance("maindateGA", dt.date(2020, 8, 7)), *appearances],
         aliases=_ALIASES,
         legacy_dyk_aliases=_DYK,
+        article_title=archive_title,
+        dyk_archive_aliases=("Template:DYKEntry/archive",),
         site=_SITE,
     )
     facts = prepare_section0_repair(
@@ -203,6 +206,32 @@ class TestSection0Projection(TestCase):
         assert str(template.get("dyk1entry").value).strip() == hook
         assert str(template.get("dyk1date").value).strip() == "2020-08-13"
         assert str(template.get("maindateGA").value).strip() == "2020-08-07"
+
+    @staticmethod
+    def test_dyk_archive_keeps_votes_below_the_reordered_banners() -> None:
+        """Move the trailing contest banner without moving the votes."""
+        category = "{{Unregistered CGroup|Dota 2}}"
+        project = (
+            "{{WikiProject banner shell|class=B|1=\n"
+            "{{WikiProject Video games}}\n}}"
+        )
+        contest = "{{DC24/talk|topic=體|type=达}}"
+        archive = (
+            "{{DYKEntry/archive|article=Game|question=Which [[Game]]?}}\n"
+            "** {{支持}}--[[User:A]] 2026年8月15日 (六) 06:53 (UTC)\n"
+            "{{DYKvoteF}}\n"
+        )
+        source = (
+            "{{DYKtalk|date=2026-08-26}}\n"
+            f"{category}\n{project}\n\n\n{archive}{contest}\n"
+        )
+        result = render_section0_repair(_record(source, archive_title="Game"))
+        assert result.startswith("{{Article history\n")
+        assert "| dyk1entry" in result
+        assert "Which [[Game]]?" in result
+        assert f"\n{contest}\n{project}\n{category}\n\n\n{archive}" in result
+        assert result.count(contest) == 1
+        assert result.rstrip().endswith(archive.rstrip())
 
     @staticmethod
     def test_new_history_follows_redirected_mixed_script_notices() -> None:

@@ -9,6 +9,10 @@ from __future__ import annotations
 import datetime as dt
 import operator
 import re
+from collections.abc import Callable
+from contextlib import contextmanager
+from contextvars import ContextVar
+from functools import lru_cache, partial
 from html import unescape
 from typing import TYPE_CHECKING
 from urllib.parse import quote, urlencode
@@ -16,6 +20,7 @@ from urllib.parse import quote, urlencode
 from markupsafe import Markup, escape
 
 from data.parquet_preview import preview_path
+from webservice.datasets import dataset_available
 from webservice.presentation import (
     catalog,
     duration,
@@ -28,9 +33,29 @@ from webservice.presentation import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from pathlib import Path
+
     from webservice.presentation import Interface, Record
 
 _HISTORY_HOURS = 168
+REPORTS_PAGE_SIZE = 10
+REPORTS_PAGE_SIZES = (REPORTS_PAGE_SIZE, 20, 50)
+_DATASET_AVAILABLE = ContextVar[Callable[[str], bool] | None](
+    "history_dataset_available",
+    default=None,
+)
+
+
+@contextmanager
+def dataset_link_scope(runtime: Path) -> Iterator[None]:
+    """Check each data file once per rendered history view."""
+    check = lru_cache(maxsize=512)(partial(dataset_available, runtime=runtime))
+    token = _DATASET_AVAILABLE.set(check)
+    try:
+        yield
+    finally:
+        _DATASET_AVAILABLE.reset(token)
 
 
 _PROVIDER_DOCUMENTATION = {
@@ -380,6 +405,9 @@ def _parquet_file(
     try:
         preview_path(filename)
     except ValueError:
+        return content
+    available = _DATASET_AVAILABLE.get()
+    if available is not None and not available(filename):
         return content
     return Markup(
         '<a href="{}" title="{}" data-dataset-link '

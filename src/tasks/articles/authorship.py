@@ -108,6 +108,8 @@ def score_revision_content(
         )
     scored = tokens.with_columns(
         pl.col("text").str.len_bytes().cast(pl.UInt32).alias("bytes"),
+        pl.col("text").str.len_bytes().cast(pl.UInt32).alias("raw_bytes"),
+        pl.lit(None, dtype=pl.UInt32).alias("characters"),
     )
     return scored, int(scored["bytes"].sum()), store.FALLBACK_CONTRACT
 
@@ -195,7 +197,14 @@ def _collect(event: dict, site: BaseSite) -> dict:
     counts = (
         scored
         .group_by("editor")
-        .agg(pl.len().alias("tokens"), pl.col("bytes").sum())
+        .agg(
+            pl.len().alias("tokens"),
+            pl.col("bytes", "raw_bytes").sum(),
+            pl
+            .when(pl.col("characters").count() > 0)
+            .then(pl.col("characters").sum())
+            .alias("characters"),
+        )
         .sort("editor")
     )
     if counts["bytes"].sum() == 0:
@@ -228,9 +237,8 @@ def _collect(event: dict, site: BaseSite) -> dict:
 def _attempt(
     event: dict,
     site: BaseSite,
-    path: Path,
 ) -> tuple[pl.DataFrame | None, str]:
-    """Collect and persist one optional attribution independently.
+    """Collect one optional attribution for the in-memory batch.
 
     Returns:
         Prepared evidence and the attempt outcome.
@@ -254,15 +262,10 @@ def _attempt(
         [evidence],
         schema=store.SCHEMA | dict.fromkeys(instants, pl.String),
     ).with_columns(pl.col(instants).str.to_datetime(time_zone="UTC"))
-    try:
-        store.save(path, refreshed)
-    except OSError, ValueError, pl.exceptions.PolarsError:
-        _LOG.warning("Authorship evidence could not checkpoint a success.")
-        return refreshed, "unavailable"
     return refreshed, "complete"
 
 
-def enrich_authorship(  # ruff: ignore[complex-structure,too-many-arguments] - Keep checkpoint and cooperative admission together.
+def enrich_authorship(  # ruff: ignore[complex-structure,too-many-arguments,too-many-branches] - Keep batch outcomes and admission together.
     events: pl.DataFrame,
     site: BaseSite,
     *,
@@ -303,12 +306,11 @@ def enrich_authorship(  # ruff: ignore[complex-structure,too-many-arguments] - K
     if max_requests < 0:
         message = "Authorship attempt limits cannot be negative."
         raise ValueError(message)
-    previous = (
-        store
-        .load(path)
-        .filter(pl.col("contract").is_in(store.CURRENT_CONTRACTS))
-        .sort("fetched_at")
-        .unique(subset=_EVENT_KEY, keep="last", maintain_order=True)
+    previous = store.preferred_observations(
+        store.load(path).filter(
+            pl.col("contract").is_in(store.CURRENT_CONTRACTS),
+        ),
+        _EVENT_KEY,
     )
     eligible = events.filter(
         pl.col("date").is_not_null()
@@ -319,7 +321,7 @@ def enrich_authorship(  # ruff: ignore[complex-structure,too-many-arguments] - K
     if "kind" in eligible.columns:
         eligible = eligible.filter(pl.col("kind") == "quality")
     pending = eligible.unique(subset=_EVENT_KEY, maintain_order=True).join(
-        previous.select(_EVENT_KEY),
+        store.complete_contributor_evidence(previous).select(_EVENT_KEY),
         on=_EVENT_KEY,
         how="anti",
     )
@@ -343,6 +345,13 @@ def enrich_authorship(  # ruff: ignore[complex-structure,too-many-arguments] - K
     if should_yield and should_yield():
         pending = pending.head(0)
     completed = []
+    outcomes = []
+    existing_exact = set(
+        previous
+        .filter(pl.col("contract") == store.CONTRACT)
+        .select(_EVENT_KEY)
+        .iter_rows(),
+    )
     selections = [
         (
             row["page_id"],
@@ -359,24 +368,67 @@ def enrich_authorship(  # ruff: ignore[complex-structure,too-many-arguments] - K
         for event in pending.iter_rows(named=True):
             if should_yield and should_yield():
                 break
-            refreshed, outcome = _attempt(event, site, path)
+            refreshed, outcome = _attempt(event, site)
             if refreshed is not None:
-                completed.append(refreshed)
-            if attempt_path is not None:
-                attempts = attempt_cache.record(
-                    attempt_path,
-                    attempts,
-                    event,
-                    complete=outcome == "complete",
-                )
-            if observe is not None:
-                observe(event, outcome)
+                if (
+                    refreshed["contract"].item() == store.FALLBACK_CONTRACT
+                    and tuple(event[key] for key in _EVENT_KEY)
+                    in existing_exact
+                ):
+                    outcome = "unavailable"
+                else:
+                    completed.append(refreshed)
+            outcomes.append((event, outcome, dt.datetime.now(dt.UTC)))
             if outcome == "throttled":
                 break
-    evidence = pl.concat([previous, *completed]).select(
-        *_EVENT_KEY,
-        pl.col("authors").alias("_computed_authors"),
-    )
+    saved = True
+    if completed:
+        try:
+            store.save(path, pl.concat(completed))
+        except OSError, ValueError, pl.exceptions.PolarsError:
+            _LOG.warning("Authorship evidence batch could not checkpoint.")
+            completed = []
+            saved = False
+    if attempt_path is not None and outcomes:
+        attempted = pl.DataFrame(
+            [
+                {
+                    **{key: event[key] for key in _EVENT_KEY},
+                    "attempted_at": stamp,
+                }
+                for event, _, stamp in outcomes
+            ],
+            schema=attempt_cache.SCHEMA,
+        )
+        failures = attempted.filter(
+            pl.Series([
+                not saved or outcome != "complete"
+                for _, outcome, _ in outcomes
+            ]),
+        )
+        attempt_cache.save(
+            attempt_path,
+            pl.concat([
+                attempts.join(
+                    attempted.select(_EVENT_KEY),
+                    on=_EVENT_KEY,
+                    how="anti",
+                ),
+                failures,
+            ]),
+        )
+    if observe is not None:
+        for event, outcome, _ in outcomes:
+            observe(
+                event,
+                "unavailable"
+                if not saved and outcome == "complete"
+                else outcome,
+            )
+    evidence = store.preferred_observations(
+        pl.concat([previous, *completed]),
+        _EVENT_KEY,
+    ).select(*_EVENT_KEY, pl.col("authors").alias("_computed_authors"))
     result = events.join(
         evidence,
         on=_EVENT_KEY,

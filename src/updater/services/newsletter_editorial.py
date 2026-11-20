@@ -18,7 +18,13 @@ from typing import TYPE_CHECKING
 
 import polars as pl
 
-from data.newsletter.grades import QUALITY_GRADES, QUALITY_HISTORY_GRADES
+from data.newsletter.grades import (
+    CHART_VARIANTS,
+    QUALITY_GRADES,
+    QUALITY_HISTORY_GRADES,
+    annual_quality_rows,
+    quality_chart_filename,
+)
 from shared.newsletter import DYK_PROJECT_DATABASE_TITLES, DYK_PROJECTS, ROOT
 
 if TYPE_CHECKING:
@@ -56,7 +62,7 @@ LITERAL_ESCAPES = str.maketrans({
 _MONTHS = 12
 _PIE_TOTAL_WIDTH = 400
 _PIE_HEIGHT = 250
-_PIE_TEXT_PADDING = 6
+_PIE_FRAME_PADDING = 34
 _FIRST_BAND_END = 2009
 _SECOND_BAND_END = 2019
 _ICON_GRADES = frozenset({"Bplus", "GA", "A", "FA", "FL"})
@@ -588,90 +594,41 @@ def _dyk(review: Mapping, year: int) -> str:
     return "\n".join(lines)
 
 
-def _pie_percent_labels(counts: list[int], plot_width: float) -> str:
-    """Place eligible percentages inside the native pie's sectors.
-
-    The native renderer adds a 14-pixel left margin and a title above
-    the plot. Its circle radius follows the smaller plot dimension.
-
-    Args:
-        counts: Positive slice values in native chart order.
-        plot_width: Native plot width excluding the legend and padding.
-
-    Returns:
-        Static black, regular-weight labels for exact shares of at least
-        five percent. Labels never intercept native chart interaction.
-    """
-    total = sum(counts)
-    center_x = _PIE_TEXT_PADDING / 2 + 14 + plot_width / 2
-    center_y = 32 + _PIE_HEIGHT / 2
-    outer_radius = min(plot_width, _PIE_HEIGHT) / 2 - 6
-    angle = -math.pi / 2
-    labels = []
-    for count in counts:
-        sweep = math.tau * count / total
-        midpoint = angle + sweep / 2
-        if count * 20 >= total:
-            # Narrow sectors need a wider arc for regular-width text.
-            radius = outer_radius * ((103 if count * 10 < total else 80) / 119)
-            x = center_x + radius * math.cos(midpoint)
-            y = center_y + radius * math.sin(midpoint)
-            labels.append(
-                '<span class="pie-percentage" '
-                f'style="position:absolute;left:{x:.2f}px;top:{y:.2f}px;'
-                "transform:translate(-50%,-50%);color:#000;"
-                "font-size:11px;font-weight:400;line-height:1.2;"
-                'pointer-events:none">'
-                f"{count / total:.1%}</span>",
-            )
-        angle += sweep
-    return "".join(labels)
-
-
 def _quality_charts(review: Mapping, year: int) -> str:
-    """Render the preceding and current year assessment pie charts.
+    """Render native annual pies with filenames for the matching images.
 
     Returns:
-        Paired native pies with their coverage date in one introduction.
-        Inner percentages and legends retain native chart behavior.
+        Wikitext charts and their coverage introduction.
     """
-    records = [
-        row
-        for row in review.get("quality_statistics") or []
-        if row["year"] in {year - 1, year}
-    ]
+    records = annual_quality_rows(review, year)
     charts = []
-    provisional = False
     for row in records:
+        counts = row["counts"]
         observed = [
-            (code, meta)
-            for code, meta in QUALITY_GRADES.items()
-            if row["counts"].get(code, 0)
+            (counts[code], label, color)
+            for code, (label, color) in QUALITY_GRADES.items()
+            if counts.get(code)
         ]
-        if not observed:
-            continue
-        labels = [
-            f"{meta[0]}：{row['counts'][code]}" for code, meta in observed
-        ]
+        labels = [f"{label}：{count}" for count, label, _ in observed]
         legend_width = min(220, max(80, max(map(len, labels)) * 7.5 + 32))
-        plot_width = _PIE_TOTAL_WIDTH - 28 - legend_width - _PIE_TEXT_PADDING
-        counts = [row["counts"][code] for code, _ in observed]
-        provisional = provisional or row["provisional"]
+        plot_width = _PIE_TOTAL_WIDTH - legend_width - _PIE_FRAME_PADDING
+        files = " ".join(
+            f"[[File:{quality_chart_filename(row, variant)}]]"
+            for variant in CHART_VARIANTS
+        )
         charts.append(
-            f'<div style="width:{_PIE_TOTAL_WIDTH}px;'
-            'position:relative;line-height:0;flex:none">\n'
+            f"<!-- {files} -->\n"
             "{{Graph:Chart\n"
-            f"| type = pie | width = {plot_width:g} | height = {_PIE_HEIGHT}\n"
+            f"| type = pie | width = {plot_width:g} "
+            f"| height = {_PIE_HEIGHT}\n"
             f"| title = {row['year']}年條目品質概況\n"
             "| x = "
             + ", ".join(labels)
             + "\n| y1 = "
-            + ", ".join(map(str, counts))
+            + ", ".join(str(count) for count, _, _ in observed)
             + "\n| colors = "
-            + ", ".join(meta[1] for _, meta in observed)
-            + "\n| legend = true | showValues = false\n}}"
-            + _pie_percent_labels(counts, plot_width)
-            + "\n</div>",
+            + ", ".join(color for _, _, color in observed)
+            + "\n| legend = true | showValues = false\n}}",
         )
     if not charts:
         return ""
@@ -679,11 +636,10 @@ def _quality_charts(review: Mapping, year: int) -> str:
         _annual_intro(
             review,
             "各年度條目品質分布如下：",
-            partial=provisional,
+            partial=any(row["provisional"] for row in records),
         )
-        + '\n<div class="annual-quality-pies" '
-        'style="display:flex;flex-wrap:wrap;overflow-x:auto;'
-        'text-align:center">\n' + "\n".join(charts) + "\n</div>"
+        + "\n"
+        + "\n".join(charts)
     )
 
 

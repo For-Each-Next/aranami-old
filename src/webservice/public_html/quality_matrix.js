@@ -262,24 +262,26 @@ export function articleElement(record) {
         row.cells[4].append(document.createTextNode(" "), review);
     }
     renderMainContributors(row.cells[5], article, labels);
-    const popupId = `quality-article-${article.page_id}-authorship`;
-    const details = node("a", undefined, "analysis-authorship-info");
-    details.href = `#${popupId}`; details.title = metadata.labels.authorship_details.replace("{title}", article.title_label);
-    details.setAttribute("aria-label", details.title); details.setAttribute("aria-haspopup", "dialog"); details.setAttribute("aria-controls", popupId);
-    const icon = svgNode("svg", {width:16,height:16,viewBox:"0 0 20 20","aria-hidden":"true",focusable:"false"});
-    icon.append(svgNode("use", {href: metadata.authorshipIcon})); details.append(icon);
-    details.addEventListener("click", event => {
-        if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-        event.preventDefault(); event.stopPropagation();
-        let dialog = document.querySelector("[data-catalog-authorship]");
-        if (!dialog) {dialog = node("dialog", undefined, "ui-dialog page-updates analysis-authorship-dialog"); dialog.setAttribute("data-catalog-authorship", ""); document.body.append(dialog);}
-        dialog.id = popupId; dialog.setAttribute("aria-labelledby", `${popupId}-heading`);
-        const header = node("header", undefined, "ui-dialog__header"), heading = node("h3", details.getAttribute("aria-label"), "ui-dialog__header__title"), close = node("button", "×", "ui-button ui-dialog__header__close-button"), body = node("div", undefined, "ui-dialog__body");
-        heading.id = `${popupId}-heading`; close.type = "button"; close.addEventListener("click", () => dialog.close()); header.append(heading, close); body.append(node("p", metadata.labels.authorship_note));
-        renderAuthorshipDetails(body, article.authorship, metadata.labels);
-        dialog.replaceChildren(header, body); details.focus(); dialog.showModal();
-    });
-    row.cells[5].append(document.createTextNode(" "), details);
+    if (article.authorship?.available === true) {
+        const popupId = `quality-article-${article.page_id}-authorship`;
+        const details = node("a", undefined, "analysis-authorship-info");
+        details.href = `#${popupId}`; details.title = metadata.labels.authorship_details.replace("{title}", article.title_label);
+        details.setAttribute("aria-label", details.title); details.setAttribute("aria-haspopup", "dialog"); details.setAttribute("aria-controls", popupId);
+        const icon = svgNode("svg", {width:16,height:16,viewBox:"0 0 20 20","aria-hidden":"true",focusable:"false"});
+        icon.append(svgNode("use", {href: metadata.authorshipIcon})); details.append(icon);
+        details.addEventListener("click", event => {
+            if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+            event.preventDefault(); event.stopPropagation();
+            let dialog = document.querySelector("[data-catalog-authorship]");
+            if (!dialog) {dialog = node("dialog", undefined, "ui-dialog page-updates analysis-authorship-dialog"); dialog.setAttribute("data-catalog-authorship", ""); document.body.append(dialog);}
+            dialog.id = popupId; dialog.setAttribute("aria-labelledby", `${popupId}-heading`);
+            const header = node("header", undefined, "ui-dialog__header"), heading = node("h3", details.getAttribute("aria-label"), "ui-dialog__header__title"), close = node("button", "×", "ui-button ui-dialog__header__close-button"), body = node("div", undefined, "ui-dialog__body");
+            heading.id = `${popupId}-heading`; close.type = "button"; close.addEventListener("click", () => dialog.close()); header.append(heading, close); body.append(node("p", metadata.labels.authorship_note));
+            renderAuthorshipDetails(body, article.authorship, metadata.labels);
+            dialog.replaceChildren(header, body); details.focus(); dialog.showModal();
+        });
+        row.cells[5].append(document.createTextNode(" "), details);
+    }
     row.cells[6].textContent = article.prose_characters === null ? "—" : Math.round(article.prose_characters).toLocaleString("en-US");
     row.cells[7].textContent = article.source_bytes === null ? "—" : (article.source_bytes / 1000).toLocaleString("en-US", {minimumFractionDigits: 1, maximumFractionDigits: 1});
     for (const column of [0, 6, 7]) row.cells[column].classList.add("analysis-number");
@@ -331,8 +333,15 @@ export function renderAuthorshipDetails(body, proof, labels) {
     if (boundary.childNodes.length) body.append(boundary);
     const table = node("table", undefined, "analysis-editor-table");
     const head = node("thead"), headRow = node("tr"), tbody = node("tbody");
-    for (const label of [labels.contributors, labels.editor_share, labels.editor_bytes])
-        headRow.append(node("th", label));
+    for (const [label, hint] of [
+        [labels.contributors], [labels.editor_share],
+        [labels.editor_characters, labels.editor_characters_hint],
+        [labels.editor_bytes, labels.editor_bytes_hint],
+    ]) {
+        const heading = node("th", label);
+        if (hint) heading.title = hint;
+        headRow.append(heading);
+    }
     head.append(headRow);
     for (const editor of proof.editors) {
         const line = node("tr"), name = node("th");
@@ -341,12 +350,12 @@ export function renderAuthorshipDetails(body, proof, labels) {
             link.href = editor.url;
             name.append(link);
         } else name.textContent = editor.name;
-        line.append(name, node("td", editor.share_label), node("td", editor.bytes_label));
+        line.append(name, node("td", editor.share_label), node("td", editor.characters_label), node("td", editor.bytes_label));
         tbody.append(line);
     }
     if (!proof.editors.length) {
         const row = node("tr"), message = node("td", labels.no_top_editors);
-        message.colSpan = 3;
+        message.colSpan = 4;
         row.append(message);
         tbody.append(row);
     }

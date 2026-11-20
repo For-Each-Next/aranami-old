@@ -17,7 +17,6 @@ import signal
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - Execute only this source's worker without a shell.
 import sys
 from contextlib import nullcontext
-from functools import partial
 from pathlib import Path
 from threading import Event
 from time import monotonic
@@ -70,9 +69,9 @@ _WORKER_TIMEOUT = 180
 _TERMINATION_TIMEOUT = 10
 _MAX_BOOTSTRAP_PAGES = 500
 _MAX_BOOTSTRAP_SECONDS = 300
-_AUTHOR_RANGE_PAGES = 80
-_AUTHOR_TIME_BUDGET = 240
-_AUTHOR_WORKER_TIMEOUT = 360
+_AUTHOR_RANGE_PAGES = 120
+_AUTHOR_TIME_BUDGET = 360
+_AUTHOR_WORKER_TIMEOUT = 480
 _LOG = logging.getLogger(__name__)
 
 
@@ -246,7 +245,24 @@ def _collect(
 
     signal.signal(signal.SIGTERM, request_stop)
     signal.signal(signal.SIGINT, request_stop)
-    should_yield = partial(_should_yield, runtime, owner, stop, task_id)
+    last_check = float("-inf")
+    paused = False
+
+    def should_yield() -> bool:
+        """Reuse scheduler state for up to one second.
+
+        Returns:
+            Whether collection should yield to other work.
+        """
+        nonlocal last_check, paused
+        if stop.is_set():
+            return True
+        now = monotonic()
+        if now - last_check >= 1:
+            last_check = now
+            paused = _should_yield(runtime, owner, stop, task_id)
+        return paused
+
     if should_yield():
         return
     os.chdir(runtime)

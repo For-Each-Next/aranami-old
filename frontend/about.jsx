@@ -13,10 +13,10 @@ export function AboutContents(context) {
                 <a href="#server-status-heading">{t.server.heading}</a>
             </li>
             <li>
-                <a href="#dataset-updates-previous-heading">{t.dataset_updates.previous}</a>
+                <a href="#dataset-updates-current-heading">{t.dataset_updates.schedule}</a>
             </li>
             <li>
-                <a href="#dataset-updates-current-heading">{t.dataset_updates.schedule}</a>
+                <a href="#dataset-updates-previous-heading">{t.dataset_updates.previous}</a>
             </li>
             <li>
                 <a href="#credits">{t.about.credits}</a>

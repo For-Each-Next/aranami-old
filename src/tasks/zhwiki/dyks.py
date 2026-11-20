@@ -573,6 +573,7 @@ def prepare_report(  # ruff: ignore[too-many-arguments] - Preserve caller inputs
     *,
     project: str,
     report_title: str,
+    original_revision: int | None = None,
     persist: bool = True,
 ) -> PreparedDyk:
     """Collect DYK observations and interpret retained report state.
@@ -583,6 +584,7 @@ def prepare_report(  # ruff: ignore[too-many-arguments] - Preserve caller inputs
         today: UTC date ending the statistics timeline.
         project: WikiProject supplying source membership.
         report_title: Destination identity for membership caches.
+        original_revision: Exact preloaded destination revision.
         persist: Retain new authoritative facts; disable for previews.
 
     Returns:
@@ -596,7 +598,7 @@ def prepare_report(  # ruff: ignore[too-many-arguments] - Preserve caller inputs
             message = f"Missing managed-region markers for {name!r}."
             raise ValueError(message)
     _LOGGER.info("Preparing DYK source data for %s.", report_title)
-    cached = load_membership(site, report_title, original_text)
+    cached = load_membership(site, report_title, original_revision)
     previous = {
         title: cached.get(title) for title in article_members(original_text)
     }
@@ -716,20 +718,20 @@ def record_publication(  # ruff: ignore[too-many-arguments]
     prepared: PreparedDyk,
     site: BaseSite,
     title: str,
-    original_text: str,
-    text: str,
+    original_revision: int | None,
+    published_revision: int | None,
     *,
     confirmed: bool,
     dry: bool,
 ) -> None:
-    """Advance identity caches after confirmed publication or old text.
+    """Advance identity caches for confirmed or previewed revisions.
 
     Args:
         prepared: Source facts and previously validated identities.
         site: Destination wiki identity.
         title: Caller-selected destination.
-        original_text: Original content used to prepare this report.
-        text: Generated content after publication.
+        original_revision: Exact revision used to prepare this report.
+        published_revision: Exact confirmed destination revision.
         confirmed: Publication confirmed unchanged content or a save.
         dry: Preview may seed only the original identities.
     """
@@ -738,6 +740,6 @@ def record_publication(  # ruff: ignore[too-many-arguments]
             member: identifier or prepared.members.get(member)
             for member, identifier in prepared.previous_members.items()
         }
-        save_membership(site, title, original_text, members)
+        save_membership(site, title, original_revision, members)
     elif confirmed:
-        save_membership(site, title, text, prepared.members)
+        save_membership(site, title, published_revision, prepared.members)

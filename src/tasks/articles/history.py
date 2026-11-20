@@ -44,7 +44,7 @@ if TYPE_CHECKING:
 DEFAULT_PATH = HISTORY_PATH
 _PARSER_CONTRACT = (
     "zh-article-history:92259335:83226002:76273693:94343077:88772603:"
-    "reviews:dyk-questions:multiple-history-templates:1"
+    "reviews:explicit-talk-anchors:dyk-questions:multiple-history-templates:2"
 )
 _HISTORY_BATCH_SIZE = 200
 _LOGGER = logging.getLogger(__name__)

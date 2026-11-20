@@ -473,11 +473,21 @@ def _overlay_contributors(changes: pl.DataFrame) -> pl.DataFrame:
         .group_by("_correction_row", "raw_editor")
         .agg(
             pl.col("bytes").cast(pl.Int64).sum().alias("_outgoing"),
+            pl
+            .col("characters")
+            .cast(pl.Int64)
+            .sum()
+            .alias("_outgoing_characters"),
         )
         .rename({"raw_editor": "editor"})
     )
     incoming = transfers.group_by("_correction_row", "editor").agg(
         pl.col("bytes").cast(pl.Int64).sum().alias("_incoming"),
+        pl
+        .col("characters")
+        .cast(pl.Int64)
+        .sum()
+        .alias("_incoming_characters"),
         pl.col("name").drop_nulls().first().alias("_incoming_name"),
         pl.col("name").drop_nulls().n_unique().alias("_name_count"),
     )
@@ -532,6 +542,26 @@ def _overlay_contributors(changes: pl.DataFrame) -> pl.DataFrame:
                 - pl.col("_outgoing").fill_null(0)
                 + pl.col("_incoming").fill_null(0)
             ).alias("bytes"),
+            (
+                pl
+                .when(pl.col("_raw_bytes").is_null())
+                .then(0)
+                .otherwise(pl.col("characters").cast(pl.Int64))
+                - pl.col("_outgoing_characters").fill_null(0)
+                + pl.col("_incoming_characters").fill_null(0)
+            )
+            .cast(pl.UInt32)
+            .alias("characters"),
+            (
+                pl
+                .when(pl.col("_raw_bytes").is_null())
+                .then(0)
+                .otherwise(pl.col("raw_bytes").cast(pl.Int64))
+                - pl.col("_outgoing").fill_null(0)
+                + pl.col("_incoming").fill_null(0)
+            )
+            .cast(pl.UInt32)
+            .alias("raw_bytes"),
             pl.coalesce("name", "_incoming_name").alias("name"),
             pl.col("tokens").fill_null(0),
         )

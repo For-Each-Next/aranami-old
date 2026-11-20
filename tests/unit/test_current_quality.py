@@ -40,14 +40,16 @@ def _contributors(
     """Prepare exact byte shares with registered and anonymous editors.
 
     Returns:
-        Typed contributor records for a one-hundred-byte source.
+        Typed contributor records with shares of a 10,000-byte source.
     """
     return [
         {
             "editor": editor,
             "name": name,
             "tokens": size,
-            "bytes": size,
+            "bytes": size * 100,
+            "characters": size * 40,
+            "raw_bytes": size * 100 + 100,
             "share": size / 100,
         }
         for editor, name, size in values
@@ -107,7 +109,7 @@ def _evidence() -> pl.DataFrame:
                 "grade": grade,
                 "action": "added",
                 "contract": authorship_store.CONTRACT,
-                "eligible_bytes": 100,
+                "eligible_bytes": 10_000,
                 "listing_revision": page_id + 50,
                 "creation_revision": page_id + 10,
                 "cutoff": _CUTOFF,
@@ -168,7 +170,7 @@ def _b_tables() -> dict[str, pl.DataFrame]:
                 "page_id": 2,
                 "revision_id": 52,
                 "contract": current_authorship.CONTRACT,
-                "eligible_bytes": 100,
+                "eligible_bytes": 10_000,
                 "revision_timestamp": _CUTOFF - dt.timedelta(seconds=1),
                 "creation_revision": 12,
                 "creation_timestamp": _CREATION,
@@ -464,7 +466,7 @@ class CurrentQualityTests(TestCase):
             ] == ["Alice", "Bob", "Boundary"]
             assert [
                 editor["bytes"] for editor in article["authorship_editors"]
-            ] == [50, 35, 10]
+            ] == [5_000, 3_500, 1_000]
             assert set(article) == set(store.ARTICLE_SCHEMA)
             authors = main_author_directory(
                 selection["articles"],
@@ -485,6 +487,8 @@ class CurrentQualityTests(TestCase):
             popup = popup.split("</dialog>", 1)[0]
             assert ">Boundary</a>" in popup
             assert ">10.0%</td>" in popup
+            assert ">1,100</td>" in popup
+            assert ">400</td>" in popup
             assert ">Minor</a>" not in popup
 
     @staticmethod

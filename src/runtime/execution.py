@@ -552,6 +552,19 @@ class RuntimeContext[EditT: Publication]:
         for title in titles:
             self._report_update(self.site.dbName(), title)
 
+    def confirmed_revision(self, title: str) -> int | None:
+        """Return the exact revision confirmed during this routine.
+
+        Returns:
+            The exact revision from the publisher, when observed.
+        """
+        update = self._report_updates.get(
+            target_key(self.site.dbName(), title),
+        )
+        if update is not None and update.run_id == self.report_run_id:
+            return update.revision_id
+        return None
+
     def _report_update(self, site: str, title: str) -> PublicationAttempt:
         """Register or retrieve a destination's current lifecycle.
 

@@ -11,7 +11,11 @@ import operator
 from typing import TYPE_CHECKING
 
 from webservice.dataset_updates import dataset_updates_context
-from webservice.job_history import history_context, source_description
+from webservice.job_history import (
+    REPORTS_PAGE_SIZE,
+    history_context,
+    source_description,
+)
 from webservice.presentation import (
     catalog,
     duration,
@@ -441,13 +445,14 @@ def _current_work(interface: Interface, status: Record) -> Record:
     }
 
 
-def report_context(
+def report_context(  # ruff: ignore[too-many-arguments] - Include the native table paging controls.
     interface: Interface,
     status: Record,
     definitions: Record,
     now: dt.datetime,
     *,
     history_page: int | None = None,
+    history_size: int = REPORTS_PAGE_SIZE,
 ) -> Record:
     """Group on-wiki reports with independent run and publication facts.
 
@@ -456,8 +461,9 @@ def report_context(
         status: Validated saved runtime observations.
         definitions: Configured on-wiki reports and their destinations.
         now: UTC rendering instant.
-        history_page: Ten-row page; zero omits history details.
+        history_page: Requested page. Zero omits history details.
             None retains all history for direct presentation callers.
+        history_size: Maximum rows on each requested page.
 
     Returns:
         Report cards, on-wiki history and their status dialogs.
@@ -473,8 +479,12 @@ def report_context(
         interface,
         selected,
         now,
-        offset=max(0, (history_page or 0) - 1) * 10,
-        limit=None if history_page is None else 10 if history_page else 0,
+        offset=max(0, (history_page or 0) - 1) * history_size,
+        limit=None
+        if history_page is None
+        else history_size
+        if history_page
+        else 0,
     )
     dialogs = {row["run_id"]: row for row in history["history_dialogs"]}
     publications = _publications(interface, status)
@@ -690,12 +700,9 @@ def status_context(  # ruff: ignore[too-many-arguments]
         Independent runtime domains and shared footer contexts.
     """
     services = _services(interface, status)
-    candidates = list(status.get("services", {}).values())
-    service = status.get("services", {}).get("scheduler") or max(
-        candidates,
-        key=lambda row: row.get("heartbeat_at", ""),
-        default={},
-    )
+    web = status.get("services", {}).get("web", {})
+    web_fresh = web.get("freshness") == "current"
+    service = status.get("services", {}).get("scheduler", {})
     fresh = service.get("freshness") == "current"
     active = fresh and service.get("lifecycle") in {
         "running",
@@ -780,6 +787,16 @@ def status_context(  # ruff: ignore[too-many-arguments]
         "server": {
             "dataset_updates": dataset_updates_context(interface, status, now),
             "work": _current_work(interface, status),
+            "web": {
+                "state": _state(interface, "service", web["lifecycle"])
+                if web_fresh
+                else _state(
+                    interface,
+                    "freshness",
+                    web.get("freshness", "unknown"),
+                ),
+                "observed": observed_time(web.get("heartbeat_at")),
+            },
             "state": _state(interface, "service", service["lifecycle"])
             if fresh
             else _state(

@@ -328,6 +328,8 @@ class TestDashboardReportCache(DashboardFixture):
                             "kind": "fa",
                         }
                         if key == "upcoming"
+                        else {"date_kind": "appearance"}
+                        if key == "news"
                         else {}
                     ),
                 },
@@ -363,6 +365,8 @@ class TestDashboardReportCache(DashboardFixture):
         ]
         self.reader.summary.reset_mock()
         repeated = self._collect(dt.timedelta(hours=23))
+        assert repeated["homepage"]["news"][0]["displayed_on"] == "2026-10-19"
+        first["homepage"]["news"][0]["displayed_on"] = "2026-10-19"
         assert repeated["homepage"] == first["homepage"]
         self.reader.summary.assert_not_called()
         self.reader.summary.side_effect = OSError("summary offline")

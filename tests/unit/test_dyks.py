@@ -29,6 +29,9 @@ from updater.edit_summary import (
 )
 from updater.services.zhwiki import dyks as rendering
 
+_ORIGINAL_REVISION = 101
+_PUBLISHED_REVISION = 102
+
 
 def _update_report(
     original: str,
@@ -541,6 +544,7 @@ class TestDykUnchangedStatus(TestCase):
         context = Mock(site=site, today=date(2024, 5, 2), dry=False)
         context.report_attempt.side_effect = lambda _title: nullcontext()
         context.publish.return_value = True
+        context.confirmed_revision.return_value = _ORIGINAL_REVISION
         report = _prepared_fixture(self.text, {"Game": 1, "Candidate": 2})
         report.content_unchanged = True
         report.changes = dyks.compare_reports(self.text, self.text)
@@ -553,7 +557,12 @@ class TestDykUnchangedStatus(TestCase):
             patch.object(
                 dyk_job,
                 "read_pages",
-                return_value=[Mock(text=self.text)],
+                return_value=[
+                    Mock(
+                        text=self.text,
+                        latest_revision_id=_ORIGINAL_REVISION,
+                    ),
+                ],
             ),
             patch.object(dyks, "prepare_report", return_value=report),
             patch.object(dyk_job, "update_text") as render,
@@ -563,7 +572,12 @@ class TestDykUnchangedStatus(TestCase):
         render.assert_not_called()
         context.publish.assert_called_once()
         assert context.publish.call_args.args[0].text == self.text
-        save.assert_called_once_with(site, "Report", self.text, report.members)
+        save.assert_called_once_with(
+            site,
+            "Report",
+            _ORIGINAL_REVISION,
+            report.members,
+        )
 
 
 class TestDykEdit(TestCase):
@@ -682,7 +696,7 @@ class TestDykEdit(TestCase):
             '<!-- aranami begin="dykn" -->\n<!-- aranami end="dykn" -->'
         )
         updated = original.replace("Old", "Renamed").replace("初级", "优良")
-        page = Mock(text=original)
+        page = Mock(text=original, latest_revision_id=_ORIGINAL_REVISION)
         title = "WikiProject:电子游戏/新条目推荐"
         with (
             patch.object(
@@ -722,6 +736,7 @@ class TestDykEdit(TestCase):
             context.today,
             project="电子游戏",
             report_title=title,
+            original_revision=_ORIGINAL_REVISION,
             persist=False,
         )
         [edit] = context.edits
@@ -734,7 +749,12 @@ class TestDykEdit(TestCase):
             == "1 article and 0 nominees. ([[toolforge:aranami|Aranami]])"
         )
         assert "aranami-member" not in edit.text
-        save.assert_called_once_with(site, title, original, {"Old": 1})
+        save.assert_called_once_with(
+            site,
+            title,
+            _ORIGINAL_REVISION,
+            {"Old": 1},
+        )
         page.save.assert_not_called()
 
     @staticmethod
@@ -1166,6 +1186,7 @@ class TestDykEdit(TestCase):
         context = Mock(site=site, today=date(2024, 5, 1), dry=False)
         context.report_attempt.side_effect = lambda _title: nullcontext()
         context.publish.return_value = True
+        context.confirmed_revision.return_value = _PUBLISHED_REVISION
         with (
             patch.object(
                 dyk_job,
@@ -1175,7 +1196,9 @@ class TestDykEdit(TestCase):
             patch.object(
                 dyk_job,
                 "read_pages",
-                return_value=[Mock(text=original)],
+                return_value=[
+                    Mock(text=original, latest_revision_id=_ORIGINAL_REVISION),
+                ],
             ),
             patch.object(
                 dyk_job,
@@ -1212,7 +1235,7 @@ class TestDykEdit(TestCase):
         save.assert_called_once_with(
             site,
             "Report",
-            updated,
+            _PUBLISHED_REVISION,
             {"Renamed": 1, "Added": 3},
         )
 
@@ -1248,7 +1271,9 @@ class TestDykEdit(TestCase):
             patch.object(
                 dyk_job,
                 "read_pages",
-                return_value=[Mock(text=original)],
+                return_value=[
+                    Mock(text=original, latest_revision_id=_ORIGINAL_REVISION),
+                ],
             ),
             patch.object(
                 dyk_job,
@@ -1269,10 +1294,16 @@ class TestDykEdit(TestCase):
         ):
             dyk_job.run(title="Report", context=context)
             dyk_job.run(title="Report", context=context)
-            assert dyks.load_membership(site, "Report", original) == {
+            assert dyks.load_membership(
+                site,
+                "Report",
+                _ORIGINAL_REVISION,
+            ) == {
                 "Game": 1,
             }
-            assert dyks.load_membership(site, "Report", updated) == {}
+            assert (
+                dyks.load_membership(site, "Report", _PUBLISHED_REVISION) == {}
+            )
         assert prepare.call_count == 2  # ruff: ignore[magic-value-comparison]
         summaries = [
             call.args[0].summary for call in context.publish.call_args_list
@@ -1311,7 +1342,9 @@ class TestDykEdit(TestCase):
             patch.object(
                 dyk_job,
                 "read_pages",
-                return_value=[Mock(text=original)],
+                return_value=[
+                    Mock(text=original, latest_revision_id=_ORIGINAL_REVISION),
+                ],
             ),
             patch.object(
                 dyk_job,
@@ -1350,7 +1383,9 @@ def _job_fixture(
         Prepared report carrying validated previous identity facts.
     """
     previous = {
-        member: dyks.load_membership(site, title, original).get(member)
+        member: dyks.load_membership(site, title, _ORIGINAL_REVISION).get(
+            member,
+        )
         for member in dyks.article_members(original)
     }
     prepared = _prepared_fixture(text, members)

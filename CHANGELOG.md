@@ -5,6 +5,37 @@ v0.8.8 was consolidated into the v0.9.2 release.
 
 ## Until 0.10
 
+### 0.9.20 (2026-11-20 14:38 UTC)
+
+Overview: Finished the compact contributor article layout for narrow screens.
+
+- Kept the listing date, age and review link on one line and reserved space
+  for article titles and grade labels inside the scrolling table.
+
+### 0.9.19 (2026-11-20 13:45 UTC)
+
+Overview: Refined the dashboard and Article Statistics, reduced collection
+storage work, and added downloadable annual newsletter charts.
+
+- Added Wikipedia's news and anniversary icons and retained the first UTC day
+  of continuous news appearances across refreshes.
+- Hid the native-site link when scripts are enabled and removed the Recent
+  discussions introduction.
+- Required 500 attributed characters for main credit. Showed reference-excluded
+  character counts and reference-inclusive bytes in attribution details.
+- Kept high-quality grades selected by default and improved date and review link
+  layout in contributor tables. Recognized explicit local talk-review anchors.
+- Added regular-expression and Chinese-script-insensitive article search and
+  kept pagination visible for empty tables.
+- Batched rating and attribution checkpoints, limited category reads to used
+  scopes, and linked midnight hourly membership to the daily archive.
+- Bound report membership to confirmed revision IDs and kept talk banners
+  together above archived DYK discussions in repair proposals.
+- Displayed Hub and Web status separately and arranged scheduled and recent
+  work with compact file details and scrolling previews.
+- Used native annual chart templates with filename comments and prepared
+  downloadable SVGs in Simplified, Taiwan and Hong Kong Chinese.
+
 ### 0.9.18.post1 (2026-11-20 12:15 UTC)
 
 Overview: Moved browser page construction to Vue and saved nested newsletter

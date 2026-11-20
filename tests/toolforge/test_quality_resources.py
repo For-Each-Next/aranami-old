@@ -70,7 +70,9 @@ def _catalog_fixture() -> dict:
                     "editor": "1",
                     "name": authorship["authors"][0]["name"],
                     "share": 0.6,
-                    "bytes": 60,
+                    "bytes": 720,
+                    "characters": 600,
+                    "raw_bytes": 800,
                 },
             ],
         )
@@ -397,7 +399,7 @@ class QualityResourcePresentationTests(unittest.TestCase):
         for locale in ("en", "zh-hans", "zh-hant"):
             interface = Interface(locale)
             for available, share, expected in (
-                (False, None, "authorship_unavailable"),
+                (False, None, None),
                 (True, None, "no_top_editors"),
                 (True, 0.1, None),
                 (True, 0.10001, None),
@@ -433,7 +435,18 @@ class QualityResourcePresentationTests(unittest.TestCase):
                     locale,
                     _NOW,
                 )
-                for key in ("authorship_unavailable", "no_top_editors"):
+                assert (
+                    bool(
+                        context["quality_analysis"]["articles"][0][
+                            "authorship_popup_id"
+                        ],
+                    )
+                    == available
+                )
+                assert (
+                    'aria-controls="quality-article-1-authorship"' in output
+                ) == available
+                for key in ("no_top_editors",):
                     assert (
                         interface.text(f"quality_analysis.{key}") in output
                     ) == (key == expected)
@@ -448,7 +461,12 @@ class QualityResourcePresentationTests(unittest.TestCase):
         proof = {
             "authorship_available": True,
             "authorship_editors": [
-                {"editor": str(index), "name": name, "share": share}
+                {
+                    "editor": str(index),
+                    "name": name,
+                    "share": share,
+                    "characters": 500,
+                }
                 for index, (name, share) in enumerate(
                     (
                         ("Main author", 0.6),
@@ -530,7 +548,12 @@ class QualityResourcePresentationTests(unittest.TestCase):
             authors=["Primary at 25", "Boundary at 33", "Above 33"],
             authorship_available=True,
             authorship_editors=[
-                {"editor": str(index), "name": name, "share": share}
+                {
+                    "editor": str(index),
+                    "name": name,
+                    "share": share,
+                    "characters": 500,
+                }
                 for index, (name, share) in enumerate(
                     (
                         ("Primary at 25", 0.25),
@@ -540,7 +563,14 @@ class QualityResourcePresentationTests(unittest.TestCase):
                     1,
                 )
             ]
-            + [{"editor": "0|192.0.2.1", "name": None, "share": 0.45}],
+            + [
+                {
+                    "editor": "0|192.0.2.1",
+                    "name": None,
+                    "share": 0.45,
+                    "characters": 500,
+                },
+            ],
         )
         candidates = [
             {
@@ -556,6 +586,13 @@ class QualityResourcePresentationTests(unittest.TestCase):
                 "192.0.2.1",
             )
         ]
+        row["authorship_editors"].append({
+            "editor": "4",
+            "name": "Short edit",
+            "share": 0.4,
+            "characters": 499,
+        })
+        editors = row["authorship_editors"]
         directory = main_author_directory([row], candidates)
         assert [author["name"] for author in directory] == ["Above 33"]
         assert directory[0]["credit"] == 1
@@ -571,6 +608,7 @@ class QualityResourcePresentationTests(unittest.TestCase):
                 "url": None,
             }
             assert "Boundary at 33" in first["significant_authors"]
+            assert "Short edit" in first["significant_authors"]
             output = render_quality_analysis(data, None, None, locale, _NOW)
             cell = output.split(
                 '<td data-sort="Above 33, '
@@ -621,15 +659,7 @@ class QualityResourcePresentationTests(unittest.TestCase):
                 + "</span>"
                 in missing_output
             )
-            row.update(
-                authorship_available=True,
-                authorship_editors=[
-                    {"editor": "1", "name": "Primary at 25", "share": 0.25},
-                    {"editor": "2", "name": "Boundary at 33", "share": 0.33},
-                    {"editor": "3", "name": "Above 33", "share": 0.33001},
-                    {"editor": "0|192.0.2.1", "name": None, "share": 0.45},
-                ],
-            )
+            row.update(authorship_available=True, authorship_editors=editors)
 
     @staticmethod
     def test_annual_legend_and_columns_follow_selected_grades() -> None:

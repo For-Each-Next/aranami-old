@@ -32,6 +32,20 @@
 {% elif slot == 'license' %}<a href="https://commons.wikimedia.org/wiki/File:Symbol_question.svg#Summary">Public domain</a>
 {% endif %}{% endcall %}
 {% call(slot) attribution_card() %}
+{% if slot == 'media' %}<img src="/assets/icons/itn.svg" width="28" height="28" alt="">
+{% elif slot == 'title' %}<a href="/assets/icons/itn.svg">In the news appearances</a>
+{% elif slot == 'author' %}Ssolbergj.
+{% elif slot == 'source' %}<a href="https://commons.wikimedia.org/wiki/File:Globe_current.svg">Globe current.svg</a>.
+{% elif slot == 'license' %}<a href="https://creativecommons.org/licenses/by-sa/1.0/">CC BY-SA 1.0</a>
+{% endif %}{% endcall %}
+{% call(slot) attribution_card() %}
+{% if slot == 'media' %}<img src="/assets/icons/otd.svg" width="28" height="28" alt="">
+{% elif slot == 'title' %}<a href="/assets/icons/otd.svg">On this day appearances</a>
+{% elif slot == 'author' %}David Vignoni and Stannered.
+{% elif slot == 'source' %}<a href="https://commons.wikimedia.org/wiki/File:Nuvola_apps_date.svg">Nuvola apps date.svg</a>.
+{% elif slot == 'license' %}<a href="/assets/icons/lgpl-2.1.html">LGPL-2.1-or-later</a>
+{% endif %}{% endcall %}
+{% call(slot) attribution_card() %}
 {% if slot == 'media' %}<img src="/assets/icons/featured-candidate.svg" width="28" height="28" alt="">
 {% elif slot == 'title' %}<a href="/assets/icons/featured-candidate.svg">Featured article and featured list candidates</a>
 {% elif slot == 'author' %}<a href="https://commons.wikimedia.org/wiki/User:Rastrojo">Rastrojo</a>; based on <a href="https://commons.wikimedia.org/wiki/File:Cscr-candidate.png">Cscr-candidate.png</a> and <a href="https://commons.wikimedia.org/wiki/File:Cscr-featured.svg">Cscr-featured.svg</a>.

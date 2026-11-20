@@ -3,7 +3,6 @@
 <ul>{% for section in groups %}<li><a href="#{{ section.key }}">{{ section.title }}</a></li>{% endfor %}</ul>
 {% endblock %}
 {% block content %}
-<p class="page-description">{{ t.discussions.intro }}</p>
 {% if unavailable %}<p role="status">{{ unavailable }}</p>{% endif %}
 {% for section in groups %}
 <section class="section-flat" id="{{ section.key }}" aria-labelledby="{{ section.key }}-heading">

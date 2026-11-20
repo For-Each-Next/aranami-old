@@ -100,6 +100,7 @@ HISTORY_BANNER_TEMPLATES = {
         ("WikiProject banner shell", "WikiProject Video games"),
         _PROJECT_BANNER_RANK,
     ),
+    "Unregistered CGroup": _PROJECT_BANNER_RANK + 1,
     **dict.fromkeys(("Image requested", "Infobox requested"), 100),
     **dict.fromkeys(("Connected contributor", "Press", "High traffic"), 110),
     **dict.fromkeys(("Refideas", "To do", "Consensus"), 120),
@@ -856,11 +857,16 @@ def prepare_section0_repair(  # ruff: ignore[too-many-arguments]
     )
     if layout is None:
         return None
-    insertion, banners, history_order = layout
+    insertion, banners, history_order, archive_start = layout
     return {
         "history_insertion": insertion,
         "banner_order": banners,
         "history_order": history_order,
+        **(
+            {"archive_start": archive_start}
+            if archive_start is not None
+            else {}
+        ),
         "original_text": original,
         "history_template": targets[id(histories[0])] if histories else None,
         "legacy_dyk_templates": [targets[id(template)] for template in legacy],
@@ -894,7 +900,7 @@ def _banner_layout(
     aliases: Mapping[str, Iterable[str]],
     site: BaseSite,
     excluded: set[int],
-) -> tuple[int, list[dict], int] | None:
+) -> tuple[int, list[dict], int, int | None] | None:
     """Order recognized top-level slots using the Chinese layout guide.
 
     Only verified banner aliases, literal WikiProject names and manual
@@ -910,12 +916,23 @@ def _banner_layout(
         for name, position in HISTORY_BANNER_TEMPLATES.items()
         for alias in (name, *aliases.get(name, ()))
     }
+    archive_aliases = {
+        _banner_identity(name, site)
+        for name in ("DYKEntry/archive", *aliases.get("DYKEntry/archive", ()))
+    } - {None}
     ranked = []
     insertion = offset = 0
+    archive_start = None
     leading = True
     for node in code.nodes:
         text = str(node)
         end = offset + len(text)
+        if (
+            archive_start is None
+            and isinstance(node, Template)
+            and _banner_identity(str(node.name), site) in archive_aliases
+        ):
+            archive_start = offset
         if isinstance(node, Comment) or (
             isinstance(node, Text) and not text.strip()
         ):
@@ -935,7 +952,12 @@ def _banner_layout(
         return None
     ranked.sort(key=itemgetter(0))
     history_order = sum(rank <= _HISTORY_BANNER_RANK for rank, _span in ranked)
-    return insertion, [span for _rank, span in ranked], history_order
+    return (
+        insertion,
+        [span for _rank, span in ranked],
+        history_order,
+        archive_start,
+    )
 
 
 def _banner_rank(

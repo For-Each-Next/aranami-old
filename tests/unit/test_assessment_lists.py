@@ -22,6 +22,8 @@ from tasks.zhwiki import assessment_lists as source
 from updater.edit_summary import MAX_EDIT_SUMMARY_BYTES
 from updater.services.zhwiki import assessment_lists as service
 
+_ORIGINAL_REVISION = 101
+_PUBLISHED_REVISION = 102
 _TEXT = (
     'Intro<section begin="count" /><!-- aranami begin="assessment-count" -->'
     '1<!-- aranami end="assessment-count" --><section end="count" />'
@@ -426,6 +428,7 @@ class TestAssessmentJob(TestCase):
         """Publish content to the destination selected by the job."""
         context = MagicMock()
         context.dry = False
+        context.confirmed_revision.return_value = _PUBLISHED_REVISION
         text = service.update_text(
             _A_CONFIG,
             _TEXT,
@@ -437,7 +440,12 @@ class TestAssessmentJob(TestCase):
             patch.object(
                 job,
                 "read_pages",
-                return_value=[MagicMock(text=_TEXT)],
+                return_value=[
+                    MagicMock(
+                        text=_TEXT,
+                        latest_revision_id=_ORIGINAL_REVISION,
+                    ),
+                ],
             ) as read,
             patch.object(
                 job,
@@ -479,7 +487,7 @@ class TestAssessmentJob(TestCase):
         save.assert_called_once_with(
             context.site,
             "User:Example/Custom report",
-            text,
+            _PUBLISHED_REVISION,
             {"New": 1, "Another": 2},
         )
 
@@ -499,7 +507,10 @@ class TestAssessmentJob(TestCase):
         """Attempt all targets before reporting failures."""
         context = MagicMock()
         context.dry = False
-        pages = [MagicMock(text=_TEXT) for _ in job.ASSESSMENT_LISTS]
+        pages = [
+            MagicMock(text=_TEXT, latest_revision_id=_ORIGINAL_REVISION)
+            for _ in job.ASSESSMENT_LISTS
+        ]
         outputs = [
             RuntimeError("one list failed"),
             *[MembershipReport(_TEXT, {"Old": 1}) for _ in pages[1:]],
@@ -542,7 +553,10 @@ class TestAssessmentJob(TestCase):
                 The two destinations' existing contents.
             """
             elapsed[0] += 10
-            return [MagicMock(text=_TEXT), MagicMock(text=_TEXT)]
+            return [
+                MagicMock(text=_TEXT, latest_revision_id=_ORIGINAL_REVISION),
+                MagicMock(text=_TEXT, latest_revision_id=_ORIGINAL_REVISION),
+            ]
 
         def prepare(
             site: object,
@@ -652,6 +666,7 @@ class TestAssessmentJob(TestCase):
         ):
             with self.subTest(dry=dry, failed=failed):
                 context = MagicMock(dry=dry)
+                context.confirmed_revision.return_value = _PUBLISHED_REVISION
                 if failed:
                     context.publish.side_effect = RuntimeError(
                         "publication failed",
@@ -667,7 +682,12 @@ class TestAssessmentJob(TestCase):
                     patch.object(
                         job,
                         "read_pages",
-                        return_value=[MagicMock(text=original)],
+                        return_value=[
+                            MagicMock(
+                                text=original,
+                                latest_revision_id=_ORIGINAL_REVISION,
+                            ),
+                        ],
                     ),
                     patch.object(
                         job,
@@ -709,7 +729,7 @@ class TestAssessmentJob(TestCase):
                     save.assert_called_once_with(
                         context.site,
                         "Report",
-                        original if dry else text,
+                        _ORIGINAL_REVISION if dry else _PUBLISHED_REVISION,
                         {"Old": 11, "Removed": 12} if dry else report.members,
                     )
                     assert [call[0] for call in calls.mock_calls] == [
@@ -735,7 +755,12 @@ class TestAssessmentJob(TestCase):
             patch.object(
                 job,
                 "read_pages",
-                return_value=[MagicMock(text=_TEXT)],
+                return_value=[
+                    MagicMock(
+                        text=_TEXT,
+                        latest_revision_id=_ORIGINAL_REVISION,
+                    ),
+                ],
             ),
             patch.object(
                 job,
@@ -750,10 +775,21 @@ class TestAssessmentJob(TestCase):
         ):
             for _ in range(previews):
                 job.run(lists=(("Report", _A_CONFIG),), context=context)
-            assert job.load_membership(context.site, "Report", _TEXT) == {
+            assert job.load_membership(
+                context.site,
+                "Report",
+                _ORIGINAL_REVISION,
+            ) == {
                 "Old": 11,
             }
-            assert job.load_membership(context.site, "Report", text) == {}
+            assert (
+                job.load_membership(
+                    context.site,
+                    "Report",
+                    _PUBLISHED_REVISION,
+                )
+                == {}
+            )
         assert prepare.call_count == previews
         summaries = [
             call.args[0].summary for call in context.publish.call_args_list
@@ -776,7 +812,13 @@ class TestAssessmentJob(TestCase):
                 patch.object(
                     job,
                     "read_pages",
-                    return_value=[MagicMock(text=_TEXT)] * len(outcomes),
+                    return_value=[
+                        MagicMock(
+                            text=_TEXT,
+                            latest_revision_id=_ORIGINAL_REVISION,
+                        ),
+                    ]
+                    * len(outcomes),
                 ),
                 patch.object(
                     job,

@@ -49,6 +49,13 @@
 {% for draft in drafts %}
 <section class="newsletter-draft" id="newsletter-page-{{ loop.index }}" aria-labelledby="newsletter-heading-{{ loop.index }}">
   <h2 id="newsletter-heading-{{ loop.index }}">{{ draft.heading }}</h2>
+  {% if draft.charts %}
+  <div class="newsletter-charts">
+    {% for chart in draft.charts %}
+    <figure lang="{{ chart.language }}"><img src="{{ chart.url }}" alt="{{ chart.title }}" loading="lazy"><figcaption><a href="{{ chart.url }}" download="{{ chart.filename }}">{{ chart.title }} · {{ chart.label }}{% if language_tag == 'en' %} (SVG){% endif %}</a></figcaption></figure>
+    {% endfor %}
+  </div>
+  {% endif %}
   {% with draft_index=loop.index %}{% include "includes/newsletter_draft.html" %}{% endwith %}
   <div class="newsletter-copy-controls">
     <button type="button" class="ui-button ui-button--action-default ui-button--weight-normal" data-newsletter-copy="newsletter-text-{{ loop.index }}" data-copy-success="{{ t.newsletter.copied }}" data-copy-failure="{{ t.newsletter.copy_fallback }}" aria-describedby="newsletter-copy-status-{{ loop.index }}">{{ t.newsletter['copy'] }}</button>

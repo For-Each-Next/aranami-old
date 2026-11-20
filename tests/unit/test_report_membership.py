@@ -1,6 +1,5 @@
 """Verify cached identities and uncached membership comparisons."""
 
-import hashlib
 import re
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -48,7 +47,7 @@ class TestReportMembershipCache(TestCase):
         self.root = Path(directory.name)
         self.site = OfflineSite("zh", "wikipedia")
         self.target = "WikiProject:电子游戏/认证条目/甲"
-        self.text = "# [[Game]]"
+        self.revision = 1_023
         self.cache_directory = (
             self.root
             / "cache"
@@ -62,14 +61,15 @@ class TestReportMembershipCache(TestCase):
         working_directory.start()
         self.addCleanup(working_directory.stop)
 
-    def test_snapshot_uses_parquet_and_requires_matching_report_text(
+    def test_snapshot_uses_parquet_and_requires_matching_revision(
         self,
     ) -> None:
-        """Read saved source IDs only for exact published content."""
+        """Read source IDs for the exact published revision."""
         members = {"Game": 123, "Legacy": None}
-        cache.save_membership(self.site, self.target, self.text, members)
+        cache.save_membership(self.site, self.target, self.revision, members)
         assert (
-            cache.load_membership(self.site, self.target, self.text) == members
+            cache.load_membership(self.site, self.target, self.revision)
+            == members
         )
         [path] = self.cache_directory.glob("*.parquet")
         assert path.relative_to(self.root).as_posix().isascii()
@@ -80,35 +80,44 @@ class TestReportMembershipCache(TestCase):
         assert not cache.load_membership(
             self.site,
             self.target,
-            "changed text",
+            self.revision + 1,
         )
         path.unlink()
-        assert not cache.load_membership(self.site, self.target, self.text)
+        assert not cache.load_membership(self.site, self.target, self.revision)
 
     def test_report_title_and_destination_wiki_isolate_snapshots(self) -> None:
         """Keep identities separate across reports and wiki sites."""
-        cache.save_membership(self.site, self.target, self.text, {"Game": 123})
+        cache.save_membership(
+            self.site,
+            self.target,
+            self.revision,
+            {"Game": 123},
+        )
         other = OfflineSite("en", "wikipedia")
-        cache.save_membership(other, self.target, self.text, {"Game": 456})
-        assert cache.load_membership(self.site, self.target, self.text) == {
+        cache.save_membership(other, self.target, self.revision, {"Game": 456})
+        assert cache.load_membership(
+            self.site,
+            self.target,
+            self.revision,
+        ) == {
             "Game": 123,
         }
-        assert cache.load_membership(other, self.target, self.text) == {
+        assert cache.load_membership(other, self.target, self.revision) == {
             "Game": 456,
         }
         assert not cache.load_membership(
             self.site,
             "Another report",
-            self.text,
+            self.revision,
         )
 
     def test_empty_reports_keep_a_readable_snapshot(self) -> None:
         """Store empty membership with an explicit schema."""
-        cache.save_membership(self.site, self.target, self.text, {})
-        assert not cache.load_membership(self.site, self.target, self.text)
+        cache.save_membership(self.site, self.target, self.revision, {})
+        assert not cache.load_membership(self.site, self.target, self.revision)
         [path] = self.cache_directory.glob("*.parquet")
         assert pl.read_parquet(path).schema == pl.Schema({
-            "text_sha256": pl.String,
+            "revision_id": pl.Int64,
             "title": pl.String,
             "page_id": pl.Int64,
         })
@@ -116,8 +125,8 @@ class TestReportMembershipCache(TestCase):
     def test_parquet_title_remains_a_generation_directory(self) -> None:
         """Preserve timestamped files for file-like wiki titles."""
         target = self.target + ".parquet"
-        cache.save_membership(self.site, target, self.text, {"Game": 123})
-        assert cache.load_membership(self.site, target, self.text) == {
+        cache.save_membership(self.site, target, self.revision, {"Game": 123})
+        assert cache.load_membership(self.site, target, self.revision) == {
             "Game": 123,
         }
         directory = (
@@ -140,9 +149,18 @@ class TestReportMembershipCache(TestCase):
         )
         old.parent.mkdir(parents=True)
         old.write_bytes(b"old cache")
-        assert not cache.load_membership(self.site, self.target, self.text)
-        cache.save_membership(self.site, self.target, self.text, {"游戏": 123})
-        assert cache.load_membership(self.site, self.target, self.text) == {
+        assert not cache.load_membership(self.site, self.target, self.revision)
+        cache.save_membership(
+            self.site,
+            self.target,
+            self.revision,
+            {"游戏": 123},
+        )
+        assert cache.load_membership(
+            self.site,
+            self.target,
+            self.revision,
+        ) == {
             "游戏": 123,
         }
         assert old.read_bytes() == b"old cache"
@@ -150,33 +168,41 @@ class TestReportMembershipCache(TestCase):
 
     def test_malformed_and_unreadable_snapshots_are_disposable(self) -> None:
         """Ignore missing fields, invalid IDs, and duplicate titles."""
-        cache.save_membership(self.site, self.target, self.text, {"Game": 123})
+        cache.save_membership(
+            self.site,
+            self.target,
+            self.revision,
+            {"Game": 123},
+        )
         [path] = self.cache_directory.glob("*.parquet")
         identity = pl.read_parquet_metadata(path)["aranami.cache"]
-        digest = hashlib.sha256(self.text.encode()).hexdigest()
         malformed = (
             pl.DataFrame({"title": ["Game"]}),
             pl.DataFrame({
-                "text_sha256": [digest],
+                "revision_id": [self.revision],
                 "title": ["Game"],
                 "page_id": [0],
             }),
             pl.DataFrame({
-                "text_sha256": [digest, digest],
+                "revision_id": [self.revision] * 2,
                 "title": ["Game", "Game"],
                 "page_id": [123, 456],
             }),
         )
         for frame in malformed:
             frame.write_parquet(path, metadata={"aranami.cache": identity})
-            assert not cache.load_membership(self.site, self.target, self.text)
+            assert not cache.load_membership(
+                self.site,
+                self.target,
+                self.revision,
+            )
         path.write_text("not parquet", encoding="utf-8")
-        assert not cache.load_membership(self.site, self.target, self.text)
+        assert not cache.load_membership(self.site, self.target, self.revision)
 
     def test_failed_replacement_preserves_last_healthy_snapshot(self) -> None:
         """Keep the last snapshot when atomic replacement fails."""
         original = {"Game": 123}
-        cache.save_membership(self.site, self.target, self.text, original)
+        cache.save_membership(self.site, self.target, self.revision, original)
         with patch.object(
             cache.Path,
             "replace",
@@ -185,11 +211,11 @@ class TestReportMembershipCache(TestCase):
             cache.save_membership(
                 self.site,
                 self.target,
-                "new text",
+                self.revision + 1,
                 {"New": 456},
             )
         assert (
-            cache.load_membership(self.site, self.target, self.text)
+            cache.load_membership(self.site, self.target, self.revision)
             == original
         )
         assert not list(self.cache_directory.glob(".*.parquet"))

@@ -38,6 +38,8 @@ from urllib.parse import unquote
 
 import mwparserfromhell
 from mwparserfromhell.nodes import Tag, Template, Text, Wikilink
+from pywikibot import Page
+from pywikibot.exceptions import InvalidTitleError
 
 from shared.support.dates import parse_complete_date, parse_date
 from shared.support.templates import (
@@ -244,6 +246,31 @@ def nomination_attribution(
     return result
 
 
+def _nomination_anchor(
+    link: str,
+    article_title: str | None,
+    site: BaseSite,
+) -> str | None:
+    """Resolve a fragment or explicit title for the current talk page.
+
+    Returns:
+        A local anchor to verify against the parsed talk page.
+    """
+    target, separator, fragment = link.partition("#")
+    if not separator or not fragment.strip():
+        return None
+    if target:
+        if article_title is None:
+            return None
+        try:
+            talk = Page(site, article_title).toggleTalkPage()
+            if talk != Page(site, unquote(target.strip())):
+                return None
+        except InvalidTitleError:
+            return None
+    return "#" + fragment
+
+
 def _date(value: str | None) -> date | None:
     """Parse a complete recorded date without inventing calendar parts.
 
@@ -281,6 +308,8 @@ def _event(
 def _quality_events(
     template: Template,
     code: Wikicode,
+    article_title: str | None,
+    site: BaseSite,
     *,
     include_reviews: bool = False,
 ) -> list[dict[str, object]]:
@@ -312,6 +341,13 @@ def _quality_events(
         result = (
             template_get_param(template, prefix + "result") or ""
         ).casefold()
+        anchor = _nomination_anchor(
+            str(
+                template_get_raw_param(template, prefix + "link") or "",
+            ).strip(),
+            article_title,
+            site,
+        )
         if include_reviews and action_code in {"FAC", "FLC", "GAN"}:
             outcome = (
                 "passed"
@@ -331,13 +367,7 @@ def _quality_events(
                 )
                 review["action_type"] = action_code
                 review.update(
-                    nomination_attribution(
-                        code,
-                        str(
-                            template_get_raw_param(template, prefix + "link")
-                            or "",
-                        ).strip(),
-                    ),
+                    nomination_attribution(code, anchor),
                 )
                 events.append(review)
         action = (
@@ -357,13 +387,7 @@ def _quality_events(
             )
             if action == "added" and event["grade"] in {"FA", "GA", "FL"}:
                 event.update(
-                    nomination_attribution(
-                        code,
-                        str(
-                            template_get_raw_param(template, prefix + "link")
-                            or "",
-                        ).strip(),
-                    ),
+                    nomination_attribution(code, anchor),
                 )
             events.append(event)
     return events
@@ -464,6 +488,8 @@ def extract_events(  # ruff: ignore[too-many-arguments] - Preserve existing alia
                 *_quality_events(
                     template,
                     code,
+                    article_title,
+                    site,
                     include_reviews=include_reviews,
                 ),
                 *_notice_events(template),

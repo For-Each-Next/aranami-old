@@ -1151,9 +1151,15 @@ summary:hover {
     max-inline-size: 100%;
 }
 
+.dataset-preview-table .ui-table__table {
+    inline-size: max-content;
+    font-size: .8125rem;
+    font-variant-numeric: tabular-nums;
+}
+
 .dataset-preview-table th, .dataset-preview-table td {
-    min-inline-size: 6rem;
-    max-inline-size: 20rem;
+    max-inline-size: 24ch;
+    padding: .3rem .5rem;
     overflow-wrap: anywhere;
 }
 
@@ -1167,6 +1173,7 @@ summary:hover {
 .dataset-update-details { padding-inline-start: 1.5rem; }
 .dataset-update-details > li + li { margin-block-start: .35rem; }
 .dataset-update-details a { overflow-wrap: anywhere; }
+.dataset-update-note { padding-inline-start: .75rem; }
 .dataset-update-shape, [data-clock="dataset-elapsed"] { font-variant-numeric: tabular-nums; }
 
 .attribution-grid {
@@ -1630,8 +1637,31 @@ table.quality-author-directory {
     inline-size: 8em;
 }
 
+table.quality-author-articles {
+    table-layout: auto;
+    min-inline-size: 25rem;
+}
+
 .quality-author-articles .quality-column-listed {
-    inline-size: 14em;
+    inline-size: 1%;
+}
+
+.quality-author-articles :is(th, td):nth-child(2) {
+    min-inline-size: 12rem;
+}
+
+.quality-author-articles :is(th, td):nth-child(3) {
+    min-inline-size: 4rem;
+    white-space: nowrap;
+}
+
+.quality-author-articles :is(th, td):last-child {
+    white-space: nowrap;
+    overflow-wrap: normal;
+}
+
+.quality-author-articles td:last-child time {
+    white-space: nowrap;
 }
 
 .quality-data-table .quality-column-active {
@@ -1663,6 +1693,7 @@ table.quality-author-directory {
 .page-updates .quality-column-ordinal,
 .page-updates .quality-data-table th:first-child {
     inline-size: 5em;
+    min-inline-size: 5em;
 }
 
 .quality-data-table thead th,
@@ -2229,8 +2260,7 @@ footer nav {
 .ui-table-pager__end { flex-wrap: wrap; }
 .ui-table-pager select { min-block-size: 2.25rem; font: inherit; }
 .ui-table-pager .ui-button { min-block-size: 2.25rem; }
-.history-pagination > span,
-.dataset-pagination > span { order: -1; text-align: start; }
+.dataset-page-numbers { margin-block-end: 1rem; }
 @media (max-width: 600px) {
     .ui-table-pager__center { min-width: 9rem; }
     .ui-table-pager__end { justify-content: flex-end; margin-inline-start: auto; }

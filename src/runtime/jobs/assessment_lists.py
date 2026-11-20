@@ -12,7 +12,7 @@ from data.reports import report_key
 from data.runtime.report_membership import load_membership, save_membership
 from runtime.jobs import ProposedEdit, job_run
 from shared.config import TASK_DEFINITIONS
-from shared.sources.wiki import read_pages
+from shared.sources.wiki import preloaded_revision_id, read_pages
 from tasks.zhwiki.assessment_lists import (
     prepare_data,
     read_assessments,
@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     import polars as pl
+    from pywikibot import Page
 
     from runtime.jobs import JobContext
 
@@ -98,7 +99,7 @@ def _publish_list(
     active: JobContext,
     title: str,
     config: AssessmentList,
-    original_text: str,
+    page: Page,
     assessments: pl.DataFrame | None = None,
 ) -> bool:
     """Publish a prepared list and cache its matching local identities.
@@ -107,13 +108,15 @@ def _publish_list(
         active: Shared context selecting live publication or preview.
         title: Destination report title and local snapshot identity.
         config: Category and list-rendering configuration.
-        original_text: Destination text to compare and replace.
+        page: Destination with preloaded text and revision ID.
         assessments: Current project grades and importance values.
 
     Returns:
         Whether the destination was saved or verified unchanged.
     """
-    cached = load_membership(active.site, title, original_text)
+    original_text = page.text
+    original_revision = preloaded_revision_id(page)
+    cached = load_membership(active.site, title, original_revision)
     data = prepare_data(
         active.site,
         config,
@@ -148,11 +151,16 @@ def _publish_list(
         save_membership(
             active.site,
             title,
-            original_text,
+            original_revision,
             data.preview_members,
         )
     else:
-        save_membership(active.site, title, report.text, report.members)
+        save_membership(
+            active.site,
+            title,
+            active.confirmed_revision(title),
+            report.members,
+        )
     return confirmed is True
 
 
@@ -195,7 +203,7 @@ def run(
                         active,
                         title,
                         config,
-                        page.text,
+                        page,
                         assessments,
                     )
                     confirmed_all &= confirmed

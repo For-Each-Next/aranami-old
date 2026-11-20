@@ -69,6 +69,19 @@ def read_pages(site: BaseSite, titles: Iterable[str]) -> list[pywikibot.Page]:
     return [loaded[page] for page in pages]
 
 
+def preloaded_revision_id(page: pywikibot.Page) -> int | None:
+    """Read the revision associated with a preloaded wiki page.
+
+    Returns:
+        A positive revision ID, or none if the page does not exist.
+    """
+    try:
+        revision = page.latest_revision_id
+    except AttributeError, pywikibot.exceptions.NoPageError:
+        return None
+    return revision if type(revision) is int and revision > 0 else None
+
+
 def read_page_ids(
     site: BaseSite,
     page_ids: Iterable[int],

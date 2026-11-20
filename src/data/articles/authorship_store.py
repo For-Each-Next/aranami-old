@@ -1,8 +1,7 @@
 """Retain successful listing-time authorship in bounded Parquet.
 
-Save every success so historical backfills resume without requesting
-completed listings again. Corruption and size overflow preserve the
-existing durable evidence and fail explicitly.
+Save successful batches so historical backfills resume from saved
+listings. Corruption and size overflow preserve the durable evidence.
 
 Older token-count observations remain readable with unknown byte counts
 and creation revision IDs. Earlier byte scores keep their original
@@ -42,6 +41,8 @@ CONTRIBUTOR_SCHEMA = {
     "name": pl.String,
     "tokens": pl.UInt32,
     "bytes": pl.UInt32,
+    "characters": pl.UInt32,
+    "raw_bytes": pl.UInt32,
     "share": pl.Float64,
 }
 SCHEMA = {
@@ -62,6 +63,79 @@ SCHEMA = {
 _MAX_ROWS = 20_000
 _MAX_BYTES = 32 * 1024 * 1024
 _SHARE_TOLERANCE = 1e-9
+MAIN_SHARE_THRESHOLD = 0.33
+MAIN_MIN_CHARACTERS = 500
+SIGNIFICANT_SHARE_THRESHOLD = 0.1
+UTF8_MAX_BYTES_PER_CHARACTER = 4
+
+
+def restore_contributor_characters(frame: pl.DataFrame) -> pl.DataFrame:
+    """Add measure fields to earlier byte evidence.
+
+    Returns:
+        The updated frame if its contributor type matched.
+    """
+    old = pl.List(
+        pl.Struct({
+            key: dtype
+            for key, dtype in CONTRIBUTOR_SCHEMA.items()
+            if key not in {"characters", "raw_bytes"}
+        }),
+    )
+    if frame.schema.get("contributors") != old:
+        return frame
+    restored = frame.cast({"contributors": SCHEMA["contributors"]})
+    if "contract" not in frame.columns:
+        return restored
+    return restored.with_columns(
+        pl
+        .when(pl.col("contract").str.contains("token-bytes", literal=True))
+        .then(
+            pl.col("contributors").list.eval(
+                pl.element().struct.with_fields(
+                    pl.element().struct.field("bytes").alias("raw_bytes"),
+                ),
+            ),
+        )
+        .otherwise(pl.col("contributors"))
+        .alias("contributors"),
+    )
+
+
+def complete_contributor_evidence(frame: pl.DataFrame) -> pl.DataFrame:
+    """Select observations with the new contributor measures.
+
+    Returns:
+        Results with raw-byte measures for significant contributors.
+    """
+    return frame.filter(
+        ~pl
+        .col("contributors")
+        .list.eval(
+            pl.element().struct.field("raw_bytes").is_null()
+            & (
+                pl.element().struct.field("share")
+                >= SIGNIFICANT_SHARE_THRESHOLD
+            ),
+        )
+        .list.any(),
+    )
+
+
+def preferred_observations(
+    frame: pl.DataFrame,
+    key: list[str],
+) -> pl.DataFrame:
+    """Keep the exact score when a later backfill can only use fallback.
+
+    Returns:
+        The latest preferred evidence for each supplied identity.
+    """
+    return frame.sort(pl.col("contract") == CONTRACT, "fetched_at").unique(
+        subset=key,
+        keep="last",
+        maintain_order=True,
+    )
 
 
 def _validate(frame: pl.DataFrame) -> None:
@@ -169,6 +243,8 @@ def _validate(frame: pl.DataFrame) -> None:
         pl.any_horizontal(pl.col("editor", "tokens", "share").is_null())
         | ~pl.col("editor").str.contains(r"^([1-9][0-9]*|0\|[^\x00-\x20]+)$")
         | (pl.col("tokens") == 0)
+        | (pl.col("characters") > pl.col("bytes")).fill_null(value=False)
+        | (pl.col("bytes") > pl.col("raw_bytes")).fill_null(value=False)
         | ~pl.col("share").is_finite()
         | ~pl.col("share").is_between(0, 1)
         | (~pl.col("contract").is_in(_BYTE_CONTRACTS) & (pl.col("share") <= 0))
@@ -256,6 +332,7 @@ def load(path: Path) -> pl.DataFrame:
     except pl.exceptions.PolarsError as error:
         message = "Authorship data is not readable Parquet."
         raise ValueError(message) from error
+    frame = restore_contributor_characters(frame)
     legacy = dict(SCHEMA)
     legacy.pop("eligible_bytes")
     legacy.pop("creation_revision")
@@ -263,7 +340,7 @@ def load(path: Path) -> pl.DataFrame:
         pl.Struct({
             name: dtype
             for name, dtype in CONTRIBUTOR_SCHEMA.items()
-            if name != "bytes"
+            if name not in {"bytes", "characters", "raw_bytes"}
         }),
     )
     if frame.schema == pl.Schema(legacy):

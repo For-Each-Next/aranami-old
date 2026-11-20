@@ -153,6 +153,8 @@ class AuthorshipTests(TestCase):  # ruff: ignore[too-many-public-methods]
                 "name": "Alice",
                 "tokens": 2,
                 "bytes": 6,
+                "characters": 6,
+                "raw_bytes": 6,
                 "share": 0.4,
             },
             {
@@ -160,6 +162,8 @@ class AuthorshipTests(TestCase):  # ruff: ignore[too-many-public-methods]
                 "name": "Bob",
                 "tokens": 2,
                 "bytes": 6,
+                "characters": 6,
+                "raw_bytes": 6,
                 "share": 0.4,
             },
         ]
@@ -251,6 +255,8 @@ class AuthorshipTests(TestCase):  # ruff: ignore[too-many-public-methods]
                 "name": "Alice",
                 "tokens": 1,
                 "bytes": 6,
+                "characters": 2,
+                "raw_bytes": 6,
                 "share": 1.0,
             },
             {
@@ -258,6 +264,8 @@ class AuthorshipTests(TestCase):  # ruff: ignore[too-many-public-methods]
                 "name": "Bob",
                 "tokens": 3,
                 "bytes": 0,
+                "characters": 0,
+                "raw_bytes": len("<ref>citationinformation</ref>"),
                 "share": 0.0,
             },
         ]

@@ -14,6 +14,12 @@ from math import floor, log, log10
 from operator import itemgetter
 from urllib.parse import quote
 
+from data.articles.authorship_store import (
+    MAIN_MIN_CHARACTERS,
+    MAIN_SHARE_THRESHOLD,
+    SIGNIFICANT_SHARE_THRESHOLD,
+    UTF8_MAX_BYTES_PER_CHARACTER,
+)
 from data.articles.quality_selection import quartiles
 from shared.assessment_profiles import assessment_profile
 from webservice.presentation import (
@@ -66,8 +72,6 @@ _DISTRIBUTION_GRADES = tuple(
     == group
 )
 _FIRST_FILTER_YEAR = 2009
-_DETAIL_SHARE_THRESHOLD = 0.1
-_MAIN_SHARE_THRESHOLD = 0.33
 _PROSE_LENGTH_LINEAR = 25_000
 
 
@@ -431,7 +435,9 @@ def _articles(data: dict, interface: Interface) -> list[dict]:
             ]
             if authorship["available"]
             else [],
-            "authorship_popup_id": f"quality-article-{page_id}-authorship",
+            "authorship_popup_id": f"quality-article-{page_id}-authorship"
+            if authorship["available"]
+            else None,
             "authorship_popup_title": interface.text(
                 "quality_analysis.authorship_details",
                 title=display_title(
@@ -509,7 +515,7 @@ def _authorship(row: dict, interface: Interface) -> dict:
         "editors": [
             _editor(editor, interface)
             for editor in source.get("contributors", [])
-            if editor.get("share", 0) >= _DETAIL_SHARE_THRESHOLD
+            if editor.get("share", 0) >= SIGNIFICANT_SHARE_THRESHOLD
         ],
     }
 
@@ -531,19 +537,29 @@ def _editor(source: dict, interface: Interface) -> dict:
             name, url = None, None
         else:
             url = title_url(f"Special:Contributions/{name}")
+    characters = source.get("characters")
+    raw_bytes = source.get("raw_bytes")
+    character_floor = characters or 0
+    if characters is None and raw_bytes is None:
+        # Older exact scores can prove a lower bound, even for UTF-8.
+        character_floor = (
+            source.get("bytes") or 0
+        ) // UTF8_MAX_BYTES_PER_CHARACTER
     return {
         "name": name
         or interface.text("quality_analysis.unknown_editor", editor=identity),
         "url": url,
         "anonymous": identity.startswith("0|"),
         "share": source["share"],
+        "character_floor": character_floor,
         "share_label": f"{source['share'] * 100:.1f}%",
-        "bytes_label": _number(source.get("bytes")),
+        "characters_label": _number(characters),
+        "bytes_label": _number(raw_bytes),
     }
 
 
 def _main_contributors(proof: dict, interface: Interface) -> list[dict]:
-    """Select above-33% contributors with unlinked anonymous labels.
+    """Require a share above 33% and 500 attributed characters.
 
     Returns:
         Raw filter identities and separate display labels and links.
@@ -559,7 +575,8 @@ def _main_contributors(proof: dict, interface: Interface) -> list[dict]:
             "url": None if editor["anonymous"] else editor["url"],
         }
         for editor in proof["editors"]
-        if editor["share"] > _MAIN_SHARE_THRESHOLD
+        if editor["share"] > MAIN_SHARE_THRESHOLD
+        and editor["character_floor"] >= MAIN_MIN_CHARACTERS
     ]
 
 
@@ -604,7 +621,7 @@ def main_author_directory(
     """Apply the website threshold to the registered-author directory.
 
     Returns:
-        Author records containing only observed above-33% articles.
+        Author records containing only articles meeting both thresholds.
     """
     interface = Interface("en")
     qualified = {
@@ -768,6 +785,9 @@ def quality_analysis_context(data: dict, interface: Interface) -> dict:
                         "authorship_note",
                         "editor_share",
                         "editor_bytes",
+                        "editor_characters",
+                        "editor_bytes_hint",
+                        "editor_characters_hint",
                         "words",
                         "authorship_details",
                         "review",
@@ -841,12 +861,6 @@ def quality_analysis_context(data: dict, interface: Interface) -> dict:
             "available": bool(data.get("available")),
             "matrix": matrix,
             "listing_authors": data.get("authorship_basis") == "listed",
-            "observed_at": data.get("observed_at"),
-            "observed_label": utc_time(data.get("observed_at")),
-            "prepared_at": data.get("prepared_at") or data.get("observed_at"),
-            "prepared_label": utc_time(
-                data.get("prepared_at") or data.get("observed_at"),
-            ),
             "total": _number(total),
             "coverage_cards": _coverage_cards(data, interface),
             "assessment_comparison": data.get("assessment_comparison"),

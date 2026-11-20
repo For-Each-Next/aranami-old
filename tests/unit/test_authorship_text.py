@@ -34,9 +34,14 @@ class AuthorshipTextTests(unittest.TestCase):
         """Count original UTF-8 bytes and preserve provenance."""
         tokens = _tokens("a", "中", "文", "ü")
         result = score_tokens(tokens, "A \t中文\nÜ")
-        assert_frame_equal(result.drop("bytes"), tokens)
+        assert_frame_equal(
+            result.drop("bytes", "characters", "raw_bytes"),
+            tokens,
+        )
         assert result["bytes"].dtype == pl.UInt32
         assert result["bytes"].to_list() == [1, 3, 3, 2]
+        assert result["raw_bytes"].to_list() == [1, 3, 3, 2]
+        assert result["characters"].to_list() == [1, 1, 1, 1]
 
     @staticmethod
     def test_repeated_reference_and_body_strings_remain_distinct() -> None:
@@ -45,6 +50,12 @@ class AuthorshipTextTests(unittest.TestCase):
         tokens = _tokens("same", reference.lower(), "same")
         result = score_tokens(tokens, f"Same {reference} Same")
         assert result["bytes"].to_list() == [4, 0, 4]
+        assert result["raw_bytes"].to_list() == [
+            4,
+            len(reference.replace(" ", "")),
+            4,
+        ]
+        assert result["characters"].to_list() == [4, 0, 4]
 
     @staticmethod
     def test_partial_token_reference_spans_and_self_closing_tags() -> None:

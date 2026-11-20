@@ -124,28 +124,6 @@ function AssessmentMatrix(context) {
     const { t, quality_analysis } = context;
     return hasContent(quality_analysis?.matrix) ? (
         <>
-            <p class="analysis-presets">
-                <a
-                    href={
-                        "/quality-analysis/?lang=" +
-                        attribute(quality_analysis?.locale) +
-                        (hasContent(quality_analysis?.listing_authors) ? "&listing_authors=1" : "")
-                    }
-                >
-                    {t.quality_authorship.only_quality}
-                </a>
-                {" · "}
-                <a
-                    href={
-                        "/quality-analysis/?lang=" +
-                        attribute(quality_analysis?.locale) +
-                        "&all_grades=1" +
-                        (hasContent(quality_analysis?.listing_authors) ? "&listing_authors=1" : "")
-                    }
-                >
-                    {t.quality_analysis.all_rows}
-                </a>
-            </p>
             <p class="context" data-quality-chart-status={""} role="status" aria-live="polite"></p>
             <form
                 action="/quality-analysis/"
@@ -403,22 +381,25 @@ function QualityOverview(context) {
                                 class="ui-table-pager"
                                 aria-label={attribute(t.quality_analysis.articles)}
                             >
-                                <button type="button" class="ui-button" data-coverage-page="first">
-                                    {t.backlog.first}
-                                </button>
-                                <button type="button" class="ui-button" data-coverage-page="previous">
-                                    {t.backlog.previous}
-                                </button>
+                                <label class="ui-table-pager__start">
+                                    {t.reports.page_size}{" "}
+                                    <select value={50}>
+                                        {[20, 50, 100].map(count => (
+                                            <option key={count} value={count}>{format(t.reports.rows, { count })}</option>
+                                        ))}
+                                    </select>
+                                </label>
                                 <span
+                                    class="ui-table-pager__center"
                                     data-coverage-page-status={""}
-                                    data-template={attribute(t.data.preview_note)}
+                                    data-template={attribute(t.reports.page_status)}
                                 ></span>
-                                <button type="button" class="ui-button" data-coverage-page="next">
-                                    {t.backlog.next}
-                                </button>
-                                <button type="button" class="ui-button" data-coverage-page="last">
-                                    {t.backlog.last}
-                                </button>
+                                <div class="ui-table-pager__end">
+                                    {[["first", t.backlog.first], ["previous", t.backlog.previous],
+                                      ["next", t.backlog.next], ["last", t.backlog.last]].map(([key, label]) => (
+                                        <button key={key} type="button" class="ui-button" data-coverage-page={key}>{label}</button>
+                                    ))}
+                                </div>
                             </nav>
                         </>,
                         "analysis-coverage-dialog",
@@ -568,8 +549,12 @@ function ArticleDirectory(context) {
                                     maxlength="200"
                                 />
                             </label>
-                            <label>
-                                {display(t.quality_analysis.author_filter)}
+                                <label>
+                                    <input type="checkbox" data-analysis-regex={""} />
+                                    {" "}{t.quality_analysis.regex}
+                                </label>
+                                <label>
+                                    {display(t.quality_analysis.author_filter)}
                                 <input
                                     type="search"
                                     data-analysis-author={""}
@@ -944,6 +929,7 @@ function ArticleDirectory(context) {
                                 </table>
                             </div>
                         </div>
+                        <p data-analysis-regex-error={""} role="status" hidden>{t.quality_analysis.regex_error}</p>
                         <p data-analysis-no-matches={""} hidden>
                             {t.quality_analysis.no_matches}
                         </p>
@@ -1119,11 +1105,11 @@ function ArticleDirectory(context) {
                                                                               .editor_share,
                                                                       )}
                                                                   </th>
-                                                                  <th scope="col">
-                                                                      {display(
-                                                                          t.quality_analysis
-                                                                              .editor_bytes,
-                                                                      )}
+                                                                  <th scope="col" title={t.quality_analysis.editor_characters_hint}>
+                                                                      {t.quality_analysis.editor_characters}
+                                                                  </th>
+                                                                  <th scope="col" title={t.quality_analysis.editor_bytes_hint}>
+                                                                      {t.quality_analysis.editor_bytes}
                                                                   </th>
                                                               </tr>
                                                           </thead>
@@ -1156,6 +1142,7 @@ function ArticleDirectory(context) {
                                                                                   author?.share_label,
                                                                               )}
                                                                           </td>
+                                                                          <td>{display(author?.characters_label)}</td>
                                                                           <td>
                                                                               {display(
                                                                                   author?.bytes_label,
@@ -1165,7 +1152,7 @@ function ArticleDirectory(context) {
                                                                   ))
                                                               ) : (
                                                                   <tr>
-                                                                      <td colspan="3">
+                                                                      <td colspan="4">
                                                                           {display(
                                                                               t.quality_analysis
                                                                                   .no_top_editors,
@@ -1377,17 +1364,6 @@ export function QualityAnalysis(context) {
             <p class="lead">{t.quality_analysis.intro}</p>
             <p>{t.quality_analysis.listing_intro}</p>
             <p>{t.quality_analysis.author_intro}</p>
-            <p class="context">
-                {t.quality_analysis.updated}{" "}
-                {hasContent(quality_analysis?.prepared_at) ? (
-                    <time datetime={attribute(quality_analysis?.prepared_at)}>
-                        {display(quality_analysis?.prepared_label)}
-                        {" UTC"}
-                    </time>
-                ) : (
-                    t.data.unknown
-                )}
-            </p>
             {AssessmentMatrix(context)}
             <form method="get" action="/quality-analysis/" data-authorship-basis={""}>
                 {hasContent(quality_analysis?.all_grades) ? (

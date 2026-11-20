@@ -89,7 +89,7 @@ def _legacy_header(record: dict, replacement: str) -> str:
     )
 
 
-def _ordered_header(record: dict, replacement: str) -> str:
+def _ordered_header(record: dict, replacement: str) -> str:  # ruff: ignore[too-many-locals] - Keep source offsets and target slots together.
     """Reorder only prepared slots and preserve all intervening source.
 
     Args:
@@ -100,10 +100,6 @@ def _ordered_header(record: dict, replacement: str) -> str:
         The lead with sorted banners and unknown nodes intact.
     """
     original = record["original_text"]
-    intervals = _template_intervals(original, record["legacy_dyk_templates"])
-    result = original
-    for start, end in reversed(intervals):
-        result = result[:start] + result[end:]
     slots = [*record["banner_order"]]
     history = record["history_template"]
     if history is not None:
@@ -112,6 +108,22 @@ def _ordered_header(record: dict, replacement: str) -> str:
         insertion = record.get("history_insertion", 0)
         slots.append({"start": insertion, "end": insertion})
     slots.sort(key=itemgetter("start", "end"))
+    moved = []
+    if (archive_start := record.get("archive_start")) is not None:
+        header = [slot for slot in slots if slot["start"] <= archive_start]
+        moved = slots[len(header) :]
+        boundary = header[-1]["end"] if header else record["history_insertion"]
+        slots = [
+            *header,
+            *({"start": boundary, "end": boundary} for _ in moved),
+        ]
+    intervals = _template_intervals(
+        original,
+        [*record["legacy_dyk_templates"], *moved],
+    )
+    result = original
+    for start, end in reversed(intervals):
+        result = result[:start] + result[end:]
     # Checked source forbids NUL, preventing a literal marker collision.
     marker = "\0article-history\0"
     targets = [span["text"] for span in record["banner_order"]]

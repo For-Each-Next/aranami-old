@@ -18,10 +18,9 @@ export function DiscussionsContents(context) {
 }
 
 export function Discussions(context) {
-    const { groups, t, unavailable } = context;
+    const { groups, unavailable } = context;
     return (
         <>
-            <p class="page-description">{t.discussions.intro}</p>
             {hasContent(unavailable) ? <p role="status">{display(unavailable)}</p> : null}
             {(groups ?? []).map((section, sectionIndex) => (
                 <section

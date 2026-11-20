@@ -50,7 +50,7 @@ def _observation(tokens: pl.DataFrame) -> pl.DataFrame:
         .group_by("editor")
         .agg(
             pl.len().cast(pl.UInt32).alias("tokens"),
-            pl.col("bytes").sum(),
+            pl.col("bytes", "characters", "raw_bytes").sum(),
         )
         .with_columns(
             pl.lit("Cleanup").alias("name"),

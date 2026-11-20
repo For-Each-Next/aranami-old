@@ -20,6 +20,7 @@ import polars as pl
 from starlette.testclient import TestClient
 
 from data import parquet_preview, project_data
+from data.caching.project_observations import link_daily_archive
 from data.paths import storage_key
 from shared.support.cache import ParquetCache
 from webservice.datasets import DatasetSelectionError, read_dataset
@@ -136,6 +137,29 @@ class TestDatasetViewer(TestCase):
         self.app = create_app(self.runtime)
         self.client = TestClient(self.app, raise_server_exceptions=False)
         self.addCleanup(self.client.close)
+
+    def test_hourly_link_reuses_daily_data_with_selected_size(self) -> None:
+        """Preview the daily file using its hourly selector."""
+        link_daily_archive(self.bundle.path, self.runtime)
+        alias = (
+            self.runtime / "data/raw" / (self.bundle.path.stem + "23.parquet")
+        )
+        assert alias.samefile(self.bundle.path)
+        selector = alias.relative_to(self.runtime).as_posix()
+        value = read_dataset(selector, self.runtime, 2, 20)
+        assert value["file"] == self.filename
+        assert value["requested_file"] == selector
+        assert len(value["rows"]) == 20
+        assert value["rows"][0]["page_title"] == "Member 20"
+        response = self.client.get(
+            "/data/",
+            params={"file": selector, "size": "20", "page": "2", "lang": "en"},
+        )
+        assert response.status_code == 200
+        assert 'name="size"' in response.text
+        assert "size=20" in response.text
+        assert "Member 39" in response.text
+        assert "Member 40" not in response.text
 
     def test_data_help_and_preview_preserve_locale_and_original_facts(
         self,

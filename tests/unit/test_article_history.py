@@ -137,6 +137,19 @@ class ArticleHistoryTests(TestCase):
                 assert event["main_author"] is None
                 assert event["nomination_link"] is None
 
+    def test_full_talk_title_keeps_the_verified_review_link(self) -> None:
+        """Accept a qualified local title with a unique heading."""
+        event = self.extract(
+            "{{Article history|action1=GAN|action1result=listed"
+            "|action1date=2021-07-20"
+            "|action1link=Talk:超级马力欧银河2#优良条目评选}}\n"
+            "==优良条目评选==\n"
+            "提名人：[[User:Editor]] 2021年7月10日 (六) 01:00 (UTC)\n",
+            title="超级马力欧银河2",
+        )[0]
+        assert event["nomination_link"] == "#优良条目评选"
+        assert event["nominator"] == "Editor"
+
     def test_conflicting_authorship_declarations_remain_unknown(self) -> None:
         """Retain uncertainty for contradictory author declarations."""
         event = self.extract("""{{Article history

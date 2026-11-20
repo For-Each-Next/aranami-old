@@ -62,7 +62,7 @@ function initializeHistory() {
                 !Number.isSafeInteger(Number(next.dataset.page)) ||
                 Number(next.dataset.page) < 1 ||
                 !Number.isSafeInteger(Number(next.dataset.total)) ||
-                Number(next.dataset.total) < 1 ||
+                Number(next.dataset.total) < 0 ||
                 replacement.querySelector("script, iframe, object, embed")
             ) {
                 throw new Error("Invalid report history response");
@@ -132,6 +132,15 @@ function initializeHistory() {
         const url = historyURL(link.href);
         if (!url) return;
         event.preventDefault();
+        void navigate(url, true);
+    });
+    root.addEventListener("submit", event => {
+        const form = event.target;
+        if (!form.matches(".history-pagination form")) return;
+        const url = historyURL(form.action);
+        if (!url) return;
+        event.preventDefault();
+        url.search = new URLSearchParams(new FormData(form)).toString();
         void navigate(url, true);
     });
     window.addEventListener("popstate", () => {

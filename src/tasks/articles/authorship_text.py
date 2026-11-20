@@ -173,8 +173,11 @@ def eligible_bytes(wikitext: str) -> int:
     )
 
 
-def _source_scores(text: str, masked: str) -> tuple[str, list[int]]:
-    """Map normalized positions to cumulative original byte weights.
+def _source_scores(
+    text: str,
+    masked: str,
+) -> tuple[str, list[int], list[int], list[int]]:
+    """Map normalized positions to cumulative byte and character counts.
 
     WikiWho's upstream ``wikiwho.py`` lowercases complete revisions;
     ``utils.py`` splits spaces/newlines and strips paragraph/sentence
@@ -184,7 +187,7 @@ def _source_scores(text: str, masked: str) -> tuple[str, list[int]]:
     fail rather than assigning an original character to the wrong token.
 
     Returns:
-        Compact lowercase source and cumulative retained UTF-8 bytes.
+        Compact source and cumulative totals for all three measures.
 
     Raises:
         ValueError: Lowercasing cannot preserve character positions.
@@ -197,20 +200,23 @@ def _source_scores(text: str, masked: str) -> tuple[str, list[int]]:
         raise ValueError(message)
     compact = []
     prefix = [0]
+    character_counts = [0]
+    raw_bytes = [0]
     characters = zip(text, lowered, masked, strict=True)
     for original, normalized, retained in characters:
         if original.isspace():
             continue
         compact.append(normalized)
-        prefix.append(
-            prefix[-1]
-            + (len(original.encode()) if retained == original else 0),
-        )
-    return "".join(compact), prefix
+        eligible = retained == original
+        size = len(original.encode())
+        raw_bytes.append(raw_bytes[-1] + size)
+        prefix.append(prefix[-1] + (size if eligible else 0))
+        character_counts.append(character_counts[-1] + int(eligible))
+    return "".join(compact), prefix, character_counts, raw_bytes
 
 
 def score_tokens(tokens: pl.DataFrame, wikitext: str) -> pl.DataFrame:
-    """Count each surviving token's non-reference UTF-8 source bytes.
+    """Count source bytes and characters for surviving tokens.
 
     Args:
         tokens: Ordered final-revision WikiWho tokens with text strings.
@@ -218,7 +224,8 @@ def score_tokens(tokens: pl.DataFrame, wikitext: str) -> pl.DataFrame:
         wikitext: Exact original source of that same final revision.
 
     Returns:
-        Original token rows with a UInt32 bytes column. References,
+        Original rows with UInt32 byte and character counts. Raw bytes
+        include references. For the other counts, references,
         reference-list/citation templates and audited reference sections
         score zero. Comments and other markup remain attributable.
         Whitespace lacks token ownership and scores zero here while
@@ -235,8 +242,11 @@ def score_tokens(tokens: pl.DataFrame, wikitext: str) -> pl.DataFrame:
     ):
         message = "Byte scoring requires original source and token strings."
         raise ValueError(message)
-    source, prefix = _source_scores(wikitext, _reference_mask(wikitext))
-    scores, position = [], 0
+    source, prefix, characters, raw = _source_scores(
+        wikitext,
+        _reference_mask(wikitext),
+    )
+    scores, counts, sizes, position = [], [], [], 0
     for text in tokens["text"].to_list():
         compact = "".join(
             character for character in text if not character.isspace()
@@ -246,8 +256,14 @@ def score_tokens(tokens: pl.DataFrame, wikitext: str) -> pl.DataFrame:
             message = "WikiWho tokens do not align with the exact source."
             raise ValueError(message)
         scores.append(prefix[end] - prefix[position])
+        counts.append(characters[end] - characters[position])
+        sizes.append(raw[end] - raw[position])
         position = end
     if position != len(source):
         message = "WikiWho tokens leave unmatched non-whitespace source."
         raise ValueError(message)
-    return tokens.with_columns(pl.Series("bytes", scores, dtype=pl.UInt32))
+    return tokens.with_columns(
+        pl.Series("bytes", scores, dtype=pl.UInt32),
+        pl.Series("characters", counts, dtype=pl.UInt32),
+        pl.Series("raw_bytes", sizes, dtype=pl.UInt32),
+    )

@@ -47,6 +47,7 @@ from runtime.project_observations import (
     DAILY_REPORTS,
     collect_project_categories,
     collect_project_membership,
+    link_rollover_membership,
     project_cycle,
 )
 from runtime.quality_analysis import (
@@ -72,12 +73,12 @@ from tasks.website.collect import (
     refresh_arguments,
     report_intervals,
 )
+lazy from webservice.newsletter_charts import prepare_newsletter_charts
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from types import FrameType
 
-    import polars as pl
     from apscheduler.schedulers.background import BackgroundScheduler
 
     from runtime.idle_scheduler import IdleScheduler
@@ -196,6 +197,14 @@ def refresh_newsletter(updater: DashboardUpdater) -> None:
         )
 
 
+def _prepare_newsletter_assets(data: dict) -> None:
+    """Draw charts after newsletter observations have been saved."""
+    try:
+        prepare_newsletter_charts(Path.cwd(), data)
+    except ImportError, OSError, ValueError:
+        _LOGGER.exception("Could not prepare saved newsletter charts.")
+
+
 def refresh_article_history() -> None:
     """Maintain project recognition evidence in an hourly pass.
 
@@ -249,7 +258,6 @@ def refresh_project_data() -> None:
         return
     configure_pywikibot()
     failures = []
-    memberships: dict[str, list[pl.DataFrame]] = {}
     chinese_members = None
     with (
         collection_run("project-data", trigger="scheduled") as execution,
@@ -264,6 +272,11 @@ def refresh_project_data() -> None:
                 )
                 if language != "zh":
                     if instant.hour == 0 and language == "en":
+                        link_rollover_membership(
+                            pywikibot.Site(language, "wikipedia"),
+                            project,
+                            instant.date(),
+                        )
                         english_talks.prune_daily(instant.date())
                     continue
                 members = collect_project_membership(
@@ -271,22 +284,18 @@ def refresh_project_data() -> None:
                     project,
                     now=instant,
                 )
-                memberships.setdefault(language, []).append(members)
                 if project == "电子游戏":
                     chinese_members = members
             except Exception as error:
                 _LOGGER.exception("Project snapshot failed: %s", project)
                 failures.append(error)
                 execution.fail(error)
-        for language, frames in memberships.items():
+        if chinese_members is not None:
             try:
                 collect_project_categories(
-                    pywikibot.Site(language, "wikipedia"),
-                    frames,
+                    pywikibot.Site("zh", "wikipedia"),
                     now=instant,
-                    assessment_members=chinese_members
-                    if language == "zh"
-                    else None,
+                    assessment_members=chinese_members,
                 )
             except Exception as error:
                 _LOGGER.exception("Central category collection failed.")
@@ -494,7 +503,10 @@ def run(config: HubConfig) -> None:
                 config.output,
                 lambda: collect_dashboard_pass(
                     updater,
-                    collect_dashboard,
+                    partial(
+                        collect_dashboard,
+                        prepare_newsletter=_prepare_newsletter_assets,
+                    ),
                     save_dashboard_snapshot,
                     config.days,
                     config.refresh_intervals,

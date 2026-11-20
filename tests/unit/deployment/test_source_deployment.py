@@ -357,6 +357,8 @@ class TestSourcePayload(TestCase):
                     "quality_chart_controls",
                     "quality_coverage",
                     "quality_matrix",
+                    "quality_search_characters",
+                    "table_pager",
                 )
             ),
         }
@@ -723,12 +725,15 @@ class TestSourceImports(TestCase):
                     if target.startswith("shared.sources"):
                         assert isinstance(node, ast.ImportFrom), path
                         assert node.module == "shared.sources.wiki", path
-                        assert target == "shared.sources.wiki.read_pages", path
+                        assert target in {
+                            "shared.sources.wiki.read_pages",
+                            "shared.sources.wiki.preloaded_revision_id",
+                        }, path
                     if target.startswith("pywikibot"):
-                        assert (
-                            path.name == "context.py"
-                            or target == "pywikibot.site.BaseSite"
-                        ), path
+                        assert path.name == "context.py" or target in {
+                            "pywikibot.Page",
+                            "pywikibot.site.BaseSite",
+                        }, path
                     if target.split(".")[0] in {
                         "requests",
                         "urllib",

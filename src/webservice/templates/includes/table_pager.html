@@ -1,0 +1,17 @@
+{% macro pager(paging, action, size_fields, title, css='', dataset=false) -%}
+<nav class="ui-table-pager {{ css }}" aria-label="{{ title }}">
+  <form class="page-size ui-table-pager__start" action="{{ action }}" method="get">
+    {% for key, value in size_fields.items() %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+    <label>{{ t.reports.page_size }}
+      <select name="size">{% for option in paging.size_choices %}<option value="{{ option }}"{% if option == paging.size %} selected{% endif %}>{{ t.reports.rows.format(count=option) }}</option>{% endfor %}</select>
+    </label>
+    <noscript><button class="ui-button" type="submit">{{ t.backlog.go }}</button></noscript>
+  </form>
+  <div class="ui-table-pager__center">{{ paging.label }}</div>
+  <div class="ui-table-pager__end">
+  {% for key, label in [('first', t.reports.first), ('previous', t.backlog.previous), ('next', t.backlog.next), ('last', t.reports.last)] %}
+    {% if paging[key] %}<a class="ui-button ui-button--fake-button ui-button--fake-button--enabled" aria-label="{{ label }}"{% if key in ['previous', 'next'] %} rel="{{ 'prev' if key == 'previous' else 'next' }}"{% endif %}{% if dataset %} data-dataset-page{% endif %} href="{{ paging[key] }}">{{ label }}</a>{% else %}<button class="ui-button" type="button" disabled>{{ label }}</button>{% endif %}
+  {% endfor %}
+  </div>
+</nav>
+{%- endmacro %}

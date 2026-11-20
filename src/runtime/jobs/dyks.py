@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from data.reports import report_key
 from runtime.jobs import ProposedEdit, job_run
 from shared.config import TASK_DEFINITIONS
-from shared.sources.wiki import read_pages
+from shared.sources.wiki import preloaded_revision_id, read_pages
 from tasks.zhwiki import dyks as data
 from updater.edit_summary import (
     EditSummary,
@@ -87,12 +87,14 @@ def run(
     ):
         page = read_pages(active.site, [title])[0]
         original_text = page.text
+        original_revision = preloaded_revision_id(page)
         report = data.prepare_report(
             original_text,
             active.site,
             active.today,
             project="电子游戏",
             report_title=title,
+            original_revision=original_revision,
             persist=not active.dry,
         )
         text = (
@@ -119,8 +121,8 @@ def run(
             report,
             active.site,
             title,
-            original_text,
-            text,
+            original_revision,
+            active.confirmed_revision(title),
             confirmed=confirmed is True,
             dry=active.dry,
         )

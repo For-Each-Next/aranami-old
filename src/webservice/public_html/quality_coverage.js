@@ -1,7 +1,6 @@
 /** Show evidence coverage and bounded lists for the selected article cohort. */
 import { qualityMetadata } from "./quality_matrix.js";
 
-const pageSize = 50;
 let cohortListenerInstalled = false;
 
 /** Preserve measured zeroes and acquired attribution without named editors. */
@@ -43,6 +42,7 @@ export function initializeQualityCoverage() {
     const status = dialog.querySelector("[data-coverage-page-status]");
     const table = body.closest("table");
     const pager = status.closest("nav");
+    const size = pager.querySelector("select");
     let selected = [], page = 1, kind, opener;
     const number = value => value.toLocaleString(document.documentElement.lang);
     const records = () => document.querySelector("[data-quality-analysis]")?.analysisRows || [];
@@ -67,12 +67,13 @@ export function initializeQualityCoverage() {
             record.dataset.cohort !== "0" && !articleCoverage(record)[kind]);
     }
 
-    /** Replace one fifty-row page and its bounded navigation controls. */
+    /** Replace the requested page and retain its navigation controls. */
     function render() {
-        const pages = Math.max(1, Math.ceil(selected.length / pageSize));
+        const limit = Number(size?.value || 50);
+        const pages = Math.max(1, Math.ceil(selected.length / limit));
         page = Math.max(1, Math.min(page, pages));
-        const start = (page - 1) * pageSize;
-        const visible = selected.slice(start, start + pageSize);
+        const start = (page - 1) * limit;
+        const visible = selected.slice(start, start + limit);
         body.replaceChildren(...visible.map((record, index) => {
             const row = node("tr"), titleCell = node("td");
             const title = kind === "total" ? record.title : record.article?.title || record.dataset.title;
@@ -90,13 +91,14 @@ export function initializeQualityCoverage() {
         for (const heading of dialog.querySelectorAll("[data-coverage-comparison-column]")) heading.hidden = kind !== "total";
         empty.hidden = selected.length > 0;
         empty.textContent = kind === "total" && !comparison()?.available ? labels.comparison_unavailable : labels.no_missing;
-        table.hidden = pager.hidden = selected.length === 0;
+        table.hidden = selected.length === 0;
         status.textContent = status.dataset.template.replace("{start}", number(selected.length ? start + 1 : 0))
             .replace("{end}", number(start + visible.length)).replace("{total}", number(selected.length));
         for (const button of dialog.querySelectorAll("[data-coverage-page]")) button.disabled =
             ["first", "previous"].includes(button.dataset.coveragePage) ? page === 1 : page === pages;
     }
 
+    size?.addEventListener("change", () => { page = 1; render(); });
     host.coverageRefresh = () => {
         const counts = coverageSummary(records());
         for (const element of host.querySelectorAll("[data-coverage-count]")) element.textContent = number(counts[element.dataset.coverageCount]);
@@ -115,7 +117,7 @@ export function initializeQualityCoverage() {
         const control = event.target.closest("[data-coverage-page]");
         if (!control) return;
         const target = control.dataset.coveragePage;
-        page = target === "first" ? 1 : target === "last" ? Math.ceil(selected.length / pageSize) : page + (target === "next" ? 1 : -1);
+        page = target === "first" ? 1 : target === "last" ? Math.ceil(selected.length / Number(size?.value || 50)) : page + (target === "next" ? 1 : -1);
         render();
         dialog.querySelector(".ui-dialog__body")?.scrollTo(0, 0);
     });

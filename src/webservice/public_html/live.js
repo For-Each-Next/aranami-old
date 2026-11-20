@@ -466,17 +466,21 @@
                 const details = [];
                 const first = element("li", current && !item.started?.known ? (item.scheduled?.known ? `${labels.scheduled} ${instant(item.scheduled)}` : labels.waiting) : `${labels.started} ${instant(item.started)}`);
                 if (!item.is_task) {
-                    first.appendChild(element("span", `; ${labels.baseline} `));
-                    first.appendChild(link(item.baseline?.filename || labels.unknown, item.baseline?.url, true));
-                    if (item.baseline?.shape) first.appendChild(element("span", ` (${item.baseline.shape})`, {class: "dataset-update-shape"}));
+                    const baseline = element(current ? "span" : "div", `${current ? "; " : ""}${labels.baseline} `, current ? {} : {class: "dataset-update-note"});
+                    baseline.appendChild(link(item.baseline?.filename || labels.unknown, item.baseline?.url, true));
+                    first.appendChild(baseline);
                 }
                 details.push(first);
-                if (!current) details.push(element("li", `${result} ${instant(item.finished)}${item.shape ? `; ${labels.new_shape} ${item.shape}` : ""}`));
+                if (!current) {
+                    const finished = element("li", `${labels.finished} ${instant(item.finished)}`);
+                    if (item.shape) finished.appendChild(element("div", item.shape, {class: "dataset-update-note dataset-update-shape"}));
+                    details.push(finished);
+                }
                 if (current && item.elapsed?.running) {
                     const elapsed = element("span", item.elapsed.label, {"data-clock": "dataset-elapsed", "data-started-at": item.elapsed.started, "data-clock-unknown": labels.unknown, ...(updates.expires ? {"data-clock-expires": updates.expires} : {})});
                     details.push(element("li", null, {}, [element("span", `${labels.elapsed} `), elapsed, element("span", item.activity ? ` · ${item.activity}` : "")]));
                 } else if (current && item.activity) details.push(element("li", item.activity));
-                if (!item.is_task) details.push(element("li", null, {}, [element("span", `${labels.used_by} `), item.reports?.length ? element("ul", null, {}, item.reports.map(report => element("li", null, {}, [link(report.name, report.url)]))) : element("span", labels.unknown)]));
+                if (!item.is_task) details.push(element("li", null, {}, [element("span", labels.used_by), item.reports?.length ? element("ul", null, {}, item.reports.map(report => element("li", null, {}, [link(report.name, report.url)]))) : element("div", labels.no_reports, {class: "dataset-update-note"})]));
                 return element("li", null, {"data-key": item.key || item.filename}, [element("p", null, {}, [icon, element("span", " "), title]), element("ul", null, {class: "dataset-update-details"}, details)]);
             }));
         };

@@ -19,6 +19,7 @@ import polars as pl
 from django.template import engines
 from markupsafe import Markup, escape
 
+from data.parquet_preview import PAGE_SIZE, PAGE_SIZES
 from shared.assessment_profiles import assessment_profile
 from shared.config import routine_configuration
 from shared.deployment import (
@@ -35,6 +36,7 @@ from webservice.consistency import (
     latest_history_first,
 )
 from webservice.django_setup import setup_django
+from webservice.job_history import REPORTS_PAGE_SIZE, REPORTS_PAGE_SIZES
 from webservice.presentation import (
     Interface,
     article_extract,
@@ -84,9 +86,11 @@ _REVIEW_ICONS = {
     "dykc": ("dyk-candidate.svg", "DYK_candidate.svg"),
 }
 _HIGHLIGHT_ICONS = {
-    "featured": ("featured.svg", "Cscr-featured.svg"),
-    "good": ("good.svg", "Symbol_support_vote.svg"),
-    "dyk": ("dyk.svg", "Symbol_question.svg"),
+    "featured": ("featured.svg", "Cscr-featured.svg", "appearance.featured"),
+    "good": ("good.svg", "Symbol_support_vote.svg", "appearance.good"),
+    "dyk": ("dyk.svg", "Symbol_question.svg", "homepage.dyk"),
+    "news": ("itn.svg", "Globe_current.svg", "homepage.type.itn"),
+    "history": ("otd.svg", "Nuvola_apps_date.svg", "homepage.type.otd"),
 }
 _SHOWCASE_TYPES = {
     "fa": "TFA",
@@ -857,20 +861,18 @@ class _Page:
                 "fl": "featured",
                 "featured": "featured",
                 "ga": "good",
+                "news": "news",
+                "history": "history",
             }.get(item.get("kind"))
             if section == "recognized"
             else None
         )
         if appearance:
-            icon, source = _HIGHLIGHT_ICONS[appearance]
+            icon, source, label = _HIGHLIGHT_ICONS[appearance]
             card["highlight_icon"] = {
                 "url": _asset_url(f"assets/icons/{icon}"),
                 "source": "https://commons.wikimedia.org/wiki/File:" + source,
-                "label": self.text(
-                    "homepage.dyk"
-                    if appearance == "dyk"
-                    else f"appearance.{appearance}",
-                ),
+                "label": self.text(label),
             }
         if pageviews:
             popularity_day = dt.date.fromisoformat(pageviews["date"])
@@ -1268,6 +1270,7 @@ class _Page:
         now: dt.datetime,
         *,
         history_page: int = 0,
+        history_size: int = REPORTS_PAGE_SIZE,
     ) -> Record:
         """Prepare saved observations and shared live clocks.
 
@@ -1276,6 +1279,7 @@ class _Page:
             config: Current source and configured report definitions.
             now: Actual rendering clock for freshness and durations.
             history_page: History page, or zero for report cards only.
+            history_size: Maximum history rows per page.
 
         Returns:
             Localized status contexts without reading runtime files.
@@ -1297,6 +1301,7 @@ class _Page:
                 ],
                 now,
                 history_page=history_page,
+                history_size=history_size,
             ),
         )
         context["clock"] = self.clock(
@@ -1741,7 +1746,7 @@ def render_live_update(
             "scheduled",
             "waiting",
             "elapsed",
-            "new_shape",
+            "no_reports",
             "no_previous",
             "no_planned",
             "unavailable",
@@ -2297,7 +2302,7 @@ def render_dataset(
         config: Public source version and routine configuration.
 
     Returns:
-        Escaped metadata and up to fifty rows without source requests.
+        Escaped metadata and one page of rows without source requests.
     """
     page = _Page(locale)
     context = page.context(page.text("data.heading"), live=True)
@@ -2349,14 +2354,20 @@ def render_dataset(
             fields.append(("size_bytes", f"{data['size_bytes']:,}"))
         current = data.get("page", 1)
         page_count = data.get("page_count", 1)
-        offset = (current - 1) * data["preview_limit"]
+        size = data["preview_limit"]
+        offset = (current - 1) * size
+        selector = data.get("requested_file", data["file"])
+        filters = {"file": selector, "lang": locale}
+        if size != PAGE_SIZE:
+            filters["size"] = size
         value = {
             **data,
+            "file": selector,
             "facts": [
                 {"label": page.text(f"data.field.{key}"), "value": item}
                 for key, item in fields
             ],
-            "preview_note": page.text(
+            "label": page.text(
                 "data.preview_note",
                 start=f"{offset + 1 if data['rows'] else 0:,}",
                 end=f"{offset + len(data['rows']):,}",
@@ -2364,19 +2375,19 @@ def render_dataset(
             ),
             "page": current,
             "page_count": page_count,
+            "size": size,
+            "size_choices": PAGE_SIZES,
             "first": local_url(
                 "/data/",
-                file=data["file"],
                 page=1,
-                lang=locale,
+                **filters,
             )
             if current > 1
             else None,
             "last": local_url(
                 "/data/",
-                file=data["file"],
                 page=page_count,
-                lang=locale,
+                **filters,
             )
             if current < page_count
             else None,
@@ -2385,9 +2396,8 @@ def render_dataset(
                     "number": number,
                     "url": local_url(
                         "/data/",
-                        file=data["file"],
                         page=number,
-                        lang=locale,
+                        **filters,
                     ),
                 }
                 for number in range(
@@ -2397,17 +2407,15 @@ def render_dataset(
             ],
             "previous": local_url(
                 "/data/",
-                file=data["file"],
                 page=current - 1,
-                lang=locale,
+                **filters,
             )
             if current > 1
             else None,
             "next": local_url(
                 "/data/",
-                file=data["file"],
                 page=current + 1,
-                lang=locale,
+                **filters,
             )
             if current < page_count
             else None,
@@ -2476,6 +2484,7 @@ def render_reports(  # ruff: ignore[too-many-arguments]
     now: dt.datetime | None = None,
     navigation: Record | None = None,
     history_page: int = 1,
+    history_size: int = REPORTS_PAGE_SIZE,
 ) -> str:
     """Render saved update status and per-invocation report history.
 
@@ -2486,7 +2495,8 @@ def render_reports(  # ruff: ignore[too-many-arguments]
         config: Current source version and routine definitions.
         now: Optional clock for deterministic freshness checks.
         navigation: Request route and language choices.
-        history_page: One-based page of ten execution records.
+        history_page: One-based page of execution records.
+        history_size: Maximum execution records on each page.
 
     Returns:
         A status panel and recent invocation history with stage dialogs.
@@ -2500,27 +2510,42 @@ def render_reports(  # ruff: ignore[too-many-arguments]
             config or {},
             now or dt.datetime.now(dt.UTC),
             history_page=max(1, history_page),
+            history_size=history_size,
         ),
     )
     events = context["events"]
     count = context["history_total"]
-    last = max(1, (count + 9) // 10)
-    current = context["history_offset"] // 10 + 1
+    last = max(1, (count + history_size - 1) // history_size)
+    offset = context["history_offset"]
+    current = offset // history_size + 1
+    options = {"lang": locale}
+    if history_size != REPORTS_PAGE_SIZE:
+        options["size"] = history_size
     context.update(
         history_dialogs=events,
         history_pagination={
             "page": current,
             "total": count,
-            "url": local_url("/reports/", lang=locale),
-            "label": f"{current} / {last}",
-            "previous": local_url("/reports/", page=current - 1, lang=locale)
-            + "#recent-events"
-            if current > 1
-            else None,
-            "next": local_url("/reports/", page=current + 1, lang=locale)
-            + "#recent-events"
-            if current < last
-            else None,
+            "size": history_size,
+            "size_choices": REPORTS_PAGE_SIZES,
+            "label": page.text(
+                "reports.page_status",
+                start=f"{offset + 1 if count else 0:,}",
+                end=f"{offset + len(events):,}",
+                total=f"{count:,}",
+            ),
+            **{
+                key: local_url("/reports/", page=target, **options)
+                + "#recent-events"
+                if target is not None
+                else None
+                for key, target in (
+                    ("first", 1 if current > 1 else None),
+                    ("previous", current - 1 if current > 1 else None),
+                    ("next", current + 1 if current < last else None),
+                    ("last", last if current < last else None),
+                )
+            },
         },
     )
     return _render("reports.html", context)

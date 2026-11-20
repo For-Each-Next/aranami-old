@@ -54,6 +54,7 @@
     "zh-hans": "状态",
     "zh-hant": "狀態"
   },
+  "server.hub": {"en": "Hub", "zh-hans": "调度服务（Hub）", "zh-hant": "排程服務（Hub）"},
   "server.memory": {
     "en": "Memory",
     "zh-hans": "内存",
@@ -835,9 +836,9 @@
     "zh-hant": "伺服器狀態"
   },
   "dataset_updates.previous": {
-    "en": "Previous dataset updates",
-    "zh-hans": "上轮更新资料",
-    "zh-hant": "上輪更新資料"
+    "en": "Recent jobs",
+    "zh-hans": "最近作业",
+    "zh-hant": "最近作業"
   },
   "dataset_updates.planned": {
     "en": "Planned dataset updates",
@@ -860,14 +861,14 @@
     "zh-hant": "等待開始"
   },
   "dataset_updates.baseline": {
-    "en": "Previous file:",
-    "zh-hans": "此前文件：",
-    "zh-hant": "此前檔案："
+    "en": "Based on file:",
+    "zh-hans": "基于文件：",
+    "zh-hant": "基於檔案："
   },
   "dataset_updates.started": {
-    "en": "Started:",
-    "zh-hans": "开始：",
-    "zh-hant": "開始："
+    "en": "Started at:",
+    "zh-hans": "开始于：",
+    "zh-hant": "開始於："
   },
   "dataset_updates.scheduled": {
     "en": "Scheduled:",
@@ -885,20 +886,21 @@
     "zh-hant": "失敗結束："
   },
   "dataset_updates.finished": {
-    "en": "Finished:",
-    "zh-hans": "结束：",
-    "zh-hant": "結束："
+    "en": "Finished at:",
+    "zh-hans": "结束于：",
+    "zh-hant": "結束於："
   },
-  "dataset_updates.new_shape": {
-    "en": "New rows × columns:",
-    "zh-hans": "新资料行数 × 列数：",
-    "zh-hant": "新資料列數 × 欄數："
+  "dataset_updates.shape": {
+    "en": "{rows} records × {columns} fields",
+    "zh-hans": "{rows}记录 × {columns}字段",
+    "zh-hant": "{rows}筆記錄 × {columns}個欄位"
   },
   "dataset_updates.used_by": {
     "en": "Used by reports:",
-    "zh-hans": "用于报表：",
-    "zh-hant": "用於報表："
+    "zh-hans": "用于报告：",
+    "zh-hant": "用於報告："
   },
+  "dataset_updates.no_reports": {"en": "None", "zh-hans": "（无）", "zh-hant": "（無）"},
   "dataset_updates.elapsed": {
     "en": "Elapsed:",
     "zh-hans": "已用时：",
@@ -3309,7 +3311,7 @@
     "zh-hans": "移除{count}个DYK模板。",
     "zh-hant": "移除{count}個DYK模板。"
   },
-  "quality_coverage.total": {"en": "Total pages", "zh-hans": "总页面", "zh-hant": "總頁面"},
+  "quality_coverage.total": {"en": "Total articles", "zh-hans": "总条目", "zh-hant": "總條目"},
   "quality_coverage.authorship": {"en": "Contributor information", "zh-hans": "获取贡献者信息", "zh-hant": "取得貢獻者資訊"},
   "quality_coverage.dates": {"en": "Assessment dates", "zh-hans": "获取评级时间信息", "zh-hant": "取得評級時間資訊"},
   "quality_coverage.length": {"en": "Prose lengths", "zh-hans": "获取页面字数信息", "zh-hant": "取得頁面字數資訊"},
@@ -3840,11 +3842,6 @@
     "zh-hans": "近期讨论",
     "zh-hant": "近期討論"
   },
-  "discussions.intro": {
-    "en": "General discussions with comments in the last 28 days, grouped by the latest comment and page type. Article groups do not overlap; each covers one of the four weeks. Each group shows newest comments first. Recognized content reviews appear only in Content reviews.",
-    "zh-hans": "最近28天有新评论的一般讨论，按最新评论时间和页面类型分组。条目按1—7、8—14、15—21、22—28天分组，每组由新到旧排列。已识别的评审仅列于内容评审。",
-    "zh-hant": "最近28天有新評論的一般討論，按最新評論時間和頁面類型分組。條目按1—7、8—14、15—21、22—28天分組，每組由新到舊排列。已識別的評審僅列於內容評審。"
-  },
   "discussions.recent_intro": {
     "en": "General discussions with new comments in the last 7 days.",
     "zh-hans": "最近7天有新评论的一般讨论。",
@@ -4190,11 +4187,6 @@
     "zh-hans": "无法更新报告，已保留先前显示的结果。",
     "zh-hant": "無法更新報告，已保留先前顯示的結果。"
   },
-  "quality_authorship.only_quality": {
-    "en": "High-quality only",
-    "zh-hans": "仅高品质条目",
-    "zh-hant": "僅高品質條目"
-  },
   "quality_analysis.chart_zoom_in": {"en": "Zoom in", "zh-hans": "放大", "zh-hant": "放大"},
   "quality_analysis.chart_zoom_out": {"en": "Zoom out", "zh-hans": "缩小", "zh-hant": "縮小"},
   "quality_analysis.chart_pan": {"en": "Pan / scroll zoom", "zh-hans": "平移／滚动缩放", "zh-hant": "平移／捲動縮放"},
@@ -4494,6 +4486,23 @@
     "zh-hans": "归属字节",
     "zh-hant": "歸屬位元組"
   },
+  "quality_analysis.editor_characters": {
+    "en": "Attributed characters",
+    "zh-hans": "归属字数",
+    "zh-hant": "歸屬字數"
+  },
+  "quality_analysis.regex": {"en": "Use regular expressions", "zh-hans": "使用正则表达式", "zh-hant": "使用正規表示式"},
+  "quality_analysis.regex_error": {"en": "Invalid regular expression", "zh-hans": "正则表达式无效", "zh-hant": "正規表示式無效"},
+  "quality_analysis.editor_bytes_hint": {
+    "en": "Includes reference text",
+    "zh-hans": "包括参考资料",
+    "zh-hant": "包含參考資料"
+  },
+  "quality_analysis.editor_characters_hint": {
+    "en": "Excludes reference text",
+    "zh-hans": "不包括参考资料",
+    "zh-hant": "不含參考資料"
+  },
   "quality_analysis.authorship_unavailable": {
     "en": "Authorship data has not been obtained for this revision.",
     "zh-hans": "尚未取得此版本的作者归属数据。",
@@ -4563,11 +4572,6 @@
     "en": "Unknown listing date",
     "zh-hans": "时间未知",
     "zh-hant": "時間未知"
-  },
-  "quality_analysis.updated": {
-    "en": "Data updated at",
-    "zh-hans": "数据更新于",
-    "zh-hant": "資料更新於"
   },
   "quality_analysis.select_all": {
     "en": "Select all",

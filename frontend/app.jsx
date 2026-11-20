@@ -1,5 +1,6 @@
 /** Mount the route specified by the server's localized saved-data model. */
 import { createApp, Fragment } from "@vue/runtime-dom";
+import { initializeTablePagers } from "../src/webservice/public_html/table_pager.js";
 import { About, AboutContents } from "./about.jsx";
 import { Attribution, AttributionContents } from "./attribution.jsx";
 import { Consistency, ConsistencyContents } from "./consistency.jsx";
@@ -173,7 +174,7 @@ async function start() {
     if (schema !== 1 || !Object.hasOwn(pages, page)) throw new Error("Unsupported page model");
     const [view, contents] = pages[page];
     restoreMarkup(context, markup);
-    const { nav, ops } = context.t;
+    const { backlog, nav, ops, reports } = context.t;
     Object.assign(document.body.dataset, {
         headingCopyLabel: nav.copy_section_link,
         headingCopySuccess: nav.section_link_copied,
@@ -181,8 +182,12 @@ async function start() {
         headingPermalinkLabel: nav.section_permalink,
         headingPagePermalinkLabel: nav.page_permalink,
         headingCopyClose: ops.close,
+        tablePageLabels: JSON.stringify([
+            reports.page_size, reports.page_status, reports.first,
+            backlog.previous, backlog.next, reports.last,
+        ]),
     });
-    // Mount off-document so the HTML fallback stays available if rendering fails.
+    // Insert the page only after its first render succeeds.
     const rendered = document.createElement("div");
     const app = createApp({
         render: () => <Layout context={context} view={view} contents={contents} />,
@@ -195,6 +200,7 @@ async function start() {
     rendered.dataset.rendered = "vue";
     host.replaceWith(rendered);
     boot.remove();
+    initializeTablePagers();
     if (location.hash) {
         try {
             document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView();

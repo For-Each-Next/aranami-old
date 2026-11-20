@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest import TestCase
 
 import mwparserfromhell
@@ -21,6 +23,10 @@ from tasks.zhwiki.newsletter.statistics import (
     quality_statistics,
 )
 from updater.services.newsletter_editorial import render_annual_feature
+from webservice.newsletter_charts import (
+    CHART_DIRECTORY,
+    prepare_newsletter_charts,
+)
 
 
 def _popular(start: str, end: str, duration: str = "yearly") -> str:
@@ -136,25 +142,23 @@ class NewsletterStatisticsTests(TestCase):
     @staticmethod
     def test_pie_percentages_apply_exact_five_percent_boundary() -> None:
         """Keep raw geometry and omit rounded-up subthreshold shares."""
-        text = render_annual_feature(
-            Issue(2027, 1),
-            {
-                "quality_statistics": [
-                    {
-                        "year": year,
-                        "counts": {
-                            **dict.fromkeys(QUALITY_GRADES, 0),
-                            "fa": 499,
-                            "fl": 500,
-                            "a": 5150,
-                            "ga": 3851,
-                        },
-                        "provisional": year == 2026,
-                    }
-                    for year in (2025, 2026)
-                ],
-            },
-        )
+        review = {
+            "quality_statistics": [
+                {
+                    "year": year,
+                    "counts": {
+                        **dict.fromkeys(QUALITY_GRADES, 0),
+                        "fa": 499,
+                        "fl": 500,
+                        "a": 5150,
+                        "ga": 3851,
+                    },
+                    "provisional": year == 2026,
+                }
+                for year in (2025, 2026)
+            ],
+        }
+        text = render_annual_feature(Issue(2027, 1), review)
         pies = [
             template
             for template in mwparserfromhell.parse(text).filter_templates()
@@ -172,30 +176,27 @@ class NewsletterStatisticsTests(TestCase):
             ]
             assert pie.get("y1").value.strip() == "499, 500, 5150, 3851"
             assert pie.get("showValues").value.strip() == "false"
+            legend_width = min(220, max(80, max(map(len, labels)) * 7.5 + 32))
+            width = float(str(pie.get("width").value))
+            assert width + legend_width + 28 <= 400
             assert not pie.has("1")
         assert "<svg" not in text
-        values = [
-            tag
-            for tag in mwparserfromhell.parse(text).filter_tags()
-            if tag.tag == "span"
-            and tag.has("class")
-            and tag.get("class").value == "pie-percentage"
-        ]
-        assert [str(value.contents) for value in values] == [
-            "5.0%",
-            "51.5%",
-            "38.5%",
-            "5.0%",
-            "51.5%",
-            "38.5%",
-        ]
-        for value in values:
-            style = str(value.get("style").value)
-            assert "color:#000" in style
-            assert "font-weight:400" in style
-            assert "pointer-events:none" in style
-        assert "4.99%" not in text
-        assert 'class="gr-ov"' not in text
+        assert 'class="pie-percentage"' not in text
+        with TemporaryDirectory() as temporary:
+            runtime = Path(temporary)
+            payload = {"issues": {"2027-01": {"year_review": review}}}
+            prepare_newsletter_charts(runtime, payload)
+            files = sorted((runtime / CHART_DIRECTORY).glob("*.svg"))
+            assert len(files) == 6
+            for path in files:
+                assert f"[[File:{path.name}]]" in text
+                svg = path.read_text(encoding="utf-8")
+                for label in ("5.0%", "51.5%", "38.5%"):
+                    assert label in svg
+                assert "4.99%" not in svg
+            stamps = [path.stat().st_mtime_ns for path in files]
+            prepare_newsletter_charts(runtime, payload)
+            assert stamps == [path.stat().st_mtime_ns for path in files]
 
     @staticmethod
     def test_zero_pie_counts_do_not_create_percentages() -> None:
@@ -214,43 +215,6 @@ class NewsletterStatisticsTests(TestCase):
             },
         )
         assert "| type = pie" not in text
-
-    @staticmethod
-    def test_pie_width_budget_includes_legend_and_padding() -> None:
-        """Keep the complete native canvas within 400 pixels."""
-        for counts in (
-            {"fa": 1},
-            {"fa": 25, "fl": 11, "ga": 216, "stub": 6006},
-            dict.fromkeys(QUALITY_GRADES, 10_000_000),
-        ):
-            text = render_annual_feature(
-                Issue(2027, 1),
-                {
-                    "quality_statistics": [
-                        {
-                            "year": 2026,
-                            "counts": {
-                                **dict.fromkeys(QUALITY_GRADES, 0),
-                                **counts,
-                            },
-                            "provisional": True,
-                        },
-                    ],
-                },
-            )
-            pie = next(
-                template
-                for template in mwparserfromhell.parse(text).filter_templates()
-                if template.name.matches("Graph:Chart")
-                and template.get("type").value.strip() == "pie"
-            )
-            labels = str(pie.get("x").value).strip().split(", ")
-            legend_width = min(220, max(80, max(map(len, labels)) * 7.5 + 32))
-            canvas_width = (
-                float(str(pie.get("width").value)) + legend_width + 28
-            )
-            assert canvas_width <= 400
-            assert 'style="width:400px;position:relative;' in text
 
     @staticmethod
     def test_current_and_legacy_popularity_contracts() -> None:
@@ -437,43 +401,32 @@ class AnnualFigureIntroductionTests(TestCase):
     """Keep notices in the prose before annual lists and figures."""
 
     @staticmethod
-    def test_pie_pair_shares_one_container_without_internal_notices() -> None:
-        """Keep both native pies together after one inline notice."""
+    def test_pie_pair_follows_one_inline_notice() -> None:
+        """Keep bare pie templates and their file comments together."""
         code = mwparserfromhell.parse(
             render_annual_feature(Issue(2027, 1), _partial_annual_review()),
         )
-        group = next(
-            tag
-            for tag in code.filter_tags(recursive=False)
-            if tag.tag == "div"
-            and tag.has("class")
-            and tag.get("class").value == "annual-quality-pies"
-        )
-        children = [
-            tag
-            for tag in group.contents.filter_tags(recursive=False)
-            if tag.tag == "div"
+        charts = [
+            template
+            for template in code.filter_templates(recursive=False)
+            if template.name.matches("Graph:Chart")
+            and template.get("type").value.strip() == "pie"
         ]
-        assert len(children) == 2
-        for child in children:
-            assert not any(
-                tag.tag == "div"
-                for tag in child.contents.filter_tags(recursive=False)
+        assert len(charts) == 2
+        assert "annual-quality-pies" not in str(code)
+        assert (
+            sum(
+                str(comment).count("[[File:")
+                for comment in code.filter_comments()
             )
-            charts = [
-                template
-                for template in child.contents.filter_templates(
-                    recursive=False,
-                )
-                if template.name.matches("Graph:Chart")
-            ]
-            assert len(charts) == 1
-            assert charts[0].get("type").value.strip() == "pie"
-        assert not any(
-            template.name.matches("Memo") or template.name.matches("error")
-            for template in group.contents.filter_templates()
+            == 6
         )
-        introduction = _preceding_introduction(code, group)
+        first_comment = next(
+            comment
+            for comment in code.filter_comments(recursive=False)
+            if "[[File:Aranami-quality-" in str(comment)
+        )
+        introduction = _preceding_introduction(code, first_comment)
         assert "各年度條目品質分布如下：" in introduction
         notices = mwparserfromhell.parse(introduction).filter_templates()
         assert len(notices) == 1

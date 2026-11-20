@@ -67,7 +67,7 @@ class TestWeeklyHistory(TestCase):
             assert len(re.findall(r"<tr data-key=", section)) == expected
             assert 'data-page="' + str(page) + '"' in section
             assert 'data-total="25"' in section
-            assert 'data-url="/reports/?lang=zh-hant"' in section
+            assert 'action="/reports/#recent-events"' in section
             assert "每頁10項" in output
             assert (
                 len(re.findall(r'<dialog id="job-history-', output))

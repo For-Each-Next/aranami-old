@@ -28,6 +28,7 @@ def _context() -> Mock:
     context = Mock(today=date(2026, 10, 3), dry=False)
     context.site.dbName.return_value = "zhwiki"
     context.publish.return_value = True
+    context.confirmed_revision.return_value = 123
     context.report_attempt.side_effect = lambda _title: nullcontext()
     return context
 
@@ -129,6 +130,7 @@ class TestJobDestinations(TestCase):
                 return_value=[
                     Mock(
                         text=original,
+                        latest_revision_id=123,
                         latest_revision=Revision(
                             revid=123,
                             timestamp="2026-10-02T22:00:00Z",
@@ -189,6 +191,7 @@ class TestJobDestinations(TestCase):
                 return_value=[
                     Mock(
                         text=original,
+                        latest_revision_id=123,
                         latest_revision=Revision(
                             revid=123,
                             timestamp="2026-10-02T22:00:00Z",
@@ -219,6 +222,7 @@ class TestJobDestinations(TestCase):
             context.today,
             project="电子游戏",
             report_title=target,
+            original_revision=123,
             persist=True,
         )
         render.assert_called_once_with(original, prepared)
@@ -246,6 +250,7 @@ class TestJobDestinations(TestCase):
                 return_value=[
                     Mock(
                         text=original,
+                        latest_revision_id=123,
                         latest_revision=Revision(
                             revid=123,
                             timestamp="2026-10-02T22:00:00Z",
@@ -282,7 +287,7 @@ class TestJobDestinations(TestCase):
         )
         render.assert_called_once_with(prepared, original)
         assert context.publish.call_args.args[0].title == target
-        save.assert_called_once_with(context.site, target, original, {})
+        save.assert_called_once_with(context.site, target, 123, {})
 
     @staticmethod
     def test_english_destinations_preserve_report_specs() -> None:

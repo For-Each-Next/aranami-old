@@ -79,13 +79,26 @@ class HourlyObservationTests(TestCase):
             TemporaryDirectory() as directory,
             chdir(directory),
             patch(
-                "runtime.project_observations.query_pages_by_wikiproject",
-                return_value=_members(),
-            ),
-            patch(
-                "runtime.project_observations.project_data.read_snapshot",
+                "runtime.project_observations.project_capture.capture",
                 return_value=SimpleNamespace(
-                    manifest={"calculated_at": captured.isoformat()},
+                    manifest={
+                        "calculated_at": captured.isoformat(),
+                        "generation": "fixture",
+                        "sha256": "fixture",
+                        "metadata": {
+                            "snapshot_date": "2026-11-09",
+                            "boundary_date": "2026-11-10",
+                            "scheduled_for": captured.replace(
+                                second=0,
+                            ).isoformat(),
+                        },
+                    },
+                    tables={
+                        "members": _members().rename({
+                            "page_revision": "rev_id",
+                            "talk_revision": "talk_page_rev",
+                        }),
+                    },
                 ),
             ),
         ):
@@ -287,8 +300,8 @@ class HourlyObservationTests(TestCase):
         replica.assert_not_called()
 
     @staticmethod
-    def test_all_category_observations_use_one_select_statement() -> None:
-        """Read global lists and project tags in one SQL call."""
+    def test_category_observations_only_select_named_categories() -> None:
+        """Limit one SQL query to the requested categories."""
         site = OfflineSite("zh", "wikipedia")
         with patch.object(projects, "_replica") as replica:
             replica.return_value.query.return_value.collect.return_value = (
@@ -297,12 +310,11 @@ class HourlyObservationTests(TestCase):
             projects.category_observations(
                 site,
                 ["First", "Second"],
-                [1, 2, 3],
             )
         query = replica.return_value.query
         query.assert_called_once()
         statement = query.call_args.args[0]
-        assert "UNION ALL" in str(statement)
+        assert "UNION ALL" not in str(statement)
         assert statement.is_select
         assert query.call_args.kwargs["scope"]["categories"] == [
             "First",

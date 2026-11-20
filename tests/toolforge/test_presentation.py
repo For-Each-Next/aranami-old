@@ -2177,6 +2177,8 @@ class PresentationTests(unittest.TestCase):
                     "quality_chart_controls",
                     "quality_coverage",
                     "quality_matrix",
+                    "quality_search_characters",
+                    "table_pager",
                 )
             ),
         }

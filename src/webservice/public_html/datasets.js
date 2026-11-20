@@ -133,5 +133,14 @@ function initializeDatasets() {
         event.preventDefault();
         void load(url, control, control.hasAttribute("data-dataset-link"));
     });
+    document.addEventListener("submit", event => {
+        const form = event.target;
+        if (!form.matches("#dataset-dialog .dataset-pagination form")) return;
+        const url = datasetURL(form.action);
+        if (!url) return;
+        event.preventDefault();
+        url.search = new URLSearchParams(new FormData(form)).toString();
+        void load(url, form, false);
+    });
 }
 export { initializeDatasets };

@@ -93,3 +93,25 @@
 .newsletter-copy-controls button {
     flex-shrink: 0;
 }
+.newsletter-charts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+    gap: 1rem;
+    margin-block: 1rem;
+}
+
+.newsletter-charts figure {
+    margin: 0;
+    min-inline-size: 0;
+}
+
+.newsletter-charts img {
+    display: block;
+    inline-size: 100%;
+    aspect-ratio: 76 / 43;
+}
+
+.newsletter-charts figcaption {
+    padding-block-start: .25rem;
+    text-align: center;
+}

@@ -12,7 +12,7 @@ from shared.support.activity import report_activity
 _LOGGER = logging.getLogger(__name__)
 
 
-def save_edit(edit: ProposedEdit) -> str | PublicationOutcome:
+def save_edit(edit: ProposedEdit) -> PublicationOutcome:
     """Save a proposal after checking its original wiki content.
 
     Args:
@@ -37,13 +37,19 @@ def save_edit(edit: ProposedEdit) -> str | PublicationOutcome:
         current = page.get(force=True)
     except pywikibot.exceptions.NoPageError:
         current = ""
+        revision = None
+    else:
+        revision = page.latest_revision_id
     if current == edit.text:
         _LOGGER.info(
             "No changes needed for %s on %s.",
             edit.title,
             edit.site.dbName(),
         )
-        return "unchanged"
+        return PublicationOutcome(
+            "unchanged",
+            revision if type(revision) is int and revision > 0 else None,
+        )
     if edit.original_text is not None and current != edit.original_text:
         msg = f"Page changed during report construction: {edit.title}."
         raise RuntimeError(msg)

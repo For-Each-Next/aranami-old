@@ -1,12 +1,11 @@
 """Manage report identity checkpoints and compare stable memberships.
 
-Snapshots match the exact published report text. Missing or stale caches
+Snapshots match the exact published revision. Missing or stale caches
 leave callers free to compare the titles or Wikidata IDs in that text.
 """
 
 from __future__ import annotations
 
-import hashlib
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -26,13 +25,13 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 _SCHEMA = {
-    "text_sha256": pl.String,
+    "revision_id": pl.Int64,
     "title": pl.String,
     "page_id": pl.Int64,
 }
 _CACHE = ParquetCache(
     schema=_SCHEMA,
-    contract="report-membership:1",
+    contract="report-membership:2",
     max_rows=1_000_000,
     max_bytes=64 * 1024 * 1024,
 )
@@ -70,26 +69,27 @@ def _cache_path(site: BaseSite, report_title: str) -> Path:
 def load_membership(
     site: BaseSite,
     report_title: str,
-    text: str,
+    revision_id: int | None,
 ) -> dict[str, int | None]:
-    """Read source IDs from a snapshot matching current report text.
+    """Read source IDs from a snapshot matching the published revision.
 
     Args:
         site: Destination wiki whose report is being compared.
         report_title: Full destination report title.
-        text: Current report wikitext before generating its replacement.
+        revision_id: Observed destination revision.
 
     Returns:
         Cached titles and IDs, or an empty mapping for missing, stale,
         malformed, or unreadable snapshots.
     """
+    if type(revision_id) is not int or revision_id <= 0:
+        return {}
     path = _cache_path(site, report_title)
     frame = _CACHE.read(path)
     if frame.is_empty():
         return {}
-    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
     if not frame.filter(
-        pl.col("text_sha256").is_null() | (pl.col("text_sha256") != digest),
+        ~pl.col("revision_id").eq_missing(revision_id),
     ).is_empty():
         _LOGGER.info("Ignoring stale report membership cache: %s", path)
         return {}
@@ -113,13 +113,13 @@ def load_membership(
 
 
 def _membership_frame(
-    text: str,
+    revision_id: int,
     members: Mapping[str, int | None],
 ) -> pl.DataFrame:
-    """Build a typed identity snapshot tied to exact report text.
+    """Build a typed snapshot tied to the exact report revision.
 
     Args:
-        text: Report content whose digest identifies the snapshot.
+        revision_id: Exact destination revision.
         members: Article titles and optional source page IDs.
 
     Returns:
@@ -135,9 +135,7 @@ def _membership_frame(
             schema={"title": pl.String, "page_id": pl.Int64},
         )
         .with_columns(
-            pl.lit(hashlib.sha256(text.encode("utf-8")).hexdigest()).alias(
-                "text_sha256",
-            ),
+            pl.lit(revision_id, dtype=pl.Int64).alias("revision_id"),
         )
         .select(list(_SCHEMA))
     )
@@ -146,10 +144,10 @@ def _membership_frame(
 def save_membership(
     site: BaseSite,
     report_title: str,
-    text: str,
+    revision_id: int | None,
     members: Mapping[str, int | None],
 ) -> None:
-    """Atomically cache identities for the published report text.
+    """Atomically cache identities for a confirmed published revision.
 
     Cache failures are logged without interrupting publication. Callers
     save proposed membership only after a successful live publication;
@@ -158,12 +156,14 @@ def save_membership(
     Args:
         site: Destination wiki whose report has been compared or saved.
         report_title: Full destination report title.
-        text: Published report text, or original text during a preview.
-        members: Titles and source IDs belonging to that exact text.
+        revision_id: Published or original preview revision.
+        members: Titles and source IDs belonging to that exact revision.
     """
+    if type(revision_id) is not int or revision_id <= 0:
+        return
     path = _cache_path(site, report_title)
     try:
-        _CACHE.write(path, _membership_frame(text, members))
+        _CACHE.write(path, _membership_frame(revision_id, members))
     except OSError, ValueError, pl.exceptions.PolarsError:
         _LOGGER.warning("Could not write report membership cache: %s", path)
 

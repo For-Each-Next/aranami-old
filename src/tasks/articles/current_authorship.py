@@ -104,7 +104,11 @@ def collect_revision(member: dict, site: BaseSite) -> pl.DataFrame:
         .group_by("editor")
         .agg(
             pl.len().alias("tokens"),
-            pl.col("bytes").sum(),
+            pl.col("bytes", "raw_bytes").sum(),
+            pl
+            .when(pl.col("characters").count() > 0)
+            .then(pl.col("characters").sum())
+            .alias("characters"),
         )
         .sort("editor")
     )
@@ -198,9 +202,9 @@ def _refresh(  # ruff: ignore[too-many-arguments]
     should_yield: Callable[[], bool] | None,
     observed_at: dt.datetime | None,
 ) -> None:
-    """Checkpoint each exact-revision attempt independently."""
+    """Collect exact listing revisions and save a batch of results."""
     now = observed_at or dt.datetime.now(dt.UTC)
-    store.checkpoint(
+    tables = store.checkpoint(
         runtime,
         members=store.prepare_membership(
             membership,
@@ -212,14 +216,24 @@ def _refresh(  # ruff: ignore[too-many-arguments]
     if max_requests == 0 or time_budget == 0:
         return
     deadline = monotonic() + time_budget
-    pending = store.pending(store.load(runtime)).head(max_requests)
+    pending = store.pending(tables).head(max_requests)
     budget = HistoryBudget(deadline, should_yield)
     if not budget.admit():
         return
-    pending = _resolve_cutoffs(site, runtime, pending)
-    _complete_creation_metadata(site, runtime, max_requests)
+    pending = _resolve_cutoffs(site, pending)
+    new_members = pl.concat([
+        tables["members"].join(
+            pending.select("page_id"),
+            on="page_id",
+            how="anti",
+        ),
+        pending,
+    ]).sort("page_id")
+    creation = _complete_creation_metadata(site, tables, max_requests)
     pending = pending.join(
-        store.load(runtime)["evidence"].select(store.KEY),
+        authorship_store.complete_contributor_evidence(
+            tables["evidence"],
+        ).select(store.KEY),
         on=store.KEY,
         how="anti",
         nulls_equal=True,
@@ -229,20 +243,44 @@ def _refresh(  # ruff: ignore[too-many-arguments]
         for row in pending.iter_rows(named=True)
         if row["revision_id"] is not None
     }
-    if not selections or not budget.admit():
-        return
-    with wikiwho.preloaded_revision_sources(site, selections):
-        _collect_pending(site, runtime, pending, deadline, should_yield)
+    evidence = pl.DataFrame(schema=store.EVIDENCE_SCHEMA)
+    attempts = [
+        {**row, "attempted_at": now}
+        for row in pending
+        .filter(pl.col("revision_id").is_null())
+        .select(store.KEY)
+        .iter_rows(named=True)
+    ]
+    if selections and budget.admit():
+        with wikiwho.preloaded_revision_sources(site, selections):
+            evidence, progress = _collect_pending(
+                site,
+                pending,
+                deadline,
+                should_yield,
+            )
+        attempts.extend(progress)
+    store.checkpoint(
+        runtime,
+        members=new_members,
+        evidence=pl.concat([creation, evidence]),
+        attempts=pl.DataFrame(attempts, schema=store.ATTEMPT_SCHEMA),
+    )
 
 
 def _collect_pending(
     site: BaseSite,
-    runtime: Path,
     pending: pl.DataFrame,
     deadline: float,
     should_yield: Callable[[], bool] | None,
-) -> None:
-    """Checkpoint token responses using preloaded source text."""
+) -> tuple[pl.DataFrame, list[dict]]:
+    """Accumulate bounded token evidence and retry times in memory.
+
+    Returns:
+        Successful exact revisions and actual attempt times.
+    """
+    successes = []
+    attempts = []
     for member in pending.filter(
         pl.col("revision_id").is_not_null(),
     ).iter_rows(named=True):
@@ -252,12 +290,7 @@ def _collect_pending(
             break
         evidence, throttled = None, False
         try:
-            cached = store.load(runtime)["evidence"].filter(
-                (pl.col("page_id") == member["page_id"])
-                & (pl.col("revision_id") == member["revision_id"]),
-            )
-            if cached.is_empty():
-                evidence = collect_revision(member, site)
+            evidence = collect_revision(member, site)
         except Exception as error:  # ruff: ignore[blind-except] - Optional source errors retain durable retry progress.
             _LOG.warning(
                 "Current authorship unavailable for page %s revision %s (%s).",
@@ -269,25 +302,28 @@ def _collect_pending(
             if isinstance(error, urllib.error.HTTPError):
                 error.close()
                 throttled = error.code in {429, 503}
-        store.checkpoint(
-            runtime,
-            evidence=evidence,
-            attempted={key: member[key] for key in store.KEY},
-        )
+        if evidence is not None:
+            successes.append(evidence)
+        attempts.append({
+            **{key: member[key] for key in store.KEY},
+            "attempted_at": dt.datetime.now(dt.UTC),
+        })
         if throttled:
             break
+    return pl.concat([
+        pl.DataFrame(schema=store.EVIDENCE_SCHEMA),
+        *successes,
+    ]), attempts
 
 
 def _resolve_cutoffs(
     site: BaseSite,
-    runtime: Path,
     pending: pl.DataFrame,
 ) -> pl.DataFrame:
     """Resolve missing cutoffs while retaining successful facts.
 
     Returns:
-        Selected pending rows with successful SQL cutoffs checkpointed.
-        Unresolved cutoffs retain their fair retry attempts.
+        Selected pending rows with any cutoffs proved by the replica.
     """
     missing = pending.filter(
         pl.col("revision_id").is_null()
@@ -302,12 +338,7 @@ def _resolve_cutoffs(
     resolved = []
     for member in missing.iter_rows(named=True):
         cutoff = selected.get(member["page_id"])
-        if cutoff is None:
-            store.checkpoint(
-                runtime,
-                attempted={key: member[key] for key in store.KEY},
-            )
-        else:
+        if cutoff is not None:
             resolved.append({
                 **member,
                 "revision_id": cutoff[0],
@@ -315,32 +346,23 @@ def _resolve_cutoffs(
             })
     if resolved:
         updates = pl.DataFrame(resolved, schema=store.MEMBER_SCHEMA)
-        tables = store.load(runtime)
-        store.checkpoint(
-            runtime,
-            members=pl.concat([
-                tables["members"].join(
-                    updates.select("page_id"),
-                    on="page_id",
-                    how="anti",
-                ),
-                updates,
-            ]).sort("page_id"),
-        )
-    return store.load(runtime)["members"].join(
-        pending.select("page_id"),
-        on="page_id",
-        how="semi",
-    )
+        return pl.concat([
+            pending.join(updates.select("page_id"), on="page_id", how="anti"),
+            updates,
+        ])
+    return pending
 
 
 def _complete_creation_metadata(
     site: BaseSite,
-    runtime: Path,
+    tables: dict[str, pl.DataFrame],
     limit: int,
-) -> None:
-    """Fill missing saved range metadata without token rereads."""
-    tables = store.load(runtime)
+) -> pl.DataFrame:
+    """Fill missing saved range starts without token rereads.
+
+    Returns:
+        Existing evidence rows with newly proved creation metadata.
+    """
     missing = (
         tables["evidence"]
         .join(tables["members"].select(store.KEY), on=store.KEY, how="semi")
@@ -348,7 +370,7 @@ def _complete_creation_metadata(
         .head(limit)
     )
     if missing.is_empty():
-        return
+        return missing
     first = first_revisions(site, missing["page_id"].to_list())
     updates = []
     for row in missing.iter_rows(named=True):
@@ -359,11 +381,7 @@ def _complete_creation_metadata(
                 "creation_revision": birth[0],
                 "creation_timestamp": birth[1],
             })
-    if updates:
-        store.checkpoint(
-            runtime,
-            evidence=pl.DataFrame(updates, schema=store.EVIDENCE_SCHEMA),
-        )
+    return pl.DataFrame(updates, schema=store.EVIDENCE_SCHEMA)
 
 
 def refresh_current_versions(  # ruff: ignore[too-many-arguments]
@@ -406,11 +424,16 @@ def refresh_current_versions(  # ruff: ignore[too-many-arguments]
         )
         .cast(store.TARGET_SCHEMA)
     )
-    store.checkpoint(runtime, targets=targets)
     tables = store.load(runtime)
     pending = (
         targets
-        .join(tables["evidence"].select(store.KEY), on=store.KEY, how="anti")
+        .join(
+            authorship_store.complete_contributor_evidence(
+                tables["evidence"],
+            ).select(store.KEY),
+            on=store.KEY,
+            how="anti",
+        )
         .join(tables["attempts"], on=store.KEY, how="left", validate="1:1")
         .sort(
             "attempted_at",
@@ -430,8 +453,20 @@ def refresh_current_versions(  # ruff: ignore[too-many-arguments]
         or time_budget <= 0
         or (should_yield is not None and should_yield())
     ):
+        store.checkpoint(runtime, targets=targets)
         return
     deadline = monotonic() + time_budget
     selections = dict(pending.select("revision_id", "page_id").iter_rows())
     with wikiwho.preloaded_revision_sources(site, selections):
-        _collect_pending(site, runtime, pending, deadline, should_yield)
+        evidence, attempts = _collect_pending(
+            site,
+            pending,
+            deadline,
+            should_yield,
+        )
+    store.checkpoint(
+        runtime,
+        targets=targets,
+        evidence=evidence,
+        attempts=pl.DataFrame(attempts, schema=store.ATTEMPT_SCHEMA),
+    )

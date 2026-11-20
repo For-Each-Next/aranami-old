@@ -41,6 +41,7 @@ from data.caching.game_titles import (
 )
 from data.consistency import review_repair
 from data.newsletter.observations import OBSERVATIONS_PATH
+from data.parquet_preview import PAGE_SIZE, PAGE_SIZES
 from data.prepared import values_path
 from data.runtime.events import event_extra
 from data.runtime.log_store import (
@@ -62,7 +63,18 @@ from webservice.asset_cache import AssetCache
 from webservice.datasets import DatasetSelectionError, read_dataset
 from webservice.django_setup import setup_django
 from webservice.http import accepts_gzip, encoded_response, read_only_headers
+from webservice.job_history import (
+    REPORTS_PAGE_SIZE,
+    REPORTS_PAGE_SIZES,
+    dataset_link_scope,
+)
 from webservice.live import LiveFeed, compact_frame
+from webservice.newsletter_charts import (
+    CHART_DIRECTORY,
+    CHART_NAME,
+    CHART_ROUTE,
+    available_charts,
+)
 from webservice.page_cache import PageCache
 from webservice.quality_cache import QualityResourceCache
 from webservice.quality_chart_requests import (
@@ -257,6 +269,7 @@ def _newsletter_feature(  # ruff: ignore[too-many-arguments]
                 issue,
                 _newsletter_figures(issue, entry["year_review"], runtime),
             ),
+            "charts": available_charts(runtime, issue, entry["year_review"]),
             "data_through": selected,
         })
         value["available"] = True
@@ -571,6 +584,7 @@ def _navigation(request: ASGIRequest, locale: str) -> dict[str, object]:
             "sort",
             "order",
             "page",
+            "size",
             "seed",
             "q",
             "quality",
@@ -737,6 +751,7 @@ class _PublicViews:
         with (
             title_display_scope(labels),
             browser.browser_document(_browser_fallback(request)),
+            dataset_link_scope(self.runtime),
         ):
             return self._page(request, title_identity=title_identity)
 
@@ -1046,7 +1061,22 @@ class _PublicViews:
                 info.st_size,
                 info.st_mtime_ns,
             )
-        return archive, observation, feature_dates, figure_identity
+        chart_directory = self.runtime / CHART_DIRECTORY
+        try:
+            chart_identity = (
+                chart_directory.stat().st_mtime_ns
+                if issue.month == 1
+                else None
+            )
+        except OSError:
+            chart_identity = None
+        return (
+            archive,
+            observation,
+            feature_dates,
+            figure_identity,
+            chart_identity,
+        )
 
     def _newsletter_saved(
         self,
@@ -1499,6 +1529,33 @@ class _PublicViews:
             headers=headers,
         )
 
+    def newsletter_chart(self, request: ASGIRequest) -> HttpResponseBase:
+        """Serve a saved annual chart by its stable filename.
+
+        Returns:
+            An SVG download or a missing-file response.
+        """
+        name = request.path.removeprefix(CHART_ROUTE)
+        directory = self.runtime / CHART_DIRECTORY
+        if (
+            not CHART_NAME.fullmatch(name)
+            or directory.is_symlink()
+            or directory.parent.is_symlink()
+        ):
+            return _error(HTTPStatus.NOT_FOUND)
+        try:
+            asset = self.asset_cache.read(directory / name)
+        except OSError, ValueError:
+            return _error(HTTPStatus.NOT_FOUND)
+        return _AssetHttpResponse(
+            asset.content,
+            content_type="image/svg+xml",
+            headers={
+                "Cache-Control": "public, max-age=31536000, immutable",
+                "ETag": asset.etag,
+            },
+        )
+
     def asset(self, request: ASGIRequest) -> HttpResponseBase:
         """Revalidate cached source assets without directory listings.
 
@@ -1572,17 +1629,19 @@ class _PublicViews:
                 HTTPStatus.BAD_REQUEST,
             )
         page_value = parameters.get("page", ["1"])[0]
-        invalid_page = (
+        page_size = parameters.get("size", [str(PAGE_SIZE)])[0]
+        invalid_paging = (
             not page_value.isascii()
             or not page_value.isdigit()
             or len(page_value) > len(str(20_000_000))
             or int(page_value) < 1
+            or page_size not in {str(size) for size in PAGE_SIZES}
         )
         if (
-            set(parameters) - {"file", "lang", "page"}
+            set(parameters) - {"file", "lang", "page", "size"}
             or any(len(values) != 1 for values in parameters.values())
             or ("file" in parameters and not parameters["file"][0])
-            or invalid_page
+            or invalid_paging
         ):
             return _page_error(
                 "data.invalid",
@@ -1595,7 +1654,8 @@ class _PublicViews:
                 value = read_dataset(
                     parameters["file"][0],
                     self.runtime,
-                    int(parameters.get("page", ["1"])[0]),
+                    int(page_value),
+                    int(page_size),
                 )
             except DatasetSelectionError:
                 return _page_error(
@@ -1639,6 +1699,12 @@ class _PublicViews:
         """
         status = read_status(self.runtime)
         history_page = request.GET.get("page", "1")[:5]
+        size = request.GET.get("size", "")
+        history_size = (
+            int(size)
+            if size in {str(limit) for limit in REPORTS_PAGE_SIZES}
+            else REPORTS_PAGE_SIZE
+        )
         return _html(
             pages.render_reports(
                 status,
@@ -1649,6 +1715,7 @@ class _PublicViews:
                 history_page=int(history_page)
                 if history_page.isascii() and history_page.isdecimal()
                 else 1,
+                history_size=history_size,
             ),
             locale,
         )
@@ -2157,6 +2224,7 @@ def create_app(runtime: Path, assets: Path = _ASSETS) -> DjangoWebsite:
         url_path("quality-analysis/charts/", _route(views.quality_charts)),
         url_path("api/live", _route(views.live_api)),
         url_path("api/logs", _route(views.api_logs)),
+        re_path(r"^newsletter/charts/[^/]+$", _route(views.newsletter_chart)),
         re_path(
             r"^quality-analysis/resources/.*$",
             _route(views.quality_resource),

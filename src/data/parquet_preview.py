@@ -25,6 +25,7 @@ from shared.support.assessment_encoding import restore_assessment_schema
 from shared.support.parquet import validate_parquet_metadata
 
 PAGE_SIZE = 50
+PAGE_SIZES = (20, PAGE_SIZE, 100)
 _MAX_FILE_BYTES = 1024 * 1024 * 1024
 _MAX_PAGE_BYTES = 8 * 1024 * 1024
 _MAX_COLUMNS = 256
@@ -32,6 +33,7 @@ _MAX_ROWS = 20_000_000
 _MAX_SELECTOR = 1500
 _FIRST_PRINTABLE = 32
 _MAX_METADATA_BYTES = 1024 * 1024
+_MIN_PARQUET_BYTES = 12
 
 
 def preview_path(filename: str) -> PurePosixPath:
@@ -185,13 +187,79 @@ def _restore_columns(
     return frame
 
 
-def read_preview(filename: str, runtime: Path, page: int) -> dict[str, object]:  # ruff: ignore[too-many-locals]
-    """Read metadata and fifty rows without decoding the complete table.
+def _open_preview(filename: str, runtime: Path) -> tuple[PurePosixPath, int]:
+    """Resolve and open the same canonical file for previews and links.
+
+    Returns:
+        The resolved public path and its open descriptor.
+
+    Raises:
+        FileNotFoundError: No saved file matches the selector.
+    """
+    path = preview_path(filename)
+    if not filename.isascii() and path.parts[0] == "data":
+        path = preview_path(
+            read_storage_path(runtime, filename)
+            .relative_to(runtime)
+            .as_posix(),
+        )
+    try:
+        return path, _open(path, runtime)
+    except FileNotFoundError:
+        if path.parts[0] != "data":
+            raise
+        path = preview_path(
+            read_storage_path(runtime, filename)
+            .relative_to(runtime)
+            .as_posix(),
+        )
+        return path, _open(path, runtime)
+
+
+def preview_available(filename: str, runtime: Path) -> bool:
+    """Check that a preview file can be opened without reading its rows.
+
+    Returns:
+        Whether the file is a bounded regular file with Parquet framing.
+    """
+    try:
+        return _preview_has_frame(filename, runtime)
+    except OSError, ValueError:
+        return False
+
+
+def _preview_has_frame(filename: str, runtime: Path) -> bool:
+    """Check the envelope of the resolved, open preview file.
+
+    Returns:
+        Whether the file is regular, bounded and framed as Parquet.
+    """
+    _, descriptor = _open_preview(filename, runtime)
+    try:
+        details = os.fstat(descriptor)
+        return (
+            stat.S_ISREG(details.st_mode)
+            and _MIN_PARQUET_BYTES <= details.st_size <= _MAX_FILE_BYTES
+            and os.pread(descriptor, 4, 0) == b"PAR1"
+            and os.pread(descriptor, 4, details.st_size - 4) == b"PAR1"
+        )
+    finally:
+        os.close(descriptor)
+
+
+def read_preview(  # ruff: ignore[too-many-locals]
+    filename: str,
+    runtime: Path,
+    page: int,
+    page_size: int = PAGE_SIZE,
+) -> dict[str, object]:
+    """Read metadata and a page without decoding the complete table.
 
     Args:
         filename: Canonical production cache or retained-data filename.
         runtime: Trusted runtime home containing the public data roots.
         page: One-based requested page, clamped to the final saved page.
+        page_size: One of the supported bounded preview sizes.
 
     Returns:
         Original storage metadata, physical schema and a bounded slice.
@@ -202,27 +270,13 @@ def read_preview(filename: str, runtime: Path, page: int) -> dict[str, object]: 
         ValueError: The selector, page or storage metadata is invalid.
         pl.exceptions.PolarsError: The saved Parquet cannot be decoded.
     """
-    path = preview_path(filename)
     if type(page) is not int or page < 1:
         message = "Preview pages must be positive integers."
         raise ValueError(message)
-    if not filename.isascii() and path.parts[0] == "data":
-        path = preview_path(
-            read_storage_path(runtime, filename)
-            .relative_to(runtime)
-            .as_posix(),
-        )
-    try:
-        descriptor = _open(path, runtime)
-    except FileNotFoundError:
-        if path.parts[0] != "data":
-            raise
-        path = preview_path(
-            read_storage_path(runtime, filename)
-            .relative_to(runtime)
-            .as_posix(),
-        )
-        descriptor = _open(path, runtime)
+    if page_size not in PAGE_SIZES:
+        message = "Choose a supported preview page size."
+        raise ValueError(message)
+    path, descriptor = _open_preview(filename, runtime)
     with os.fdopen(descriptor, "rb") as stream:
         details = os.fstat(stream.fileno())
         if (
@@ -244,9 +298,9 @@ def read_preview(filename: str, runtime: Path, page: int) -> dict[str, object]: 
         if row_count > _MAX_ROWS or len(scan.collect_schema()) > _MAX_COLUMNS:
             message = "Preview data exceeds the viewer bounds."
             raise ValueError(message)
-        page_count = max(1, (row_count + PAGE_SIZE - 1) // PAGE_SIZE)
+        page_count = max(1, (row_count + page_size - 1) // page_size)
         page = min(page, page_count)
-        frame = scan.slice((page - 1) * PAGE_SIZE, PAGE_SIZE).collect()
+        frame = scan.slice((page - 1) * page_size, page_size).collect()
         frame = _restore_columns(frame, metadata)
         if manifest is not None:
             frame = restore_assessment_schema(frame, manifest["columns"])
@@ -273,7 +327,7 @@ def read_preview(filename: str, runtime: Path, page: int) -> dict[str, object]: 
         "schema": [(name, str(dtype)) for name, dtype in frame.schema.items()],
         "rows": frame.to_dicts(),
         "row_count": row_count,
-        "preview_limit": PAGE_SIZE,
+        "preview_limit": page_size,
         "page": page,
         "page_count": page_count,
         "size_bytes": details.st_size,

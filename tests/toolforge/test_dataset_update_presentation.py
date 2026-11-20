@@ -130,7 +130,7 @@ class DatasetUpdatePresentationTests(TestCase):
             assert "new&lt;unsafe&gt;.parquet</a></strong>" in full
             assert "new<unsafe>.parquet" not in full
             assert "Report &lt;unsafe&gt;" in full
-            assert "12 × 3" in full
+            assert "12 × 3" not in full
             assert "14 × 4" in full
             for icon in ("✅", "❌", "⌛"):
                 assert icon in full

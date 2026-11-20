@@ -174,12 +174,14 @@ def _nomination_baseline(
     }
 
 
-def prepare_publication(
+def prepare_publication(  # ruff: ignore[too-many-arguments]
     data: ReportData,
     definition: ReportDefinition,
     site: BaseSite,
     title: str,
     original_text: str,
+    *,
+    original_revision: int | None = None,
 ) -> PreparedPublication:
     """Compare source facts with validated retained report identities.
 
@@ -188,12 +190,13 @@ def prepare_publication(
         definition: Membership selection for this report.
         site: Destination wiki identity for its validated local cache.
         title: Caller-selected destination title.
-        original_text: Current destination text validating the cache.
+        original_text: Current destination text used for report parsing.
+        original_revision: Revision validating the membership cache.
 
     Returns:
         Selected rows, differences, and publication identity metadata.
     """
-    cached = load_membership(site, title, original_text)
+    cached = load_membership(site, title, original_revision)
     stored = _stored_articles(definition, site, title, original_text)
     baseline = (
         stored if stored is not None else data.old_articles[definition.name]
@@ -278,8 +281,8 @@ def record_publication(  # ruff: ignore[too-many-arguments]
     prepared: PreparedPublication,
     site: BaseSite,
     title: str,
-    original_text: str,
-    text: str,
+    original_revision: int | None,
+    published_revision: int | None,
     *,
     confirmed: bool,
     dry: bool,
@@ -290,15 +293,20 @@ def record_publication(  # ruff: ignore[too-many-arguments]
         prepared: Backend-selected live and baseline identity mappings.
         site: Destination wiki identity.
         title: Caller-selected publication destination.
-        original_text: Original content validated during preparation.
-        text: Proposed destination content after confirmed publication.
+        original_revision: Exact revision used during preparation.
+        published_revision: Exact confirmed destination revision.
         confirmed: Live content was unchanged or successfully saved.
         dry: Retain only original-text identities during a preview.
     """
     if dry:
-        save_membership(site, title, original_text, prepared.preview_members)
+        save_membership(
+            site,
+            title,
+            original_revision,
+            prepared.preview_members,
+        )
     elif confirmed:
-        save_membership(site, title, text, prepared.members)
+        save_membership(site, title, published_revision, prepared.members)
 
 
 def build_enriched_rows(

@@ -37,6 +37,10 @@ if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
 
 
+_ORIGINAL_REVISION = 201
+_PUBLISHED_REVISION = 202
+
+
 def _old_text(spec: reports.ReportSpec, body: str = "old body") -> str:
     """Build existing report markers around supplied body text.
 
@@ -125,7 +129,11 @@ def _report_change_sources(
             job,
             "read_pages",
             return_value=[
-                Mock(text=existing[name]) for name in job.REPORT_TARGETS
+                Mock(
+                    text=existing[name],
+                    latest_revision_id=_ORIGINAL_REVISION,
+                )
+                for name in job.REPORT_TARGETS
             ],
         ),
         patch.object(
@@ -854,7 +862,10 @@ class TestEnglishReportJob(TestCase):
                     job,
                     "read_pages",
                     return_value=[
-                        Mock(text=existing[name])
+                        Mock(
+                            text=existing[name],
+                            latest_revision_id=_ORIGINAL_REVISION,
+                        )
                         for name in job.REPORT_TARGETS
                     ],
                 ) as read,
@@ -924,12 +935,14 @@ class TestEnglishReportJob(TestCase):
             elapsed[0] += 10
             return data
 
-        def prepare(
+        def prepare(  # ruff: ignore[too-many-arguments] - Match the publication callable.
             data: data_service.ReportData,
             definition: data_service.ReportDefinition,
             site: object,
             title: str,
             text: str,
+            *,
+            original_revision: int | None,
         ) -> data_service.PreparedPublication:
             """Spend a separate duration comparing each target's facts.
 
@@ -943,6 +956,7 @@ class TestEnglishReportJob(TestCase):
                 site,
                 title,
                 text,
+                original_revision=original_revision,
             )
 
         with (
@@ -966,7 +980,11 @@ class TestEnglishReportJob(TestCase):
                 job,
                 "read_pages",
                 return_value=[
-                    Mock(text=existing[name]) for name in job.REPORT_TARGETS
+                    Mock(
+                        text=existing[name],
+                        latest_revision_id=_ORIGINAL_REVISION,
+                    )
+                    for name in job.REPORT_TARGETS
                 ],
             ),
             patch.object(job, "prepare_reports", side_effect=shared_reads),
@@ -1024,7 +1042,10 @@ class TestEnglishReportJob(TestCase):
         context.site = OfflineSite("zh", "wikipedia")
         context.dry = True
         existing = {spec.name: _old_text(spec) for spec in job.REPORT_SPECS}
-        pages = [Mock(text=existing[name]) for name in job.REPORT_TARGETS]
+        pages = [
+            Mock(text=existing[name], latest_revision_id=_ORIGINAL_REVISION)
+            for name in job.REPORT_TARGETS
+        ]
         data = data_service.ReportData(
             rows=data_service.normalize_en_pages(_english_rows()),
             old_articles={name: {} for name in job.REPORT_TARGETS},
@@ -1074,8 +1095,8 @@ class TestEnglishReportJob(TestCase):
         build.assert_called_once_with(existing, data, job.REPORT_SPECS)
         assert load.call_count == len(job.REPORT_SPECS)
         assert save.call_args_list == [
-            ((context.site, title, existing[name], {}), {})
-            for name, title in job.REPORT_TARGETS.items()
+            ((context.site, title, _ORIGINAL_REVISION, {}), {})
+            for title in job.REPORT_TARGETS.values()
         ]
         edits = [call.args[0] for call in context.publish.call_args_list]
         assert [edit.title for edit in edits] == list(
@@ -1101,6 +1122,7 @@ class TestEnglishReportJob(TestCase):
         """List English changes and suppress same-ID renames."""
         context = MagicMock(site=OfflineSite("zh", "wikipedia"), dry=False)
         context.publish.return_value = True
+        context.confirmed_revision.return_value = _PUBLISHED_REVISION
         existing = _old_change_reports()
         old_members = {"Old title": 101, "Gone": 102}
         with (
@@ -1108,11 +1130,11 @@ class TestEnglishReportJob(TestCase):
             patch("pathlib.Path.cwd", return_value=Path(directory)),
             _report_change_sources(context, existing) as source,
         ):
-            for name, title in job.REPORT_TARGETS.items():
+            for title in job.REPORT_TARGETS.values():
                 save_membership(
                     context.site,
                     title,
-                    existing[name],
+                    _ORIGINAL_REVISION,
                     old_members,
                 )
             job.run(context=context)
@@ -1143,7 +1165,7 @@ class TestEnglishReportJob(TestCase):
                 assert load_membership(
                     context.site,
                     edit.title,
-                    edit.text,
+                    _PUBLISHED_REVISION,
                 ) == {
                     "Renamed": 101,
                     added_title: added_id,
@@ -1152,14 +1174,14 @@ class TestEnglishReportJob(TestCase):
                     load_membership(
                         context.site,
                         edit.title,
-                        existing[spec.name],
+                        _ORIGINAL_REVISION,
                     )
                     == {}
                 )
 
     @staticmethod
     def test_dry_run_keeps_original_cached_report_membership() -> None:
-        """Preserve live membership and text hashes during previews."""
+        """Preserve live membership and revision IDs during previews."""
         context = MagicMock(site=OfflineSite("zh", "wikipedia"), dry=True)
         existing = _old_change_reports()
         old_members = {"Old title": 101, "Gone": 102}
@@ -1168,30 +1190,31 @@ class TestEnglishReportJob(TestCase):
             patch("pathlib.Path.cwd", return_value=Path(directory)),
             _report_change_sources(context, existing),
         ):
-            for name, title in job.REPORT_TARGETS.items():
+            for title in job.REPORT_TARGETS.values():
                 save_membership(
                     context.site,
                     title,
-                    existing[name],
+                    _ORIGINAL_REVISION,
                     old_members,
                 )
             job.run(dry=True, context=context)
-            for spec, call in zip(
-                job.REPORT_SPECS,
-                context.publish.call_args_list,
-                strict=True,
-            ):
+            for call in context.publish.call_args_list:
                 edit = call.args[0]
                 assert (
                     load_membership(
                         context.site,
                         edit.title,
-                        existing[spec.name],
+                        _ORIGINAL_REVISION,
                     )
                     == old_members
                 )
                 assert (
-                    load_membership(context.site, edit.title, edit.text) == {}
+                    load_membership(
+                        context.site,
+                        edit.title,
+                        _PUBLISHED_REVISION,
+                    )
+                    == {}
                 )
                 assert "Old title" not in edit.summary
                 assert "Renamed" not in edit.summary
@@ -1211,11 +1234,11 @@ class TestEnglishReportJob(TestCase):
             _report_change_sources(context, existing),
         ):
             job.run(dry=True, context=context)
-            for name, title in job.REPORT_TARGETS.items():
+            for title in job.REPORT_TARGETS.values():
                 assert load_membership(
                     context.site,
                     title,
-                    existing[name],
+                    _ORIGINAL_REVISION,
                 ) == {
                     "Renamed": 101,
                     "Gone": None,
@@ -1226,6 +1249,7 @@ class TestEnglishReportJob(TestCase):
         """Keep the live snapshot after publication fails."""
         context = MagicMock(site=OfflineSite("zh", "wikipedia"), dry=False)
         context.publish.return_value = True
+        context.confirmed_revision.return_value = _PUBLISHED_REVISION
         context.publish.side_effect = RuntimeError("Publication failed.")
         existing = _old_change_reports()
         old_members = {"Old title": 101, "Gone": 102}
@@ -1234,11 +1258,11 @@ class TestEnglishReportJob(TestCase):
             patch("pathlib.Path.cwd", return_value=Path(directory)),
             _report_change_sources(context, existing),
         ):
-            for name, title in job.REPORT_TARGETS.items():
+            for title in job.REPORT_TARGETS.values():
                 save_membership(
                     context.site,
                     title,
-                    existing[name],
+                    _ORIGINAL_REVISION,
                     old_members,
                 )
             failure = None
@@ -1251,15 +1275,20 @@ class TestEnglishReportJob(TestCase):
                 "Publication failed.",
                 "Publication failed.",
             ]
-            for name, title in job.REPORT_TARGETS.items():
+            for title in job.REPORT_TARGETS.values():
                 assert load_membership(
                     context.site,
                     title,
-                    existing[name],
+                    _ORIGINAL_REVISION,
                 ) == (old_members)
             assert context.publish.call_count == len(job.REPORT_SPECS)
             for call in context.publish.call_args_list:
                 edit = call.args[0]
                 assert (
-                    load_membership(context.site, edit.title, edit.text) == {}
+                    load_membership(
+                        context.site,
+                        edit.title,
+                        _PUBLISHED_REVISION,
+                    )
+                    == {}
                 )

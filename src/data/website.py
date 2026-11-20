@@ -278,6 +278,26 @@ def _valid_estimated_appearance(
     )
 
 
+def _valid_news_display(
+    row: dict,
+    section: str,
+    day: dt.date | None,
+    end: dt.date,
+) -> bool:
+    """Validate the saved active-news day when present.
+
+    Returns:
+        Whether the appearance date and observation day are consistent.
+    """
+    return "displayed_on" not in row or (
+        section == "news"
+        and day is not None
+        and day < end
+        and row["displayed_on"] == (end - dt.timedelta(days=1)).isoformat()
+        and row.get("date_kind") in {"appearance", "window_start"}
+    )
+
+
 def _valid_appearance_cache(  # ruff: ignore[too-many-return-statements]
     name: str,
     value: dict[str, object],
@@ -316,7 +336,9 @@ def _valid_appearance_cache(  # ruff: ignore[too-many-return-statements]
             )
             if day is not None and day.isoformat() != row["date"]:
                 return False
-            if row.get("date_kind") not in {
+            if not _valid_news_display(row, section, day, end) or row.get(
+                "date_kind",
+            ) not in {
                 None,
                 "appearance",
                 "window_start",

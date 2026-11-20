@@ -625,17 +625,20 @@ def _bulletin_intervals(  # ruff: ignore[too-many-arguments]
 def _appearance_starts(
     intervals: list[pl.DataFrame],
     members: set[str] | None,
+    *,
+    active_until: dt.date | None = None,
 ) -> list[dict[str, str]]:
     """Merge touching intervals to identify appearance dates.
 
     Args:
         intervals: Subject intervals from homepage display templates.
         members: Allowed canonical titles, or none for the entire wiki.
+        active_until: Keep displays continuing at the interval end.
 
     Returns:
         Appearance starts, with window-start dates labelled explicitly.
     """
-    starts = (
+    timeline = (
         pl
         .concat(intervals)
         .sort(
@@ -650,16 +653,25 @@ def _appearance_starts(
             .over("title")
             .alias("_previous_end"),
         )
-        .filter(
-            pl.col("_previous_end").is_null()
-            | (pl.col("_begin") > pl.col("_previous_end")),
+        .with_columns(
+            (
+                pl.col("_previous_end").is_null()
+                | (pl.col("_begin") > pl.col("_previous_end"))
+            ).alias("_new_appearance"),
         )
-        .select(
-            "title",
-            "url",
-            "date_kind",
-            pl.col("_begin").dt.strftime("%Y-%m-%d").alias("date"),
+    )
+    if active_until is not None:
+        timeline = timeline.with_columns(
+            pl.col("_new_appearance").cum_sum().over("title").alias("_run"),
+        ).filter(
+            pl.col("_until").max().over("title", "_run")
+            == dt.datetime.combine(active_until, dt.time(), tzinfo=dt.UTC),
         )
+    starts = timeline.filter(pl.col("_new_appearance")).select(
+        "title",
+        "url",
+        "date_kind",
+        pl.col("_begin").dt.strftime("%Y-%m-%d").alias("date"),
     )
     return _finish(starts.to_dicts(), members)
 
@@ -922,6 +934,7 @@ def collect_news(  # ruff: ignore[too-many-arguments]
     resolve: Callable[[str], str] | None = None,
     resolve_many: BatchResolver | None = None,
     history: HistoryReader | None = None,
+    active: bool = False,
 ) -> list[dict[str, str]]:
     """Find news and death subjects from actual display revisions.
 
@@ -934,6 +947,7 @@ def collect_news(  # ruff: ignore[too-many-arguments]
         url: URL builder bound to the collector's existing wiki client.
         resolve_many: Optional batch primer for the canonical resolver.
         history: Complete revisions, including the last before start.
+        active: Keep subjects still on display at collection.
 
     Returns:
         Primary subjects dated by appearance, not news event dates.
@@ -961,7 +975,11 @@ def collect_news(  # ruff: ignore[too-many-arguments]
             ("Template:Itn/Recentdeaths", _separated_subjects),
         )
     ]
-    return _appearance_starts(intervals, members)
+    return _appearance_starts(
+        intervals,
+        members,
+        active_until=end if active else None,
+    )
 
 
 def collect_history(  # ruff: ignore[too-many-arguments]

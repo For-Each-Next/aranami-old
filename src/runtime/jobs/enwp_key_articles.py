@@ -11,7 +11,7 @@ from data.observations import record_page_inputs
 from data.reports import report_key
 from runtime.jobs import ProposedEdit, job_run
 from shared.config import TASK_DEFINITIONS
-from shared.sources.wiki import read_pages
+from shared.sources.wiki import preloaded_revision_id, read_pages
 from tasks.enwiki.key_articles import (
     prepare_publication,
     prepare_reports,
@@ -111,14 +111,14 @@ def run(  # ruff: ignore[too-many-locals]
                     "talk_page_rev": "talk_revision",
                 }),
             )
-        existing = {
-            name: page.text
-            for name, page in zip(
+        destinations = dict(
+            zip(
                 (spec.name for spec in REPORT_SPECS),
                 read_pages(active.site, titles),
                 strict=True,
-            )
-        }
+            ),
+        )
+        existing = {name: page.text for name, page in destinations.items()}
         with enwiki.source_scope(dry=active.dry):
             data = prepare_reports(
                 existing,
@@ -131,14 +131,18 @@ def run(  # ruff: ignore[too-many-locals]
         confirmed_all = True
         for spec in REPORT_SPECS:
             title = selected_targets[spec.name]
-            try:
+            try:  # ruff: ignore[too-many-statements-in-try-clause] - Isolate this report's attempt.
                 with active.report_attempt(title):
+                    original_revision = preloaded_revision_id(
+                        destinations[spec.name],
+                    )
                     prepared = prepare_publication(
                         data,
                         spec.definition,
                         active.site,
                         title,
                         existing[spec.name],
+                        original_revision=original_revision,
                     )
                     edit = ProposedEdit(
                         site=active.site,
@@ -170,8 +174,8 @@ def run(  # ruff: ignore[too-many-locals]
                         prepared,
                         active.site,
                         title,
-                        existing[spec.name],
-                        texts[spec.name],
+                        original_revision,
+                        active.confirmed_revision(title),
                         confirmed=confirmed is True,
                         dry=active.dry,
                     )

@@ -17,7 +17,13 @@ from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 from urllib.parse import unquote
 
-from data.parquet_preview import preview_path, read_preview
+from data.caching.project_observations import resolve_daily_alias
+from data.parquet_preview import (
+    PAGE_SIZE,
+    preview_available,
+    preview_path,
+    read_preview,
+)
 from data.paths import storage_key
 from data.project_data import snapshot_path
 from data.reports import report_key
@@ -205,21 +211,36 @@ def _legacy_filename(filename: str, runtime: Path) -> str:
     return filename
 
 
+def dataset_available(filename: str, runtime: Path) -> bool:
+    """Check whether the viewer can open a saved file.
+
+    Returns:
+        Whether the resolved file can be linked to its preview.
+    """
+    try:
+        name = _legacy_filename(filename, runtime)
+        return preview_available(resolve_daily_alias(name, runtime), runtime)
+    except OSError, ValueError, KeyError, TypeError:
+        return False
+
+
 def read_dataset(
     filename: str,
     runtime: Path,
     page: int = 1,
+    page_size: int = PAGE_SIZE,
 ) -> dict[str, object]:
     """Read one public saved file for an online paginated preview.
 
     Args:
         filename: Exact logical name retained in source activity.
         runtime: Tool home containing production project snapshots.
-        page: One-based page of fifty records in stored order.
+        page: One-based page of records in stored order.
+        page_size: One of the supported preview sizes.
 
     Returns:
         Public file identity, original metadata, physical schema and the
-        selected fifty records. Nulls remain distinct from empty text.
+        selected records. Nulls remain distinct from empty text.
 
     Raises:
         DatasetSelectionError: The selector is invalid.
@@ -231,7 +252,11 @@ def read_dataset(
     if PurePosixPath(filename).as_posix() != filename:
         message = "Choose a canonical saved filename."
         raise DatasetSelectionError(message)
-    filename = _legacy_filename(filename, runtime)
+    requested = filename
+    filename = resolve_daily_alias(
+        _legacy_filename(filename, runtime),
+        runtime,
+    )
     if type(page) is not int or page < 1:
         message = "Preview pages must be positive integers."
         raise DatasetSelectionError(message)
@@ -247,7 +272,7 @@ def read_dataset(
         message = "Choose one canonical saved Parquet file."
         raise DatasetSelectionError(message) from None
     try:
-        value = read_preview(filename, runtime, page)
+        value = read_preview(filename, runtime, page, page_size)
     except FileNotFoundError:
         message = "The selected saved file is unavailable."
         raise LookupError(message) from None
@@ -258,4 +283,6 @@ def read_dataset(
             value["manifest"],
         )
         value.update(wiki=wiki, project=project)
+    if value["file"] != requested:
+        value["requested_file"] = requested
     return value

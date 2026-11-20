@@ -9,13 +9,16 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import os
+from contextlib import suppress
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import polars as pl
 
 from data.project_data import normalize_members, project_stem, stored_members
 from shared.assessment_profiles import assessment_profile
-from shared.config import ASSESSMENT_CATEGORIES, PROJECT_DATA_TASKFORCES
+from shared.config import ARTICLE_GRADE_CATEGORIES, PROJECT_DATA_TASKFORCES
 from shared.support.assessment_encoding import encode_assessments
 from shared.support.cache import ParquetCache
 
@@ -82,6 +85,7 @@ CATEGORY_SCHEMA = {
     "name": pl.String,
     "categories_complete": pl.Boolean,
 }
+_ROLLOVER_PATH_PARTS = 3
 
 
 def category_cache(
@@ -102,9 +106,9 @@ def category_cache(
         ParquetCache(
             schema=CATEGORY_SCHEMA,
             contract=(
-                f"hourly-categories:3:{wiki}:{now:%Y%m%d%H}:"
+                f"hourly-categories:4:{wiki}:{now:%Y%m%d%H}:"
                 + hashlib.sha256(
-                    repr(ASSESSMENT_CATEGORIES).encode(),
+                    repr(tuple(ARTICLE_GRADE_CATEGORIES)).encode(),
                 ).hexdigest()
             ),
             max_rows=2_000_000,
@@ -157,6 +161,71 @@ def cache(
             + f"{now:%Y%m%d%H}.parquet"
         ),
     )
+
+
+def link_daily_archive(
+    archive: Path,
+    runtime: Path,
+    *,
+    dry: bool = False,
+) -> None:
+    """Use the daily file for its matching midnight hourly alias.
+
+    Raises:
+        OSError: The archive cannot be linked safely on this filesystem.
+    """
+    root = runtime / "dry-run" if dry else runtime
+    alias = root / "data/raw" / (archive.stem + "23.parquet")
+    if any(
+        path.is_symlink()
+        for path in (
+            archive,
+            archive.parent,
+            alias.parent,
+            alias.parent.parent,
+        )
+    ):
+        message = "Hourly aliases require regular dataset paths."
+        raise OSError(message)
+    with suppress(FileNotFoundError):
+        if not alias.is_symlink() and alias.samefile(archive):
+            return
+    alias.parent.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(dir=alias.parent) as directory:
+        staging = Path(directory) / alias.name
+        os.link(archive, staging, follow_symlinks=False)
+        staging.replace(alias)
+
+
+def resolve_daily_alias(filename: str, runtime: Path) -> str:
+    """Resolve a midnight alias that shares the archive's file.
+
+    Returns:
+        The daily path for a hard link, or the original filename.
+    """
+    path = Path(filename)
+    if (
+        path.parts[:2] != ("data", "raw")
+        or len(path.parts) != _ROLLOVER_PATH_PARTS
+        or not path.name.endswith("23.parquet")
+    ):
+        return filename
+    source = runtime / path
+    if (
+        source.is_symlink()
+        or source.parent.is_symlink()
+        or source.parent.parent.is_symlink()
+    ):
+        return filename
+    name = path.stem[:-2] + ".parquet"
+    for owner in ("archive", "raw"):
+        archive = runtime / "data" / owner / name
+        if archive.is_symlink() or archive.parent.is_symlink():
+            continue
+        with suppress(FileNotFoundError):
+            if source.samefile(archive):
+                return archive.relative_to(runtime).as_posix()
+    return filename
 
 
 def prune(now: dt.datetime) -> None:

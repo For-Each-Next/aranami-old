@@ -1,5 +1,7 @@
 import { initializeHeadingLinks } from "./heading_links.js";
+import { initializeTablePagers } from "./table_pager.js";
 initializeHeadingLinks();
+initializeTablePagers();
 (() => {
     const menus = [...document.querySelectorAll(".navigation-tools")];
     const hoverOpened = /* @__PURE__ */ new WeakSet();

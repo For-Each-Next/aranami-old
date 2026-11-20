@@ -130,7 +130,8 @@ def render_document(
   <script type="module" src="{escape(asset_url("app.js"))}"></script>
 </head>
 <body>
-  <div id="aranami-app"><p class="shell"><a href="{target}">{escape(messages["nav"]["html_version"])}</a></p></div>
+  <div id="aranami-app"></div>
+  <noscript><p class="shell"><a href="{target}">{escape(messages["nav"]["html_version"])}</a></p></noscript>
   <script type="application/json" id="aranami-page">{model}</script>
 </body>
 </html>

@@ -41,6 +41,7 @@ class PublicationAttempt:
     attempt_started: bool = field(default=False, init=False)
     generation: str | None = field(default=None, init=False)
     report_date: str | None = field(default=None, init=False)
+    revision_id: int | None = field(default=None, init=False)
     _clock: float = field(default_factory=perf_counter, init=False)
     _sequence: int = field(default=0, init=False)
 
@@ -156,6 +157,7 @@ class PublicationAttempt:
             dry=self.dry,
         )
         self.finished = True
+        self.revision_id = revision_id
         with logging_context(run_id=self.run_id, attempt_id=self.attempt_id):
             _LOGGER.info(
                 "Publication finished: %s (%s).",

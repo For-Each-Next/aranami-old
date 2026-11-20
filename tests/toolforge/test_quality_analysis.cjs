@@ -13,7 +13,9 @@ const analysis = fs.readFileSync(path.join(root, "quality_analysis.js"), "utf8")
     .replaceAll("export function", "function");
 const context = { document: { querySelector: () => null } };
 const matrix = fs.readFileSync(path.join(root, "quality_matrix.js"), "utf8").replaceAll("export function", "function");
-vm.runInNewContext(shared + "\n" + matrix + "\n" + analysis, context);
+const characters = fs.readFileSync(path.join(root, "quality_search_characters.js"), "utf8").replace("export const", "const");
+const source = [shared, matrix, characters, analysis].join("\n");
+vm.runInNewContext(source, context);
 const compare = context.compareAnalysisRows;
 const row = (column, value) => ({
     cells: Array.from({ length: 8 }, (_, index) => ({ dataset: index === column ? { sort: value } : {} })),
@@ -39,6 +41,16 @@ test("missing dates and measurements stay last in either direction", () => {
 test("listing dates use ISO order and identical titles remain stable", () => {
     assert.ok(compare(row(4, "2026-01-01"), row(4, "2025-12-31"), 4, true, "zh-Hant") < 0);
     assert.equal(compare(row(1, "遊戲"), row(1, "遊戲"), 1, false, "zh-Hant"), 0);
+});
+
+test("plain titles fold Chinese characters and regex keeps pattern syntax", () => {
+    const match = context.searchMatcher;
+    assert.equal(match("马力欧", false, "zh-Hans")("超級馬力歐銀河2"), true);
+    assert.equal(match("馬力歐", false, "zh-Hant")("超级马力欧银河2"), true);
+    assert.equal(match("(游戏)", false, "zh-Hans")("蔚藍（遊戲）"), true);
+    assert.equal(match("^超級.*[12]$", true, "zh-Hant")("超級馬力歐銀河2"), true);
+    assert.equal(match("^超級.*[12]$", true, "zh-Hant")("超级马力欧银河2"), false);
+    assert.equal(match("[", true, "zh-Hans"), null);
 });
 
 
@@ -89,7 +101,7 @@ function loaderContext(overrides = {}) {
         URL, AbortController, setTimeout, clearTimeout, Event,
         ...overrides,
     };
-    vm.runInNewContext(shared + "\n" + matrix + "\n" + analysis, context);
+    vm.runInNewContext(source, context);
     return context;
 }
 
@@ -447,7 +459,7 @@ test("acquired attribution with no qualifying editor has an explicit empty row w
     assert.doesNotMatch(view.body.textContent, /Data not acquired/);
     const table = view.body.childNodes.find(node => node.tagName === "table");
     const row = table.childNodes.find(node => node.tagName === "tbody").childNodes[0];
-    assert.equal(row.childNodes[0].colSpan, 3);
+    assert.equal(row.childNodes[0].colSpan, 4);
 });
 
 test("saved qualifying contributors retain their exact labels and optional evidence links", () => {

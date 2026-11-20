@@ -78,13 +78,14 @@ class TestNewsletterCollection(test_section_cache.DashboardFixture):
                 "title": "Game",
                 "url": "https://zh.wikipedia.org/wiki/Game",
                 "date": "2026-10-18",
-                "date_kind": "observed",
+                "date_kind": "appearance",
             },
         ]
         snapshot = self._collect()
         assert [
             (row["title"], row["date"]) for row in snapshot["homepage"]["news"]
         ] == [("Game", "2026-10-18")]
+        assert snapshot["homepage"]["news"][0]["displayed_on"] == "2026-10-18"
         assert self.article_history.call_count == 1
         assert self.article_history.call_args.kwargs == {"required": True}
         self.collectors["news"].assert_called_once()
@@ -92,6 +93,14 @@ class TestNewsletterCollection(test_section_cache.DashboardFixture):
         assert self.newsletter.call_args.kwargs["article_history"].equals(
             self.article_history.return_value,
         )
+        original = self.collectors["news"].return_value[0]
+        self.collectors["news"].return_value = [
+            {**original, "date_kind": "window_start"},
+        ]
+        carried = self._collect(dt.timedelta(days=1))["homepage"]["news"][0]
+        assert carried["date"] == "2026-10-18"
+        assert carried["date_kind"] == "appearance"
+        assert carried["displayed_on"] == "2026-10-19"
 
     def test_newsletter_reuses_the_same_saved_homepage_slots(self) -> None:
         """Reuse collected slots without another source request."""

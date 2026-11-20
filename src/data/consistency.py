@@ -480,8 +480,16 @@ def valid_repair_input(value: object) -> bool:
         _REPAIR_FIELDS | {"banner_order", "history_order"},
         _REPAIR_FIELDS
         | {"history_insertion", "banner_order", "history_order"},
+        _REPAIR_FIELDS
+        | {
+            "history_insertion",
+            "banner_order",
+            "history_order",
+            "archive_start",
+        },
     ):
         return False
+    archive_start = value.get("archive_start")
     try:
         original = value["original_text"]
         history, legacy = (
@@ -528,6 +536,17 @@ def valid_repair_input(value: object) -> bool:
                     and 0 <= insertion <= len(original)
                     and not any(
                         span["start"] < insertion < span["end"]
+                        for span in spans
+                    )
+                )
+            )
+            and (
+                "archive_start" not in value
+                or (
+                    type(archive_start) is int
+                    and 0 <= insertion <= archive_start < len(original)
+                    and all(
+                        not span["start"] <= archive_start < span["end"]
                         for span in spans
                     )
                 )
