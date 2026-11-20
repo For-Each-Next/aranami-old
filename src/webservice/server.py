@@ -41,7 +41,7 @@ from data.caching.game_titles import (
 )
 from data.consistency import review_repair
 from data.newsletter.observations import OBSERVATIONS_PATH
-from data.paths import artifact_path
+from data.prepared import values_path
 from data.runtime.events import event_extra
 from data.runtime.log_store import (
     available_logs,
@@ -56,6 +56,7 @@ from data.website import read_snapshot, validate_dashboard_snapshot
 from shared.config import routine_configuration
 from shared.deployment import project_version, resource_root
 from shared.newsletter import Issue
+from webservice import browser
 from webservice.asgi import DjangoWebsite, LiveSocket, SocketDisconnectError
 from webservice.asset_cache import AssetCache
 from webservice.datasets import DatasetSelectionError, read_dataset
@@ -491,14 +492,14 @@ def _html(
     locale: str,
     status: HTTPStatus = HTTPStatus.OK,
 ) -> HttpResponseBase:
-    """Return a complete localized server-rendered document."""
+    """Return a complete localized page document."""
     return HttpResponse(
         content.encode(),
         status=status,
         content_type="text/html; charset=utf-8",
         headers={
             "Content-Language": Interface(locale).language_tag,
-            "Vary": "Accept-Language, Cookie",
+            "Vary": "Accept-Language, Cookie, Sec-Fetch-Mode",
         },
     )
 
@@ -518,6 +519,26 @@ def _explicit_language(request: ASGIRequest) -> str | None:
         if len(values) == 1 and values[0].lower() in _LANGUAGES
         else None
     )
+
+
+def _browser_fallback(request: ASGIRequest) -> str | None:
+    """Select Vue for browser navigations and preserve native GET URLs.
+
+    Returns:
+        The fallback URL, or none for native HTML and fragment requests.
+    """
+    query = request.GET.copy()
+    if query.getlist("render") == ["html"]:
+        del query["render"]
+        raw = query.urlencode()
+        request.GET = query
+        request.META["QUERY_STRING"] = raw
+        request.scope = {**request.scope, "query_string": raw.encode("ascii")}
+        return None
+    if request.headers.get("Sec-Fetch-Mode") != "navigate":
+        return None
+    query["render"] = "html"
+    return f"{request.path}?{query.urlencode()}"
 
 
 def _request_locale(request: ASGIRequest) -> str:
@@ -713,7 +734,10 @@ class _PublicViews:
             title_identity, labels = read_game_title_labels(
                 self.runtime / GAME_TITLES_PATH,
             )
-        with title_display_scope(labels):
+        with (
+            title_display_scope(labels),
+            browser.browser_document(_browser_fallback(request)),
+        ):
             return self._page(request, title_identity=title_identity)
 
     def _page(  # ruff: ignore[too-many-locals]
@@ -768,6 +792,7 @@ class _PublicViews:
             path,
             query,
             locale,
+            browser.fallback_url() is not None,
             automatic_issue.value if automatic_issue is not None else "",
             newsletter_error,
         )
@@ -852,7 +877,8 @@ class _PublicViews:
             else "current"
         )
         all_grades = parameters.get("all_grades") == ["1"]
-        key = ("/quality-analysis/", locale, basis, all_grades)
+        client = browser.fallback_url() is not None
+        key = ("/quality-analysis/", locale, basis, all_grades, client)
         try:  # ruff: ignore[too-many-statements-in-try-clause] - One optional prepared-page read boundary.
             preset = quality_pages.path_for(
                 self.runtime,
@@ -863,7 +889,7 @@ class _PublicViews:
             identity = quality_pages.identity(preset)
             content = self.pages.get(key, identity)
             if content is None:
-                content = quality_pages.read(preset)
+                content = quality_pages.read(preset, browser=client)
                 if content is not None:
                     self.pages.put(key, identity, content)
             if content is not None:
@@ -1006,12 +1032,10 @@ class _PublicViews:
             if figures is not None
             else None
         )
-        pointer = artifact_path(
-            self.runtime / OBSERVATIONS_PATH,
-            "current.parquet",
-        )
         try:
-            info = pointer.lstat()
+            info = values_path(
+                self.runtime / OBSERVATIONS_PATH / "current.json",
+            ).lstat()
         except OSError:
             observation = None
         else:
@@ -1286,11 +1310,8 @@ class _PublicViews:
             for path in (root, root.parent, root.parent.parent)
         ):
             return None
-        path = root / "dashboard.json"
-        if not path.exists() and not path.is_symlink():
-            path = root / "dashboard.parquet"
         try:
-            value = read_snapshot(path)
+            value = read_snapshot(root / "dashboard.json")
         except OSError, ValueError, TypeError, RecursionError, OverflowError:
             return None
         if validate_dashboard_snapshot(value):

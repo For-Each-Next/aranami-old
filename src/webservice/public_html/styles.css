@@ -1,4 +1,4 @@
-/* Aranami page styles for server-rendered HTML and native browser controls. */
+/* Aranami page layouts and native browser controls. */
 :root {
     --color-base: #273437;
     --color-emphasized: #25494e;
@@ -407,6 +407,10 @@ th[aria-sort=descending] .ui-table__table__sort-button::after {
 
 * {
     box-sizing: border-box;
+}
+
+#aranami-app {
+    display: contents;
 }
 
 body {

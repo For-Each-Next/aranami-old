@@ -1,7 +1,7 @@
 [project]
 name = "aranami"
-version = "0.9.18"
-description = "Wikipedia reports and a read-only dashboard with Django."
+version = "0.9.18.post1"
+description = "Wikipedia reports and a read-only Vue dashboard."
 readme = "README.md"
 authors = [
     { name = "For Each ... Next", email = "for_each_next@outlook.com" },
@@ -9,7 +9,7 @@ authors = [
 license = "CC0-1.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.15"
-keywords = ["dashboard", "mediawiki", "pywikibot", "toolforge", "django", "wikipedia"]
+keywords = ["dashboard", "mediawiki", "pywikibot", "toolforge", "vue", "wikipedia"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Environment :: Console",

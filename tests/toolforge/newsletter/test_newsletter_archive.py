@@ -117,9 +117,7 @@ class NewsletterDraftArchiveTests(TestCase):
         with self.assertRaises(ValueError):
             self.archive.read_feature(issue, dt.date(2025, 1, 1))
         metadata = (
-            self.path
-            / issue.value
-            / "annual-feature/20240101/metadata.parquet"
+            self.path / issue.value / "annual-feature/20240101/metadata.json"
         )
         damaged = read_values(metadata)
         damaged["year_review"]["overview"]["total"] = 1
@@ -323,8 +321,8 @@ class NewsletterDraftArchiveTests(TestCase):
         tomorrow = self.clock + dt.timedelta(days=1)
         newer = _data(tomorrow, total=4)
         self.archive.save(newer, generated_at=tomorrow)
-        first = self.path / self.issue.value / "20261030/observation.parquet"
-        second = self.path / self.issue.value / "20261031/observation.parquet"
+        first = self.path / self.issue.value / "20261030/observation.json"
+        second = self.path / self.issue.value / "20261031/observation.json"
         previous = first.read_bytes()
         assert (
             read_values(second)["facts"] == (newer["issues"][self.issue.value])
@@ -391,7 +389,7 @@ class NewsletterDraftArchiveTests(TestCase):
         """Reject unsafe paths and damaged saved facts."""
         self.archive.save(_data(self.clock), generated_at=self.clock)
         folder = self.path / self.issue.value
-        path = folder / "20261030/observation.parquet"
+        path = folder / "20261030/observation.json"
         source = path.read_bytes()
         damaged = read_values(path)
         damaged["facts"]["overview"]["total"] += 1
@@ -406,7 +404,7 @@ class NewsletterDraftArchiveTests(TestCase):
             self.archive.read(self.issue, dt.date(2026, 10, 30))
         path.unlink()
         target.rename(path)
-        catalog = folder / "catalog.parquet"
+        catalog = folder / "catalog.json"
         catalog.unlink()
         catalog.symlink_to(path)
         with self.assertRaises(OSError):
@@ -418,7 +416,7 @@ class NewsletterDraftArchiveTests(TestCase):
         """Select the original complete file after a catalog failure."""
         self.archive.save(_data(self.clock), generated_at=self.clock)
         original = self.archive.read_entry(self.issue, dt.date(2026, 10, 30))
-        (self.path / self.issue.value / "catalog.parquet").unlink()
+        (self.path / self.issue.value / "catalog.json").unlink()
         later = self.clock + dt.timedelta(hours=1)
         self.archive.save(_data(later, total=4), generated_at=later)
         assert (

@@ -21,8 +21,9 @@ src/data/caching/        Disposable cache implementations (source code)
 src/shared/             Read-only adapters, configuration and common primitives
 src/updater/            Wiki projection and intentional publication
 src/webservice/         Django HTTP views, localization and saved-data readers
-src/webservice/templates/ Authored server templates and shared HTML components
-src/webservice/public_html/ Authored CSS, JavaScript and fixed assets
+src/webservice/templates/ Native HTML fallback and fragment templates
+src/webservice/public_html/ CSS, browser scripts, artwork and the Vue bundle
+frontend/               Vue page layouts and components
 scripts/toolforge/      Runtime launch, validation, promotion and drain scripts
 scripts/upload_toolforge.py  Source payload preparation and upload
 tests/unit/              Isolated component contracts
@@ -41,11 +42,12 @@ Do not move machine-specific state into the application package.
 
 ## Prepare the workspace
 
-Use Python 3.15 with uv and Polars 2. Node.js 24 or later runs the offline
-browser tests; building and deploying pages needs only Python:
+Use Python 3.15 with uv and Polars 2. Node.js 24 or later builds the Vue
+bundle and runs offline browser tests.
 
 ```shell
 uv sync --locked
+npm ci
 ```
 
 The project runs from `src`; keep `tool.uv.package = false` and the locked
@@ -83,14 +85,11 @@ baseline, adjacent comparisons, gaps, concurrent capture, failed storage,
 preview isolation, lost wiki-save responses and restart recovery. Test source
 and publication dates separately. Do not put live credentials in fixtures.
 
-Website changes belong under `src/webservice/`. Django owns request routing,
-responses and the configured Jinja2 template backend. Templates and static
-assets are authored runtime files: no Node dependency installation, Vue,
-TypeScript compilation or generated template copies are required.
-Document JavaScript modules and non-obvious helpers with JSDoc comments; use
-four-space indentation and plain browser APIs. Keep native GET forms, links,
-disclosures and dialog fallbacks usable without scripting. See
-[Frontend](webservice/frontend.md) for rendering and interaction contracts.
+Change browser views in `frontend/` and their read-only view models in
+`src/webservice/`. Build with `npm run build:web` and check in the refreshed
+`app.js`. Keep the native Jinja2 views and shared fragment markup in sync
+when changing links, forms or dialogs. Document non-obvious JavaScript helpers
+with JSDoc. See [Frontend](webservice/frontend.md) for the rendering contract.
 
 ## Verification and releases
 
@@ -105,6 +104,7 @@ uvx --from ruff==0.16.0 ruff check --no-fix .
 uvx --from ruff==0.16.0 ruff format --check .
 uv run python scripts/upload_toolforge.py --dry-run
 node --test tests/toolforge/test_*.cjs
+npm run check:web
 ```
 
 Shell changes additionally require `sh -n` for each changed launcher. Local

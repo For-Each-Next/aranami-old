@@ -302,8 +302,9 @@ is unknown coverage, not confirmed disagreement. Quarterly suggestions require
 exact historical boundaries. The [consistency-check guide](webservice/maintenance.md)
 defines the checks and their limits. These pages suggest manual work and never edit it.
 
-Django serves authored templates and bounded GET/HEAD responses; the ASGI
-adapter retains read-only WebSocket subscriptions. Use
+Vue builds browser pages from localized JSON. Django serves bounded GET/HEAD
+responses, native fallback pages and HTML fragments. The ASGI adapter handles
+read-only WebSocket subscriptions. Use
 escaped text and security headers, with debug/reload disabled. Dynamic responses are
 no-store; matching digest assets and prepared quality resources are immutable.
 Quality resource URLs identify the locale and saved preset explicitly.

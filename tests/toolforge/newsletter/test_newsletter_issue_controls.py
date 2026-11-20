@@ -196,7 +196,7 @@ class NewsletterIssueControlsTests(unittest.TestCase):
         } == files
         artifact_path(
             self.runtime / OBSERVATIONS_PATH,
-            "current.parquet",
+            "current.json",
         ).write_text("{")
         archived = self.client.get(url)
         assert archived.status_code == HTTPStatus.OK

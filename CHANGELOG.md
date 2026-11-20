@@ -5,6 +5,16 @@ v0.8.8 was consolidated into the v0.9.2 release.
 
 ## Until 0.10
 
+### 0.9.18.post1 (2026-11-20 12:15 UTC)
+
+Overview: Moved browser page construction to Vue and saved nested newsletter
+and dashboard records as JSON.
+
+- Served localized view models to Vue and kept native HTML for script-free
+  use and existing fragment requests.
+- Wrote prepared observations, traffic summaries and draft catalogs as JSON.
+  Retained read compatibility with earlier one-cell Parquet files.
+
 ### 0.9.18 (2026-11-15 04:13 UTC)
 
 Overview: Named assessment evidence Rating history and deferred article/list

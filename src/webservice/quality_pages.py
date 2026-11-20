@@ -73,18 +73,22 @@ def prepare_quality_pages(runtime: Path) -> None:
                         for language, label in _LANGUAGES.items()
                     ],
                 }
-                resources = {}
                 cohort = "all" if all_grades else "0"
-                content = pages.render_quality_analysis(
+                content, client, resources = pages.render_quality_preset(
                     data,
                     status,
                     config,
                     locale,
                     navigation=navigation,
-                    resources=resources,
                     resource_prefix=(
                         "/quality-analysis/resources/"
                         f"{locale}/{cohort}/{basis}/"
+                    ),
+                    fallback=local_url(
+                        "/quality-analysis/",
+                        **query,
+                        lang=locale,
+                        render="html",
                     ),
                 )
                 if current_quality_identity(runtime) != source:
@@ -99,4 +103,5 @@ def prepare_quality_pages(runtime: Path) -> None:
                     content,
                     source,
                     resources=resources,
+                    browser=client,
                 )

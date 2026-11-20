@@ -451,7 +451,7 @@ class TestDashboardReportCache(DashboardFixture):
     ) -> None:
         """Keep saved facts when a topic project read fails."""
         first = self._collect()
-        observation = self.cache / "data/observations/current.parquet"
+        observation = self.cache / "data/observations/current.json"
         original = observation.read_bytes()
         self.page_projects.side_effect = RuntimeError(
             "topic project unavailable",

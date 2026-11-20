@@ -93,13 +93,14 @@ def _archive(directory: Path, generation: dict) -> None:
     stem = "observation-" + stamp.strftime("%H%M%S%f")
     for ordinal in range(_MAX_CAPTURES):
         suffix = f"-{ordinal + 1}" if ordinal else ""
-        path = artifact_path(day, f"{stem}{suffix}.parquet")
-        if path.exists() or path.is_symlink():
-            if read_values(path, _MAX_BYTES) == generation:
-                return
-            continue
-        write_values(path, generation, max_bytes=_MAX_BYTES)
-        return
+        path = day / f"{stem}{suffix}.json"
+        try:
+            existing = read_values(path, _MAX_BYTES)
+        except FileNotFoundError:
+            write_values(path, generation, max_bytes=_MAX_BYTES)
+            return
+        if existing == generation:
+            return
     message = "Too many newsletter captures share one observation time."
     raise ValueError(message)
 
@@ -121,13 +122,11 @@ def load_observation(
         OSError: A persisted path is unsafe or unreadable.
         ValueError: Saved metadata, digest, or facts are invalid.
     """
-    current = artifact_path(directory, "current.parquet")
-    if current.exists() or current.is_symlink():
-        return _validate_generation(
-            read_values(current, _MAX_BYTES),
-            validate,
-        )
-    return None
+    try:
+        generation = read_values(directory / "current.json", _MAX_BYTES)
+    except FileNotFoundError:
+        return None
+    return _validate_generation(generation, validate)
 
 
 def save_observation(
@@ -194,7 +193,7 @@ def save_observation(
             if latest > captured:
                 return
         write_values(
-            artifact_path(directory, "current.parquet"),
+            directory / "current.json",
             generation,
             max_bytes=_MAX_BYTES,
         )

@@ -27,6 +27,7 @@ from shared.deployment import (
     resource_root,
 )
 from shared.newsletter import Issue
+from webservice import browser
 from webservice.consistency import (
     consistency_groups,
     coverage_status,
@@ -346,7 +347,36 @@ def _render(name: str, context: Record) -> str:
     Returns:
         A complete document or live fragments selected by the caller.
     """
+    fallback = browser.fallback_url()
+    if fallback is not None and name not in {
+        "live.html",
+        "quality_detail.html",
+    }:
+        return _render_browser(name, context, fallback)
     return _templates().get_template(name).render(context)
+
+
+def _render_browser(name: str, context: Record, fallback: str) -> str:
+    """Send the localized view model to the browser renderer.
+
+    Returns:
+        The Vue bootstrap document and its localized context.
+    """
+    if name == "attribution.html":
+        context = {
+            **context,
+            "attribution_content": Markup(  # ruff: ignore[unsafe-markup-use] - Escaped authored template.
+                _templates()
+                .get_template(context["document_template"])
+                .render(context),
+            ),
+        }
+    return browser.render_document(
+        name.removesuffix(".html"),
+        context,
+        fallback,
+        _asset_url,
+    )
 
 
 @lru_cache(maxsize=4)
@@ -1442,6 +1472,52 @@ def render_quality_analysis(  # ruff: ignore[too-many-arguments] - Shared page-r
     Returns:
         Escaped charts, measurement coverage and all article rows.
     """
+    context = _quality_analysis_view(data, status, config, locale, now)
+    context["navigation"] = navigation
+    if resources is not None:
+        _quality_resources(context, resources, resource_prefix)
+    return _render("quality_analysis.html", context)
+
+
+def render_quality_preset(  # ruff: ignore[too-many-arguments]
+    data: Record,
+    status: Record | None,
+    config: Record | None,
+    locale: str,
+    *,
+    navigation: Record,
+    resource_prefix: str,
+    fallback: str,
+) -> tuple[str, str, dict[str, str]]:
+    """Build both documents and their shared quality resources once.
+
+    Returns:
+        Native HTML, Vue bootstrap HTML, and digest-addressed resources.
+    """
+    context = _quality_analysis_view(data, status, config, locale, None)
+    context["navigation"] = navigation
+    resources: dict[str, str] = {}
+    _quality_resources(context, resources, resource_prefix)
+    name = "quality_analysis.html"
+    return (
+        _render(name, context),
+        _render_browser(name, context, fallback),
+        resources,
+    )
+
+
+def _quality_analysis_view(
+    data: Record,
+    status: Record | None,
+    config: Record | None,
+    locale: str,
+    now: dt.datetime | None,
+) -> Record:
+    """Prepare one localized statistics view and its static charts.
+
+    Returns:
+        Localized labels, saved measurements and precomputed charts.
+    """
     now = (now or dt.datetime.now(dt.UTC)).astimezone(dt.UTC)
     page = _Page(locale)
     context = page.context(page.text("quality_analysis.heading"), live=True)
@@ -1499,10 +1575,7 @@ def render_quality_analysis(  # ruff: ignore[too-many-arguments] - Shared page-r
     context.update(
         quality_authorship_context(authorship, page.interface, now),
     )
-    context["navigation"] = navigation
-    if resources is not None:
-        _quality_resources(context, resources, resource_prefix)
-    return _render("quality_analysis.html", context)
+    return context
 
 
 def _quality_resources(
@@ -1528,6 +1601,9 @@ def _quality_resources(
         name = f"catalog-{sha256(content.encode()).hexdigest()}.json"
         resources[name] = content
         analysis["metadata_url"] = prefix + name
+        analysis["matrix"] = {
+            key: matrix[key] for key in ("grades", "importance", "last_year")
+        }
     return_url = local_url(
         "/quality-analysis/",
         lang=analysis["locale"],
@@ -1569,6 +1645,7 @@ def _quality_resources(
         )
         resources[name] = content
         author["detail_url"] = prefix + name + "#" + author["popup_id"]
+        author.pop("articles")
 
 
 def render_quality_authorship(  # ruff: ignore[too-many-arguments]

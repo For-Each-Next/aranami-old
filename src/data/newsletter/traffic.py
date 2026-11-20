@@ -20,7 +20,7 @@ def _path(runtime: Path | None, *, dry: bool) -> Path:
     root = (runtime or Path.cwd()) / (
         "dry-run/data/parsed" if dry else "data/parsed"
     )
-    return storage_path(root, "newsletter-traffic.parquet")
+    return storage_path(root, "newsletter-traffic.json")
 
 
 def save(
@@ -39,10 +39,11 @@ def _year(year: int, runtime: Path | None, *, dry: bool) -> dict:
     Returns:
         Prepared values or an empty mapping before first acquisition.
     """
-    path = _path(runtime, dry=dry)
-    if not path.exists():
+    try:
+        value = read_values(_path(runtime, dry=dry))
+    except FileNotFoundError:
         return {}
-    return read_values(path)["years"].get(str(year), {})
+    return value["years"].get(str(year), {})
 
 
 def read_annual(

@@ -339,6 +339,7 @@ class TestSourcePayload(TestCase):
         assert {
             name for name in self.payload if Path(name).suffix == ".js"
         } == {
+            "src/webservice/public_html/app.js",
             "src/webservice/public_html/components.js",
             "src/webservice/public_html/consistency-repair.user.js",
             "src/webservice/public_html/live.js",

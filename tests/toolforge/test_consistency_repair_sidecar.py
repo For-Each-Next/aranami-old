@@ -144,7 +144,7 @@ class TestConsistencyRepairSidecar(TestCase):
         snapshot["payload"] = "x" * (MAX_SNAPSHOT_BYTES - baseline - 300_000)
         with TemporaryDirectory() as directory:
             runtime = Path(directory)
-            path = runtime / "data/parsed/dashboard.parquet"
+            path = runtime / "data/parsed/dashboard.json"
             coordinator.save_dashboard_snapshot(path, snapshot)
             compact = read_snapshot(path)
             prepared = consistency_cache.read(
@@ -203,7 +203,7 @@ class TestConsistencyRepairSidecar(TestCase):
         snapshot["payload"] = "x" * (MAX_SNAPSHOT_BYTES - baseline - 300_000)
         with TemporaryDirectory() as directory:
             runtime = Path(directory)
-            path = runtime / "data/parsed/dashboard.parquet"
+            path = runtime / "data/parsed/dashboard.json"
             coordinator.save_dashboard_snapshot(path, snapshot)
             sidecar = path.with_name("consistency-repairs.parquet")
             full = consistency_cache.read(sidecar)["data"]

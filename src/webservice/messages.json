@@ -1264,6 +1264,11 @@
     "zh-hans": "大小",
     "zh-hant": "大小"
   },
+  "nav.html_version": {
+    "en": "Read the HTML version",
+    "zh-hans": "查看 HTML 版本",
+    "zh-hant": "查看 HTML 版本"
+  },
   "nav.dashboard": {
     "en": "Dashboard",
     "zh-hans": "专题看板",

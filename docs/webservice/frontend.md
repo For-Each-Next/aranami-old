@@ -1,6 +1,6 @@
 # Website development
 
-Django serves Aranami's multilingual pages and saved-data APIs. Use this guide
+Vue builds Aranami's multilingual browser pages from saved data. Use this guide
 when changing the dashboard, consistency checks, newsletter, reports, logs
 or About pages. Requests read retained observations; background acquisition remains in
 tasks coordinated by runtime.
@@ -17,21 +17,24 @@ imports and HTTP requests do not start jobs or write runtime files.
 `settings.py` configures the read-only site without database, session, admin or
 authentication applications. Uvicorn remains the Toolforge ASGI entry point.
 
-Django's supported Jinja2 backend renders authored HTML from `templates/`;
-`public_html/` holds authored CSS, plain JavaScript modules and fixed artwork.
-Both local checks and source deployments read these same directories. There is
-no frontend compilation, generated-template tree, npm installation or browser
-framework. The source uploader validates the complete reviewed file inventory
-and content hashes, including the templates and their imported modules.
+Browser navigations receive a small document with an escaped JSON view model.
+Vue components in `frontend/` create the layout and page content. Django keeps
+links, forms and existing HTML fragments usable through `templates/`. The
+native view is available with `render=html`, and browsers with scripting
+disabled follow the fallback link automatically.
 
-Use Python 3.15 with `uv sync --locked`. Node.js 24 or later is needed only for
-browser checks. Run `node --test tests/toolforge/test_*.cjs` to exercise the
-browser behavior without npm dependencies.
+Use Python 3.15 with `uv sync --locked`. With Node.js 24 or later, run `npm ci`
+and `npm run build:web` after editing Vue components. The source uploader
+includes the self-hosted bundle in `public_html/`, where it shares the source
+inventory and content hashes with the templates and other assets. Toolforge
+serves the checked-in bundle with Python. Run `npm run check:web` to verify the
+bundle and `node --test tests/toolforge/test_*.cjs` to exercise browser behavior.
 
 ## Native controls and DOM ownership
 
-Templates own semantic cards, tables, GET forms, links, disclosures and native
-`dialog` elements. Local CSS owns appearance, responsive wrapping and scrolling.
+Vue views and fallback templates use semantic cards, tables, GET forms,
+disclosures and native `dialog` elements. Local CSS owns appearance, responsive
+wrapping and scrolling.
 Preserve focus visibility, labels, contrast, keyboard access and forced-color
 support. Use platform fonts without external requests. Retained icon artwork
 keeps its original source and license attribution.
@@ -345,8 +348,8 @@ observations, narrow tables, native fallback, copying, sorting, history and
 modal focus. Browser automation complements screenshot review; it does not
 prove real-device touch or screen-reader behavior.
 
-Historical Codex and Vue notices remain at `/codex-license.html`; local icons retain their
-credit tables. [Branding](branding.md) owns artwork and attribution.
+Codex and Vue notices are available at `/codex-license.html`. Local icons retain
+their credit tables. [Branding](branding.md) owns artwork and attribution.
 
 Live file updates use compact JSON observations rendered by the browser. The
 initial page preloads its completed-file list with a content key. HTTP and

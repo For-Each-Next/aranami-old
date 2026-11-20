@@ -101,7 +101,12 @@ async function checkInterface(assetRoot) {
             '/assets/icons/gpl-2.0.html': 'gpl',
             '/assets/icons/lgpl-2.1.html': 'lgpl',
         }[requestURL.pathname];
-        const pathname = attribution ? `/${locale}/${attribution}.html` : requestURL.pathname;
+        let pathname = attribution ? `/${locale}/${attribution}.html` : requestURL.pathname;
+        if (request.headers['sec-fetch-mode'] === 'navigate' &&
+                requestURL.searchParams.get('render') !== 'html' && pathname.endsWith('.html')) {
+            const client = pathname.replace(/\.html$/, '.vue.html');
+            if (fs.existsSync(path.join(fixtureRoot, client))) pathname = client;
+        }
         if (qualityDetailScriptsUnavailable && pathname.endsWith('.js')) {
             response.writeHead(503).end(); return;
         }
@@ -133,7 +138,9 @@ async function checkInterface(assetRoot) {
                     }
                 }
             }
-            if (pendingStartupScripts && pathname.endsWith(".js")) pendingStartupScripts.push(send);
+            if (pendingStartupScripts && pathname.endsWith(".js") && pathname !== "/app.js") {
+                pendingStartupScripts.push(send);
+            }
             else send();
         } catch { response.writeHead(404).end(); }
     });
@@ -220,6 +227,14 @@ async function checkInterface(assetRoot) {
             if (result.exceptionDetails) throw new Error(JSON.stringify(result.exceptionDetails));
             return result.result.value;
         };
+        const waitForApp = async () => evaluate(`new Promise(resolve => {
+            const check = () => {
+                const root = document.getElementById('aranami-app');
+                if (!root || root.dataset.ready === 'true') resolve(root?.dataset.rendered);
+                else setTimeout(check, 10);
+            };
+            check();
+        })`);
         const waitForQuality = async (state = 'ready') => evaluate(`new Promise(resolve => {
             const check = () => {
                 const form = document.querySelector('[data-quality-matrix]');
@@ -859,6 +874,7 @@ async function checkInterface(assetRoot) {
                 pendingStartupScripts = undefined;
                 for (const send of scripts) send();
                 await loaded;
+                assert.equal(await waitForApp(), 'vue', 'Vue must build the document');
                 if (surface === 'quality-analysis') await waitForQuality();
                 const after = await evaluate(initialControls);
                 assert.deepEqual(after, before, "initialization changed control visibility, colors, typography, or layout");
@@ -893,6 +909,7 @@ async function checkInterface(assetRoot) {
                     loaded,
                 ]);
                 assert.ok(!navigation.errorText, `navigation failed: ${navigation.errorText}`);
+                assert.equal(await waitForApp(), 'vue', 'Vue must build the document');
                 if (surface === 'quality-analysis') await waitForQuality();
                 assert.deepEqual(await evaluate("window.aranamiStartupErrors"), [], "page initialization raised an error");
                 await checkSemantics();
@@ -907,7 +924,7 @@ async function checkInterface(assetRoot) {
                 })))()`);
                 assert.ok(dialogShells.every(dialog => dialog.codex), `popup is missing its native dialog shell: ${JSON.stringify(dialogShells)}`);
                 assert.ok(dialogShells.every(dialog => dialog.hidden), `closed popup is visible: ${JSON.stringify(dialogShells)}`);
-                assert.equal(await evaluate("document.querySelectorAll('[data-v-app], .codex-control, script[src*=codex]').length"), 0, "native pages must not mount a browser framework");
+                assert.equal(await evaluate("document.querySelectorAll('[data-v-app]').length"), 1, "the page must have one Vue root");
                 await checkContents();
                 const layout = await evaluate(`(() => {
                     const visible = element => { const box = element.getBoundingClientRect(); return box.width > 0 && box.height > 0 && getComputedStyle(element).display !== 'none'; };
@@ -2211,6 +2228,7 @@ async function checkInterface(assetRoot) {
         try {
             const loaded = wait('Page.loadEventFired', sessionId);
             await Promise.all([call('Page.navigate', {url: `${base}/reports/?lang=en&page=1`}, sessionId), loaded]);
+            await waitForApp();
             const fixture = fs.readFileSync(path.join(fixtureRoot, 'en', 'reports2.html'), 'utf8');
             const race = await evaluate(`(async () => {
                 const originalFetch = window.fetch;
@@ -2264,6 +2282,7 @@ async function checkInterface(assetRoot) {
             try {
                 const loaded = wait('Page.loadEventFired', sessionId);
                 await Promise.all([call('Page.navigate', {url: `${base}/reports/?lang=en&page=1`}, sessionId), loaded]);
+                await waitForApp();
                 await evaluate(`(() => {
                     window.reportHistoryFallbackMarker = true;
                     window.fetch = async () => new Response('<div id="report-history">invalid report history</div>', {
@@ -2276,6 +2295,7 @@ async function checkInterface(assetRoot) {
                     [...host.querySelectorAll('a[aria-label], button')].find(button => button.getAttribute('aria-label') === host.dataset.next).click();
                 })()`);
                 await fallback;
+                await waitForApp();
                 const native = await evaluate(`({reloaded: !window.reportHistoryFallbackMarker,
                     page: new URL(location.href).searchParams.get('page'),
                     available: Boolean(document.querySelector('#report-history [data-execution-history] table'))})`);
@@ -2293,7 +2313,7 @@ async function checkInterface(assetRoot) {
                 await call("Emulation.setDeviceMetricsOverride", {width, height: 936, deviceScaleFactor: 1, mobile: false}, sessionId);
                 const loaded = wait("Page.loadEventFired", sessionId);
                 await Promise.all([
-                    call("Page.navigate", { url: `${base}/${locale}/${surface}.html` }, sessionId),
+                    call("Page.navigate", { url: `${base}/${locale}/${surface}.html?render=html` }, sessionId),
                     loaded,
                 ]);
                 await checkSemantics();

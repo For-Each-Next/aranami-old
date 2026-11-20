@@ -15,8 +15,8 @@ from polars.exceptions import PolarsError
 if TYPE_CHECKING:
     from pathlib import Path
 
-from data.prepared import read_values
-from shared.support.files import atomic_json, encode_json, read_json_object
+from data.prepared import read_values, values_path
+from shared.support.files import atomic_json, encode_json
 
 MAX_BYTES = 16 * 1024 * 1024
 _RESOURCE_NAME = re.compile(
@@ -61,7 +61,7 @@ def identity(path: Path) -> tuple:
         Atomic-file identity, or an explicit missing identity.
     """
     try:
-        info = path.lstat()
+        info = values_path(path).lstat()
     except FileNotFoundError:
         return (None,)
     return (
@@ -73,14 +73,16 @@ def identity(path: Path) -> tuple:
     )
 
 
-def read(path: Path) -> str | None:
-    """Read the complete prepared HTML without source reads.
+def read(path: Path, *, browser: bool = False) -> str | None:
+    """Read the preferred prepared document without source reads.
 
     Returns:
-        HTML from the last successful background preparation, if any.
+        Vue or native HTML from the latest successful preparation.
     """
     value = _read_bundle(path)
-    return value["html"] if value is not None else None
+    if value is None:
+        return None
+    return value.get("browser", value["html"]) if browser else value["html"]
 
 
 def _read_bundle(path: Path) -> dict | None:
@@ -92,16 +94,17 @@ def _read_bundle(path: Path) -> dict | None:
     Raises:
         ValueError: The saved schema or payload is invalid.
     """
-    if not path.exists():
+    try:
+        value = read_values(path, MAX_BYTES)
+    except FileNotFoundError:
         return None
-    value = (
-        read_values(path, MAX_BYTES)
-        if path.suffix == ".parquet"
-        else read_json_object(path, MAX_BYTES)
-    )
-    if value.get("schema") not in {1, 2} or not isinstance(
-        value.get("html"),
-        str,
+    if (
+        value.get("schema") not in {1, 2}
+        or not isinstance(
+            value.get("html"),
+            str,
+        )
+        or ("browser" in value and not isinstance(value["browser"], str))
     ):
         message = "Invalid prepared quality page."
         raise ValueError(message)
@@ -147,6 +150,7 @@ def save(
     source: tuple,
     *,
     resources: dict[str, str] | None = None,
+    browser: str | None = None,
 ) -> None:
     """Atomically select HTML and resources with one prior generation.
 
@@ -154,6 +158,8 @@ def save(
     They are optional if retaining them would exceed the existing bound.
     """
     value = {"schema": 1, "source": list(source), "html": html}
+    if browser is not None:
+        value["browser"] = browser
     if resources is not None:
         value.update(schema=2, resources=resources)
         try:

@@ -41,21 +41,21 @@ class NewsletterObservationTests(TestCase):
             side_effect=AssertionError("Source access during saved read"),
         ):
             assert read_newsletter_data(self.directory) == self.facts
-        pointer = read_values(self.directory / "current.parquet")
+        pointer = read_values(self.directory / "current.json")
         assert (
-            self.directory / "20270105/observation-000000000000.parquet"
+            self.directory / "20270105/observation-000000000000.json"
         ).is_file()
         assert pointer["facts"] == self.facts
 
     def test_invalid_new_facts_preserve_last_complete_generation(self) -> None:
         """Reject invalid facts before changing the selected data."""
         save_observation(self.directory, self.facts, valid_newsletter)
-        pointer = (self.directory / "current.parquet").read_bytes()
+        pointer = (self.directory / "current.json").read_bytes()
         invalid = deepcopy(self.facts)
         invalid["issues"]["2027-01"]["overview"]["total"] = -1
         with self.assertRaises(ValueError):
             save_observation(self.directory, invalid, valid_newsletter)
-        assert (self.directory / "current.parquet").read_bytes() == pointer
+        assert (self.directory / "current.json").read_bytes() == pointer
         assert read_newsletter_data(self.directory) == self.facts
 
     def test_older_observation_cannot_replace_newer_but_is_retained(
@@ -69,13 +69,13 @@ class NewsletterObservationTests(TestCase):
         )
         save_observation(self.directory, older, valid_newsletter)
         assert read_newsletter_data(self.directory) == self.facts
-        generations = list(self.directory.rglob("*.parquet"))
+        generations = list(self.directory.rglob("*.json"))
         assert len(generations) == 3  # ruff: ignore[magic-value-comparison]
 
     def test_modified_generation_fails_digest_validation(self) -> None:
         """Reject payloads with mismatched digests."""
         save_observation(self.directory, self.facts, valid_newsletter)
-        path = self.directory / "current.parquet"
+        path = self.directory / "current.json"
         generation = read_values(path)
         generation["facts"]["issues"]["2027-01"]["overview"]["total"] = 42
         write_values(path, generation)

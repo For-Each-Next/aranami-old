@@ -36,6 +36,11 @@ jobs:
       - name: Check lockfile
         run: uv lock --check
 
+      - name: Verify the Vue bundle
+        run: |
+          npm ci
+          npm run check:web
+
       - name: Install locked dependencies
         run: uv sync --locked --dev
 

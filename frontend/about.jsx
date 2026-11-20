@@ -1,0 +1,78 @@
+/** Show Aranami service status and attribution. */
+import { jsx, display } from "./rendering.js";
+import { DatasetUpdates, Server } from "./status.jsx";
+
+export function AboutContents(context) {
+    const { t } = context;
+    return (
+        <ul>
+            <li>
+                <a href="#main">{t.nav.about}</a>
+            </li>
+            <li>
+                <a href="#server-status-heading">{t.server.heading}</a>
+            </li>
+            <li>
+                <a href="#dataset-updates-previous-heading">{t.dataset_updates.previous}</a>
+            </li>
+            <li>
+                <a href="#dataset-updates-current-heading">{t.dataset_updates.schedule}</a>
+            </li>
+            <li>
+                <a href="#credits">{t.about.credits}</a>
+            </li>
+        </ul>
+    );
+}
+
+export function About(context) {
+    const { contact, extract_attribution, introduction, t } = context;
+    return (
+        <div class="about-page">
+            <p class="page-description">{display(introduction)}</p>
+            <p>{display(contact)}</p>
+            {Server(context)}
+            {DatasetUpdates(context)}
+            <section class="section-flat" aria-labelledby="credits">
+                <h2 id="credits">{t.about.credits}</h2>
+                <ul class="about-credits">
+                    <li>
+                        {"Aranami · "}
+                        <a href="https://creativecommons.org/publicdomain/zero/1.0/">{"CC0-1.0"}</a>
+                    </li>
+                    <li>
+                        {t.about.wikipedia}
+                        {" · "}
+                        {display(extract_attribution?.before)}
+                        <a href="https://creativecommons.org/licenses/by-sa/4.0/">{"CC BY-SA 4.0"}</a>
+                        {display(extract_attribution?.after)}
+                    </li>
+                    <li>
+                        {t.about.django} <a href="https://www.djangoproject.com/">{"Django"}</a>
+                        {" · "}
+                        <a href="https://github.com/django/django/blob/stable/6.1.x/LICENSE">
+                            {"BSD-3-Clause"}
+                        </a>
+                        {" · "}
+                        <a href="/codex-license.html">{display(t.credits.title?.codex)}</a>
+                    </li>
+                    <li>
+                        {t.credits.interface_icons}
+                        {" · "}
+                        <a href="https://doc.wikimedia.org/codex/latest/icons/overview.html">
+                            {"Wikimedia Design, OOUI team and other contributors"}
+                        </a>
+                        {" · "}
+                        <a href="https://creativecommons.org/licenses/by/4.0/">{"CC BY 4.0"}</a>
+                    </li>
+                    <li>
+                        <a href="/assets/icons/credits.html">{t.about.review_icons}</a>
+                    </li>
+                    <li>
+                        <a href="/assets/icons/maintenance/credits.html">{t.about.maintenance_icons}</a>
+                    </li>
+                </ul>
+            </section>
+        </div>
+    );
+}

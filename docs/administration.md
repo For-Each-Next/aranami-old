@@ -62,9 +62,9 @@ uv run python scripts/upload_toolforge.py --dry-run
 ```
 
 The validator checks source inventory, version and content hashes, rejecting
-symlinks and private/runtime files. It packages authored Django templates,
-styles and browser scripts directly under `src/webservice/`; no frontend build
-or Node dependencies are needed. `--archive <new-file.tar.gz>` optionally retains
+symlinks and private/runtime files. It packages the checked-in Vue bundle,
+native HTML templates, styles and browser scripts under `src/webservice/`.
+`--archive <new-file.tar.gz>` optionally retains
 the same reproducible compressed payload without network access.
 Packaging records a UTC build time in `deployment.json`; repackaging preserves
 it and the About page displays it independently of process restarts. An

@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 
 from data.newsletter.schema import _valid_year_review, valid_newsletter
 from data.paths import artifact_path, owner_directory
-from data.prepared import read_values, write_values
+from data.prepared import read_values, values_path, write_values
 from shared.newsletter import Issue
 from shared.support.files import encode_json
 
@@ -167,7 +167,7 @@ def _write_record(directory: Path, filename: str, record: dict) -> None:
         raise OSError(message)
     owner_directory(destination).mkdir(mode=0o700, parents=True, exist_ok=True)
     write_values(
-        artifact_path(destination, filename),
+        destination / filename,
         record,
         max_bytes=_MAX_BYTES,
     )
@@ -182,7 +182,7 @@ def _select(directory: Path, issue: Issue, dates: dict, record: dict) -> None:
     """Atomically select a complete observation in its date catalog."""
     dates[record["date"]] = _calendar_entry(record)
     write_values(
-        artifact_path(directory, "catalog.parquet"),
+        directory / "catalog.json",
         {"schema": 1, "issue": issue.value, "dates": dates},
         max_bytes=_MAX_BYTES,
     )
@@ -198,10 +198,7 @@ def _catalog(directory: Path, issue: Issue, *, annual: bool = False) -> dict:
         ValueError: Calendar identities, dates, or hashes are invalid.
     """
     try:
-        value = read_values(
-            artifact_path(directory, "catalog.parquet"),
-            _MAX_INDEX_BYTES,
-        )
+        value = read_values(directory / "catalog.json", _MAX_INDEX_BYTES)
     except FileNotFoundError:
         return {}
     dates = value.get("dates")
@@ -352,7 +349,7 @@ class NewsletterDraftArchive:
         if destination.is_symlink():
             message = "Newsletter date folders cannot be symlinks."
             raise OSError(message)
-        path = artifact_path(destination, "observation.parquet")
+        path = destination / "observation.json"
         value = read_values(path, _MAX_BYTES)
         facts, generated = value.get("facts"), value.get("generated_at")
         if not isinstance(facts, dict) or not isinstance(generated, str):
@@ -411,12 +408,8 @@ class NewsletterDraftArchive:
         if self.path is None:
             return None
         try:
-            metadata = artifact_path(
-                self._directory(issue),
-                "catalog.parquet",
-            ).stat(
-                follow_symlinks=False,
-            )
+            calendar = values_path(self._directory(issue) / "catalog.json")
+            metadata = calendar.lstat()
         except FileNotFoundError:
             return None
         if not stat.S_ISREG(metadata.st_mode):
@@ -484,7 +477,7 @@ class NewsletterDraftArchive:
         if directory.is_symlink():
             message = "Annual feature date folders cannot be symlinks."
             raise OSError(message)
-        value = read_values(directory / "metadata.parquet", _MAX_BYTES)
+        value = read_values(directory / "metadata.json", _MAX_BYTES)
         try:
             expected = _feature_record(
                 issue,
@@ -565,7 +558,7 @@ class NewsletterDraftArchive:
             try:
                 record = self._read_feature(issue, day)
             except FileNotFoundError:
-                _write_record(directory, "metadata.parquet", record)
+                _write_record(directory, "metadata.json", record)
             _select(directory, issue, dates, record)
 
     def _capture_feature(
@@ -631,5 +624,5 @@ class NewsletterDraftArchive:
                 try:
                     record = self._read_record(issue, day)
                 except FileNotFoundError:
-                    _write_record(directory, "observation.parquet", record)
+                    _write_record(directory, "observation.json", record)
                 _select(directory, issue, dates, record)

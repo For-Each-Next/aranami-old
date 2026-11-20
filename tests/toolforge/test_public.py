@@ -397,6 +397,24 @@ class PublicWebsiteTests(unittest.TestCase):  # ruff: ignore[too-many-public-met
         assert b"secret" not in self.request("/api/dashboard")[2]
         assert not (self.runtime / "state").exists()
 
+    def test_browser_navigation_and_native_fallback(self) -> None:
+        """Serve Vue navigations and native HTML fragment requests."""
+        headers = {"Sec-Fetch-Mode": "navigate"}
+        target = "/reports/?lang=zh-hant&page=1"
+        response = self.client.get(target, headers=headers)
+        assert response.status_code == HTTPStatus.OK
+        assert 'id="aranami-page"' in response.text
+        assert "Sec-Fetch-Mode" in response.headers["Vary"]
+        assert '<main id="main"' not in response.text
+        assert "/app.js?v=" in response.text
+        native = self.client.get(target + "&render=html", headers=headers)
+        assert native.status_code == HTTPStatus.OK
+        assert '<main id="main"' in native.text
+        assert 'id="aranami-page"' not in native.text
+        fragment = self.client.get(target, headers={"Sec-Fetch-Mode": "cors"})
+        assert fragment.status_code == HTTPStatus.OK
+        assert '<main id="main"' in fragment.text
+
     def test_python_pages_render_before_optional_live_updates(self) -> None:
         """Keep complete HTML with optional dashboard status updates."""
         with patch("pywikibot.Site", side_effect=AssertionError("No sources")):

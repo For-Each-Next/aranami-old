@@ -56,12 +56,12 @@ data/
 │   ├── scope.parquet                         retained current/previous membership
 │   ├── pageviews.json                        prepared website traffic report
 │   ├── newsletter.json                       prepared collection envelope
-│   ├── newsletter-traffic.parquet             totals prepared after 19:00 UTC
-│   ├── newsletter--observations--current.parquet
-│   ├── newsletter--observations--<day>--observation-<time>.parquet
-│   ├── newsletter-drafts--<issue>--catalog.parquet
-│   ├── newsletter-drafts--<issue>--<day>--observation.parquet
-│   ├── newsletter-drafts--<issue>--annual-feature--<day>--metadata.parquet
+│   ├── newsletter-traffic.json                totals prepared after 19:00 UTC
+│   ├── newsletter--observations--current.json
+│   ├── newsletter--observations--<day>--observation-<time>.json
+│   ├── newsletter-drafts--<issue>--catalog.json
+│   ├── newsletter-drafts--<issue>--<day>--observation.json
+│   ├── newsletter-drafts--<issue>--annual-feature--<day>--metadata.json
 │   ├── dashboard.json                        prepared frontend pages
 │   ├── reviews.json                          Chinese review/discussion report
 │   ├── recognized.json                       recognition report
@@ -96,7 +96,7 @@ Only Chinese wpvg daily page lists are permanent `archive` evidence. Other
 project page lists retain their latest two completed observations in `raw`.
 Hourly page/category lists also retain two observations. Parsed unique historical
 facts remain durable; report bundles retain two complete generations. Fixed
-`pageviews.parquet`, `newsletter.parquet` and `newsletter-traffic.parquet` names
+`pageviews.json`, `newsletter.json` and `newsletter-traffic.json` names
 identify the latest prepared report, without date-suffixed duplicate copies.
 
 Pokemon, Minecraft, Nintendo, Sega, Square Enix and miHoYo have **no separate
@@ -206,12 +206,13 @@ presentation writes use JSON and omit the retired category-maintenance data.
 | `raw/pageviews-<identity>--<generation>--daily.parquet` | `page_id`, `title`, `date`, `pageview`, `observed` | Traffic ranking and newsletter period totals |
 | `…--members.parquet` | `page_id`, `title`, `pa_class`, `pa_importance`, `taskforces` | Frozen traffic population and group calculations |
 | `…--coverage.parquet` | `title`, `start`, `stop`, `request_succeeded`, `observed_days`, `complete` | Incremental missing-tail detection and traffic completeness |
-| `parsed/newsletter-traffic.parquet` | Prepared annual rankings, nullable totals and complete monthly winners | Newsletter collection reads values calculated by the after-19:00 Pageviews pass |
-| Prepared web/newsletter `.parquet` | One `payload: String` containing validated precomputed nested values | Dashboard, quarterly/annual newsletter HTML and wikitext projection |
+| `parsed/newsletter-traffic.json` | Prepared annual rankings, nullable totals and complete monthly winners | Newsletter collection reads values calculated by the after-19:00 Pageviews pass |
+| Prepared web and newsletter `.json` | Bounded UTF-8 objects containing validated nested values | Dashboard, quarterly and annual newsletter pages, wikitext projection |
 | Prepared report/analysis bundles | Named typed tables with exact schemas in `manifest.json`; `source-pages` preserves revision keys | Wiki publication, saved web analyses and retry/recovery |
 
 Payload decoding and presentation formatting do not recalculate source facts.
-Catalogue/selection metadata can use JSON where it contains no report facts.
+Readers select the JSON document when present and accept the earlier
+one-cell Parquet format for existing observations and archives.
 Detailed article contracts are declared by their `data.articles` owners; a
 manifest lists every table, dtype, row count and digest for its generation.
 The read-only data viewer previews Parquet under `data/archive`, `data/raw`,
@@ -572,7 +573,8 @@ table until the hourly collector prepares them.
 ### Background-prepared website presets
 
 `data/webservice/quality-page-<locale>-<mode>-<basis>.json` stores schema,
-source-generation identity, escaped HTML and independently requested resources.
+source-generation identity, Vue bootstrap data, a native HTML view and
+independently requested resources.
 The normal (`0`) and all-class (`all`) presets cover three languages and two
 contribution bases, for twelve pages. First requests read these documents without
 analysis or rendering. Filtered chart requests select the saved catalog and

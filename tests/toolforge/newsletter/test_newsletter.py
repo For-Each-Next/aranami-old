@@ -792,7 +792,7 @@ class NewsletterRouteTests(unittest.TestCase):
         url = "/newsletter/?issue=2027-01&lang=en"
         assert "14,000篇條目" in self.client.get(url).text
         directory = self.runtime / OBSERVATIONS_PATH
-        facts = read_values(directory / "current.parquet")["facts"]
+        facts = read_values(directory / "current.json")["facts"]
         facts["issues"]["2027-01"]["overview"]["total"] = 15000
         save_observation(directory, facts, valid_newsletter)
         assert "15,000篇條目" in self.client.get(url).text
@@ -805,7 +805,7 @@ class NewsletterRouteTests(unittest.TestCase):
         assert self.client.get(url).status_code == HTTPStatus.OK
         artifact_path(
             self.runtime / OBSERVATIONS_PATH,
-            "current.parquet",
+            "current.json",
         ).write_text("{}")
         response = self.client.get(url)
         assert response.status_code == HTTPStatus.SERVICE_UNAVAILABLE
@@ -816,7 +816,7 @@ class NewsletterRouteTests(unittest.TestCase):
         self._archive_issue("2026-10-30", 13100)
         path = artifact_path(
             self.runtime / DRAFT_ARCHIVE_PATH / "2027-01",
-            "catalog.parquet",
+            "catalog.json",
         )
         path.write_text("{}", encoding="utf-8")
         response = self.client.get(

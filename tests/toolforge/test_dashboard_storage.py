@@ -14,9 +14,9 @@ from tempfile import TemporaryDirectory
 from unittest import TestCase
 from unittest.mock import patch
 
+import polars as pl
 from starlette.testclient import TestClient
 
-from data.prepared import write_values
 from data.website import (
     APPEARANCE_SECTIONS,
     REPORT_KEYS,
@@ -27,7 +27,19 @@ from data.website import (
     save_snapshot,
     validate_dashboard_snapshot,
 )
+from shared.support.cache import ParquetCache
+from shared.support.files import encode_json
 from webservice.server import create_app
+
+
+def _write_legacy(path: Path, value: dict) -> None:
+    """Create a prepared file using the pre-JSON storage contract."""
+    ParquetCache(
+        schema={"payload": pl.String},
+        contract="prepared-values:1",
+        max_rows=1,
+        max_bytes=8 * 1024 * 1024,
+    ).write(path, pl.DataFrame({"payload": [encode_json(value).decode()]}))
 
 
 def _document(stamp: str = "2026-11-14T12:00:00Z") -> dict:
@@ -77,7 +89,7 @@ class DashboardDocumentTests(TestCase):
             root = runtime / "data/parsed"
             legacy = _document()
             current = _document("2026-11-14T13:00:00Z")
-            write_values(root / "dashboard.parquet", legacy)
+            _write_legacy(root / "dashboard.parquet", legacy)
             save_snapshot(root / "dashboard.json", current)
             before = sorted(runtime.rglob("*"))
             client = TestClient(create_app(runtime))
@@ -127,7 +139,7 @@ class DashboardDocumentTests(TestCase):
             root = Path(directory)
             legacy = root / "dashboard.parquet"
             current = root / "dashboard.json"
-            write_values(legacy, value)
+            _write_legacy(legacy, value)
             before = legacy.read_bytes()
             migrated = read_snapshot(legacy)
             save_snapshot(current, migrated)
@@ -157,7 +169,7 @@ class DashboardDocumentTests(TestCase):
             root = Path(directory)
             legacy = root / "recognized.parquet"
             current = root / "recognized.json"
-            write_values(legacy, record)
+            _write_legacy(legacy, record)
             before = legacy.read_bytes()
             clock = dt.datetime.fromisoformat(stamp)
             assert read_report_cache(current, "recognized", 1, clock) == record

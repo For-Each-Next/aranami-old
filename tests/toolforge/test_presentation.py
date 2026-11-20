@@ -35,6 +35,7 @@ from test_dataset_viewer import dataset_fixture
 from data.articles.current_quality import current_quality_identity
 from shared.config import routine_configuration
 from shared.deployment import resource_root
+from webservice.browser import browser_document
 from webservice.pages import (
     render_about,
     render_attribution,
@@ -241,7 +242,11 @@ def _quality_documents(
     return documents
 
 
-def write_interface_fixtures(destination: Path) -> None:
+def write_interface_fixtures(
+    destination: Path,
+    *,
+    suffix: str = ".html",
+) -> None:
     """Write localized synthetic pages for offline browser verification.
 
     The disposable output includes every review type and hostile or long
@@ -249,6 +254,7 @@ def write_interface_fixtures(destination: Path) -> None:
 
     Args:
         destination: Directory receiving localized browser-check pages.
+        suffix: Filename suffix for native or browser documents.
     """
     fixture = _fixtures()
     fixture["status"] = report_card_snapshot()
@@ -493,7 +499,13 @@ def write_interface_fixtures(destination: Path) -> None:
         directory = destination / locale
         directory.mkdir(parents=True, exist_ok=True)
         documents = {
-            **_quality_documents(destination, fixture, analysis, locale, now),
+            **_quality_documents(
+                destination,
+                fixture,
+                analysis,
+                locale,
+                now,
+            ),
             "home": render_dashboard(
                 snapshot,
                 fixture["status"],
@@ -618,7 +630,7 @@ def write_interface_fixtures(destination: Path) -> None:
                 now=now,
             )
         for surface, document in documents.items():
-            (directory / f"{surface}.html").write_text(document)
+            (directory / f"{surface}{suffix}").write_text(document)
 
 
 class ReviewPresentationTests(unittest.TestCase):
@@ -2147,6 +2159,7 @@ class PresentationTests(unittest.TestCase):
             )
         assert not list(root.rglob("*.php"))
         assert set(root.rglob("*.js")) == {
+            root / "public_html" / "app.js",
             root / "public_html" / "consistency-repair.user.js",
             root / "public_html" / "components.js",
             root / "public_html" / "live.js",
@@ -2180,6 +2193,9 @@ if __name__ == "__main__":
             type=Path,
             required=True,
         )
-        write_interface_fixtures(fixture_parser.parse_args().render_fixtures)
+        destination = fixture_parser.parse_args().render_fixtures
+        write_interface_fixtures(destination)
+        with browser_document("?render=html"):
+            write_interface_fixtures(destination, suffix=".vue.html")
     else:
         unittest.main()

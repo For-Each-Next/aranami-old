@@ -19,7 +19,7 @@ from data import consistency as consistency_records
 from data.caching import consistency as consistency_cache
 from data.caching.extracts import MAX_EXTRACT_BYTES
 from data.newsletter import schema as newsletter
-from data.prepared import read_values, write_values
+from data.prepared import read_values
 from shared.support.files import read_json_object
 
 MAX_SNAPSHOT_BYTES = 8 * 1024 * 1024
@@ -31,11 +31,11 @@ def read_snapshot(path: Path) -> dict[str, object]:
     Returns:
         Complete frontend values with retired maintenance data removed.
     """
-    value = (
-        read_values(path, MAX_SNAPSHOT_BYTES)
-        if path.suffix == ".parquet"
-        else read_json_object(path, MAX_SNAPSHOT_BYTES)
-    )
+    current = path.with_suffix(".json") if path.suffix == ".parquet" else path
+    try:
+        value = read_json_object(current, MAX_SNAPSHOT_BYTES)
+    except FileNotFoundError:
+        value = read_values(path, MAX_SNAPSHOT_BYTES)
     return _current_dashboard(value)
 
 
@@ -732,8 +732,6 @@ def read_report_cache(
     """
     if path is None:
         return None
-    if path.suffix == ".json" and not path.exists() and not path.is_symlink():
-        path = path.with_suffix(".parquet")
     try:  # ruff: ignore[too-many-statements-in-try-clause]
         record = (
             consistency_cache.read(path)
@@ -837,8 +835,7 @@ def save_snapshot(path: Path, snapshot: dict[str, object]) -> None:
         message = "The dashboard snapshot exceeds its eight MiB limit."
         raise ValueError(message)
     if path.suffix == ".parquet":
-        write_values(path, snapshot, max_bytes=MAX_SNAPSHOT_BYTES)
-        return
+        path = path.with_suffix(".json")
     if path.is_symlink() or path.parent.is_symlink():
         message = "Dashboard snapshots require regular paths."
         raise OSError(message)
