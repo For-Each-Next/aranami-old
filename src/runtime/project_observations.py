@@ -26,7 +26,7 @@ from data.observations import (
 )
 from data.revisions import RevisionStore
 from shared.config import ARTICLE_GRADE_CATEGORIES
-from shared.sources.cycle import source_cycle
+from shared.sources.cycle import TopPageviewsCache, source_cycle
 from shared.sources.quarry.projects import (
     category_observations,
     query_pages_by_wikiproject,
@@ -50,6 +50,8 @@ DAILY_REPORTS = frozenset({
     "pageviews",
 })
 _HOURLY_LOCK = RLock()
+_TOP_PAGEVIEWS = TopPageviewsCache()
+_PREVIEW_TOP_PAGEVIEWS = TopPageviewsCache()
 _LOG = logging.getLogger(__name__)
 
 
@@ -222,7 +224,7 @@ def _daily_membership(  # ruff: ignore[too-many-arguments] - Explicit boundary a
     Returns:
         Durable membership in the source adapter's native column names.
     """
-    with source_cycle():
+    with source_cycle(share_project_groups=True):
         snapshot = project_capture.capture(
             site,
             project,
@@ -340,6 +342,7 @@ def project_cycle(
         source_cycle(
             membership_reader=reader,
             category_reader=partial(_hourly_categories, now=instant, dry=dry),
+            top_pageviews=_PREVIEW_TOP_PAGEVIEWS if dry else _TOP_PAGEVIEWS,
         ),
     ):
         yield

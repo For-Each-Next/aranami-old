@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from data.runtime import resources
 from data.runtime.resources import validate_runtime
-from runtime import server_status
+from shared.support import resources as server_status
 
 
 class TestServerStatus(TestCase):

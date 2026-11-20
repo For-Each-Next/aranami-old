@@ -208,17 +208,11 @@ class TestTopPageviewsCycle(TestCase):
                 }
                 parse = pageviews.parse_top_observation
                 payload = _top_payload()
-                response = Mock(status_code=200)
-                response.json.return_value = payload
                 with (
                     patch(
                         "shared.sources.pageviews.urllib.request.urlopen",
                         return_value=BytesIO(json.dumps(payload).encode()),
                     ) as urlopen,
-                    patch(
-                        "tasks.website.pageviews.http.fetch",
-                        return_value=response,
-                    ) as website_fetch,
                     patch(
                         "shared.sources.pageviews.pywikibot.Page",
                     ) as page,
@@ -227,11 +221,6 @@ class TestTopPageviewsCycle(TestCase):
                         "parse_top_observation",
                         wraps=parse,
                     ) as report_parse,
-                    patch.object(
-                        website_pageviews,
-                        "parse_top_observation",
-                        wraps=parse,
-                    ) as web_parse,
                     source_cycle(),
                 ):
                     page.return_value.title.return_value = "Wikipedia:首页"
@@ -244,9 +233,8 @@ class TestTopPageviewsCycle(TestCase):
                     )
                     if not website_first:
                         observed = website_pageviews._request(day)
-                assert report_parse.call_count + web_parse.call_count == 1
-                assert urlopen.call_count + website_fetch.call_count == 1
-                assert urlopen.call_count == (0 if website_first else 1)
+                report_parse.assert_called_once()
+                urlopen.assert_called_once()
                 assert observed is not None
                 assert observed.to_dicts() == [
                     {

@@ -321,130 +321,6 @@ def _deferred_status(interface: Interface, run: Record) -> str:
     )
 
 
-def _collection_activity(interface: Interface, run: Record) -> str:
-    """Describe the observed collection phase and its current work.
-
-    Returns:
-        Plain localized activity with only known source details/counts.
-    """
-    progress = run.get("progress") or {}
-    phase = progress.get("phase")
-    source = progress.get("source")
-    work = progress.get("work")
-    work_key = f"server.work.{work}"
-    if source and source.get("provider") == "mediawiki":
-        references = source.get("references", [])
-        if len(references) > 1:
-            source = {
-                **source,
-                "references": references[:1],
-                "reference_count": source.get(
-                    "reference_count",
-                    len(references),
-                ),
-            }
-    activity = (
-        source_description(source, interface, kind=phase, links=False)
-        if source
-        and phase
-        in {
-            "source_read",
-            "source_loaded",
-            "source_written",
-            "source_unchanged",
-        }
-        else interface.text(f"progress.{phase}")
-        if f"progress.{phase}" in catalog()
-        else interface.text("server.work_started")
-    )
-    if work_key in catalog():
-        separator = ": " if interface.locale == "en" else "\uff1a"
-        activity = interface.text(work_key) + separator + activity
-    current, total = progress.get("current"), progress.get("total")
-    return (
-        interface.text(
-            "progress.count",
-            phase=activity.rstrip(".。…"),
-            current=f"{current:,}",
-            total=f"{total:,}",
-        )
-        if current is not None and total is not None
-        else activity
-    )
-
-
-def _current_work(interface: Interface, status: Record) -> Record:
-    """Select background work owned by the current scheduler process.
-
-    Returns:
-        Active collection rows or an explicit idle/unknown/stale state.
-        A fresh web heartbeat cannot establish scheduler activity.
-    """
-    owner = status.get("services", {}).get("scheduler", {})
-    if not owner or not owner.get("boot_id"):
-        return {
-            "state": "unknown",
-            "label": interface.text(
-                "server.work_unknown",
-            ),
-            "items": [],
-            "expires": None,
-        }
-    if owner.get("freshness") != "current":
-        state = "stale" if owner.get("freshness") == "stale" else "unknown"
-        return {
-            "state": state,
-            "label": interface.text(f"server.work_{state}"),
-            "items": [],
-            "expires": None,
-        }
-    if owner.get("lifecycle") not in {
-        "starting",
-        "running",
-        "paused",
-        "draining",
-    }:
-        return {
-            "state": "unknown",
-            "label": interface.text(
-                "server.work_unknown",
-            ),
-            "items": [],
-            "expires": None,
-        }
-    rows = [
-        row
-        for row in status.get("executions", {}).values()
-        if row["kind"] == "collection"
-        and row["outcome"] == "running"
-        and row["boot_id"] == owner["boot_id"]
-    ]
-    rows.sort(key=operator.itemgetter("started_at"), reverse=True)
-    rows.sort(key=lambda row: row["task_id"] != "website")
-    expires = (
-        timestamp(owner["heartbeat_at"]) + dt.timedelta(seconds=90)
-    ).isoformat()
-    return {
-        "state": "active" if rows else "idle",
-        "label": interface.text(
-            "server.work_active" if rows else "server.work_idle",
-        ),
-        "expires": expires,
-        "items": [
-            {
-                "run_id": row["run_id"],
-                "task_id": row["task_id"],
-                "name": task_name(interface, row["task_id"]),
-                "activity": _collection_activity(interface, row),
-                "started": observed_time(row["started_at"]),
-                "observed": observed_time(row.get("updated_at")),
-                "expires": expires,
-            }
-            for row in rows
-        ],
-    }
-
-
 def report_context(  # ruff: ignore[too-many-arguments] - Include the native table paging controls.
     interface: Interface,
     status: Record,
@@ -589,58 +465,6 @@ def report_context(  # ruff: ignore[too-many-arguments] - Include the native tab
     }
 
 
-def _resource_rows(
-    interface: Interface,
-    resources: Record,
-    version: str,
-    *,
-    fresh: bool,
-) -> list[Record]:
-    """Format actual resource samples and unknown allocation.
-
-    Returns:
-        Runtime table rows with expiry markers for live usage.
-    """
-    unknown = interface.text("ops.unavailable")
-    memory = resources.get("memory_bytes") if fresh else None
-    limit = resources.get("memory_limit_bytes") if fresh else None
-    cpu = resources.get("cpu_percent") if fresh else None
-    cpu_limit = resources.get("cpu_limit") if fresh else None
-    rows = [
-        ("version", version, False),
-        (
-            "memory",
-            (
-                f"{readable_size(memory) if memory is not None else unknown}"
-                " / "
-                f"{readable_size(limit) if limit is not None else unknown}"
-            ),
-            True,
-        ),
-        ("cpu", f"{cpu:.1f}%" if cpu is not None else unknown, True),
-    ]
-    if cpu_limit is not None:
-        rows[-1] = (
-            "cpu",
-            rows[-1][1]
-            + " "
-            + interface.text(
-                "server.cpu_core" if cpu_limit == 1 else "server.cpu_cores",
-                count=f"{cpu_limit:g}",
-            ),
-            True,
-        )
-    return [
-        {
-            "label": interface.text(f"server.{key}"),
-            "value": value,
-            "fresh": usage and fresh,
-            "stale": unknown if usage else None,
-        }
-        for key, value, usage in rows
-    ]
-
-
 def _service_time(
     interface: Interface,
     service: Record,
@@ -676,6 +500,95 @@ def _service_time(
     }
 
 
+def _service_expiry(service: Record) -> str | None:
+    """Return the expiration for an active service's current heartbeat.
+
+    Returns:
+        The UTC deadline, or none for unavailable or terminal health.
+    """
+    heartbeat = timestamp(service.get("heartbeat_at"))
+    if (
+        heartbeat
+        and service.get("freshness") == "current"
+        and service.get("lifecycle") != "stopped"
+    ):
+        return (heartbeat + dt.timedelta(seconds=90)).isoformat()
+    return None
+
+
+def _runtime_cells(
+    interface: Interface,
+    service: Record,
+    now: dt.datetime,
+    *,
+    version: str | None = None,
+    built_at: str | None = None,
+) -> dict[str, Record]:
+    """Format independent service facts with their own heartbeat expiry.
+
+    Returns:
+        Metric cells for a single service column.
+    """
+    fresh = service.get("freshness") == "current"
+    expires = _service_expiry(service)
+    resources = service.get("resources") or {}
+    usage = resources if expires else {}
+    unknown = interface.text("ops.unavailable")
+    stale = _state(interface, "freshness", "stale")
+    used = usage.get("memory_bytes")
+    limit = usage.get("memory_limit_bytes")
+    cpu = usage.get("cpu_percent")
+    cpu_limit = usage.get("cpu_limit")
+    cpu_label = f"{cpu:.1f}%" if cpu is not None else unknown
+    if cpu_limit is not None:
+        cpu_label += " " + interface.text(
+            "server.cpu_core" if cpu_limit == 1 else "server.cpu_cores",
+            count=f"{cpu_limit:g}",
+        )
+    build = built_at or resources.get("aranami_built_at")
+    heartbeat = service.get("heartbeat_at")
+    return {
+        "state": {
+            "value": _state(interface, "service", service["lifecycle"])
+            if fresh
+            else _state(
+                interface,
+                "freshness",
+                service.get("freshness", "unknown"),
+            ),
+            "expires": expires,
+            "stale": stale,
+            **_service_time(interface, service, now),
+        },
+        "version": {
+            "value": version or resources.get("aranami_version") or unknown,
+            "time": observed_time(build) if build else None,
+            "time_label": interface.text("server.updated"),
+            "time_relative": {
+                "label": (relative_time(build, interface, now) or "").strip(
+                    "()\uff08\uff09",
+                ),
+            },
+        },
+        "memory": {
+            "value": (
+                f"{readable_size(used) if used is not None else unknown}"
+                " / "
+                f"{readable_size(limit) if limit is not None else unknown}"
+            ),
+            "expires": expires,
+            "stale": unknown,
+        },
+        "cpu": {"value": cpu_label, "expires": expires, "stale": unknown},
+        "heartbeat": {
+            "time": observed_time(heartbeat),
+            "time_relative": {
+                "label": relative_time(heartbeat, interface, now),
+            },
+        },
+    }
+
+
 def status_context(  # ruff: ignore[too-many-arguments]
     interface: Interface,
     status: Record,
@@ -701,23 +614,10 @@ def status_context(  # ruff: ignore[too-many-arguments]
     """
     services = _services(interface, status)
     web = status.get("services", {}).get("web", {})
-    web_fresh = web.get("freshness") == "current"
     service = status.get("services", {}).get("scheduler", {})
-    fresh = service.get("freshness") == "current"
-    active = fresh and service.get("lifecycle") in {
-        "running",
-        "paused",
-        "starting",
-        "draining",
-    }
-    started = service.get("started_at") if active else None
+    expires = _service_expiry(service)
+    started = service.get("started_at") if expires else None
     instant = timestamp(started)
-    heartbeat = timestamp(service.get("heartbeat_at"))
-    expires = (
-        (heartbeat + dt.timedelta(seconds=90)).isoformat()
-        if heartbeat and active
-        else None
-    )
     footer_unknown = interface.text("footer.uptime_unknown", version=version)
     footer_label = (
         interface.text(
@@ -733,18 +633,22 @@ def status_context(  # ruff: ignore[too-many-arguments]
         if instant
         else footer_unknown
     )
-    runtime_rows = _resource_rows(
+    hub_cells = _runtime_cells(interface, service, now)
+    web_cells = _runtime_cells(
         interface,
-        service.get("resources") or {},
-        version,
-        fresh=fresh,
+        web,
+        now,
+        version=version,
+        built_at=built_at,
     )
-    runtime_rows[0]["updated"] = observed_time(built_at) if built_at else None
-    runtime_rows[0]["relative"] = {
-        "label": (relative_time(built_at, interface, now) or "").strip(
-            "()\uff08\uff09",
-        ),
-    }
+    runtime_rows = [
+        {
+            "key": key,
+            "label": interface.text(f"server.{key}"),
+            "cells": [hub_cells[key], web_cells[key]],
+        }
+        for key in ("state", "version", "memory", "cpu", "heartbeat")
+    ]
     return {
         **history_context(interface, status, now, limit=history_limit),
         "status_availability": _state(
@@ -786,37 +690,9 @@ def status_context(  # ruff: ignore[too-many-arguments]
         },
         "server": {
             "dataset_updates": dataset_updates_context(interface, status, now),
-            "work": _current_work(interface, status),
-            "web": {
-                "state": _state(interface, "service", web["lifecycle"])
-                if web_fresh
-                else _state(
-                    interface,
-                    "freshness",
-                    web.get("freshness", "unknown"),
-                ),
-                "observed": observed_time(web.get("heartbeat_at")),
-            },
-            "state": _state(interface, "service", service["lifecycle"])
-            if fresh
-            else _state(
-                interface,
-                "freshness",
-                service.get("freshness", "unknown"),
-            ),
-            "observed": observed_time(service.get("heartbeat_at")),
-            "relative": {
-                "label": relative_time(
-                    service.get("heartbeat_at"),
-                    interface,
-                    now,
-                ),
-            },
-            "expires": expires is not None,
-            **_service_time(interface, service, now),
+            "rows": runtime_rows,
             "opening": " (" if interface.locale == "en" else "\uff08",
             "separator": ", " if interface.locale == "en" else "\uff0c",
             "closing": ")" if interface.locale == "en" else "\uff09",
         },
-        "runtime": runtime_rows,
     }

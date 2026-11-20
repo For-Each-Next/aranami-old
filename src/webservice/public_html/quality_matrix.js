@@ -139,13 +139,20 @@ export function violinSummary(statistics, template) {
 
 /** Keep year-table columns selected and the legend limited to plotted categories. */
 export function qualityYearSummary(selected, grades, firstYear, lastYear) {
+    const counts = new Map();
+    for (const { year, grade, pages } of selected) {
+        if (year === null) continue;
+        if (!counts.has(year)) counts.set(year, new Map());
+        const byGrade = counts.get(year);
+        byGrade.set(grade, (byGrade.get(grade) ?? 0) + pages);
+    }
     const years = [];
     for (let year = Math.max(2009, firstYear); year <= lastYear; year++) {
-        const cells = selected.filter(cell => cell.year === year);
+        const totals = grades.map(grade => counts.get(year)?.get(grade.value) ?? 0);
         years.push({
             year,
-            pages: cells.reduce((sum, cell) => sum + cell.pages, 0),
-            grades: grades.map(grade => cells.filter(cell => cell.grade === grade.value).reduce((sum, cell) => sum + cell.pages, 0)),
+            pages: totals.reduce((sum, count) => sum + count, 0),
+            grades: totals,
         });
     }
     return {years, legend: grades.filter((_, index) => years.some(year => year.grades[index] > 0))};
@@ -169,11 +176,182 @@ function chartLink(group, value, label, year, svg = false) {
     link.setAttribute("href", "#analysis-articles");
     link.setAttribute("aria-haspopup", "dialog");
     link.setAttribute("aria-controls", "analysis-chart-articles");
+    if (svg) link.setAttribute("tabindex", "0");
+    else link.textContent = label;
     Object.assign(link.dataset, {chartGroup: group, chartValue: value, chartLabel: label});
     if (year !== undefined) link.dataset.chartYear = String(year);
     return link;
 }
 const format = value => value === null ? "—" : Math.round(value).toLocaleString(document.documentElement.lang);
+
+/** Label an interactive mark and make it open its exact article cohort. */
+function plotLink(group, option, mark, description, year) {
+    const link = chartLink(group, option.value, option.label, year, true);
+    link.setAttribute("aria-label", description);
+    link.append(svgNode("title", {}, description), mark);
+    return link;
+}
+
+/** Draw an assessment distribution, including empty and single-group selections. */
+function pieFigure(entries, group, total, caption) {
+    const svg = svgNode("svg", {
+        viewBox: "0 0 240 240", class: "analysis-pie", role: "group",
+        "aria-label": caption, "data-analysis-pie": group === "grade" ? "class" : group,
+        "data-chart-renderer": "browser",
+    });
+    const center = {cx: 120, cy: 120, r: 112};
+    if (!total) svg.append(svgNode("circle", {...center, class: "analysis-pie-empty"}));
+    let angle = -Math.PI / 2;
+    const point = theta => [120 + center.r * Math.cos(theta), 120 + center.r * Math.sin(theta)].join(" ");
+    for (const {option, summary} of entries) {
+        const share = summary.pages / total;
+        const next = angle + 2 * Math.PI * share;
+        const style = {class: "analysis-pie-slice", fill: option.color};
+        const mark = share === 1
+            ? svgNode("circle", {...center, ...style})
+            : svgNode("path", {
+                ...style,
+                d: `M 120 120 L ${point(angle)} A 112 112 0 ${share > .5 ? 1 : 0} 1 ${point(next)} Z`,
+            });
+        const description = `${option.label} · ${format(summary.pages)} (${(share * 100).toFixed(1)}%)`;
+        svg.append(plotLink(group, option, mark, description));
+        angle = next;
+    }
+    return svg;
+}
+
+/** Draw the saved density with exact extrema, quartiles, median and mean. */
+function violinFigure(summary, group, option, labels, maximum) {
+    const caption = option.label + " · " + violinSummary(summary, labels.violin_summary);
+    const svg = svgNode("svg", {
+        viewBox: "0 0 1020 44", preserveAspectRatio: "none", role: "group",
+        class: "analysis-mini-violin", "aria-label": caption,
+        "data-analysis-violin": option.value, "data-chart-renderer": "browser",
+    });
+    const plot = svgNode("g");
+    const x = value => 10 + proseLengthPosition(value, maximum);
+    plot.append(svgNode("line", {x1: 10, x2: 1010, y1: 22, y2: 22, class: "analysis-violin-track"}));
+    const points = [...summary.density.map(([value, density]) => [x(value), 22 - 18 * density]),
+        ...summary.density.toReversed().map(([value, density]) => [x(value), 22 + 18 * density])];
+    if (points.length) {
+        plot.append(svgNode("polygon", {
+            points: points.map(point => point.join(",")).join(" "),
+            class: "analysis-violin-density", fill: option.color,
+        }));
+    }
+    for (const [kind, value] of Object.entries({
+        minimum: summary.minimum, p25: summary.quartiles[0], p50: summary.quantiles[2],
+        p75: summary.quartiles[1], maximum: summary.maximum, mean: summary.mean,
+    })) {
+        if (value === null) continue;
+        const position = x(value);
+        const attributes = {"data-statistic": kind, "data-value": value};
+        let mark;
+        if (kind === "mean") {
+            mark = svgNode("g", {
+                ...attributes, class: "analysis-violin-mean",
+                "data-mean-x": proseLengthPosition(value, maximum),
+            });
+            for (const direction of [-1, 1]) {
+                mark.append(svgNode("line", {x1: position - 14, x2: position + 14, y1: 22 - 6 * direction, y2: 22 + 6 * direction}));
+            }
+        } else if (kind === "p25" || kind === "p75") {
+            mark = svgNode("line", {
+                ...attributes, class: "analysis-violin-quartile", "data-percentile": kind.slice(1),
+                x1: position, x2: position, y1: 22, y2: 22,
+            });
+        } else {
+            mark = svgNode("line", {
+                ...attributes, class: kind === "p50" ? "analysis-violin-median" : "analysis-violin-extreme",
+                x1: position, x2: position, y1: 15, y2: 29,
+                ...(kind === "p50" ? {} : {"data-extreme": kind}),
+            });
+        }
+        mark.append(svgNode("title", {}, violinMarkerTitle(kind, value, labels)));
+        plot.append(mark);
+    }
+    const link = plotLink(group, option, plot, caption);
+    link.dataset.chartMeasured = "1";
+    svg.append(link);
+    return svg;
+}
+
+/** Draw summed annual counts and link each stacked bar to its articles. */
+function annualFigure(years, grades, caption) {
+    const width = Math.max(420, 54 + years.length * 44);
+    const svg = svgNode("svg", {
+        viewBox: `0 0 ${width} 300`, width, height: 300, class: "analysis-year-columns",
+        role: "group", "aria-label": caption, "data-chart-renderer": "browser",
+    });
+    const base = 260, left = 48, step = (width - left - 6) / years.length;
+    const interval = Math.max(1, Math.ceil(Math.max(0, ...years.map(year => year.pages)) / 5));
+    const height = count => 216 * count / (interval * 5);
+    for (let tick = 0; tick <= 5; tick++) {
+        const count = tick * interval, y = base - height(count);
+        svg.append(svgNode("line", {x1: left, x2: width - 6, y1: y, y2: y, class: "analysis-year-grid"}),
+            svgNode("text", {x: left - 6, y, "text-anchor": "end", "dominant-baseline": "middle", class: "analysis-axis-label"}, format(count)));
+    }
+    for (const [index, year] of years.entries()) {
+        const x = left + step * (index + .5);
+        let bottom = base;
+        for (const [column, count] of year.grades.entries()) {
+            if (!count) continue;
+            const option = grades[column], barHeight = height(count);
+            bottom -= barHeight;
+            const mark = svgNode("rect", {x: x - step * .36, y: bottom, width: step * .72, height: barHeight, fill: option.color});
+            svg.append(plotLink("grade", option, mark, `${year.year} · ${option.label} · ${format(count)}`, year.year));
+        }
+        svg.append(svgNode("text", {x, y: 280, "text-anchor": "middle", class: "analysis-axis-label"}, year.year));
+        if (year.pages) svg.append(svgNode("text", {
+            x, y: bottom - 5, "text-anchor": "middle", class: "analysis-column-total",
+        }, format(year.pages)));
+    }
+    return svg;
+}
+
+/** Draw the default figures from the overview before loading the full catalog. */
+export function initializeQualityFigures(form) {
+    if (!form?.qualityOverview) return;
+    const {analysis, labels} = form.qualityOverview;
+    delete form.qualityOverview;
+    for (const [kind, group, rows] of [
+        ["grades", "grade", analysis.grades],
+        ["importance", "importance", analysis.importance_totals],
+    ]) {
+        const host = document.querySelector('[data-quality-chart="' + kind + '"]');
+        if (!host) continue;
+        const entries = rows.filter(row => row.pages > 0).map(row => ({
+            option: {value: row[group], color: row.color, label: row.label},
+            summary: {pages: row.pages},
+        }));
+        const total = entries.reduce((sum, entry) => sum + entry.summary.pages, 0);
+        host.replaceChildren(pieFigure(entries, group, total, host.dataset.chartCaption));
+        const lengths = new Map(rows.map(row => [row[group], row.length]));
+        for (const cell of host.closest("figure").querySelectorAll("[data-quality-length]")) {
+            const value = cell.dataset.qualityLength.slice(group.length + 1);
+            const saved = lengths.get(value);
+            if (!saved) continue;
+            const summary = {
+                pages: saved.pages, measured: saved.measured,
+                minimum: saved.extrema.find(mark => mark.kind === "minimum")?.value ?? null,
+                maximum: saved.extrema.find(mark => mark.kind === "maximum")?.value ?? null,
+                mean: saved.mean ?? null, quantiles: [null, null, saved.median_characters ?? null],
+                quartiles: [25, 75].map(percentile =>
+                    saved.quartiles.find(mark => mark.percentile === percentile)?.value ?? null),
+                density: saved.density.map(({position, density}) => [position, density]),
+            };
+            const option = {value, label: saved.label, color: saved.color};
+            cell.replaceChildren(violinFigure(summary, group, option, labels, analysis.length_scale_maximum));
+        }
+    }
+    const host = document.querySelector('[data-quality-chart="years"]');
+    if (!host) return;
+    const grades = analysis.year_table_grades;
+    const years = analysis.years.map(({year, pages, grades: counts}) => ({
+        year, pages, grades: grades.map(grade => counts[grade.value] ?? 0),
+    }));
+    host.replaceChildren(annualFigure(years, grades, host.dataset.chartCaption));
+}
 
 const catalogRecords = new WeakMap();
 const catalogPreparation = new WeakMap();
@@ -363,186 +541,238 @@ export function renderAuthorshipDetails(body, proof, labels) {
     body.append(table);
 }
 
-/** Apply checkbox and date choices without any network requests. */
+/** Synchronize matrix checkboxes while leaving the applied cohort in place. */
 export function initializeQualitySelection(form) {
     if (!form || form.hasAttribute("data-selection-enhanced")) return;
     form.setAttribute("data-selection-enhanced", "");
     const cells = [...form.querySelectorAll("[data-matrix-cell]")];
     const parents = [
-        [form.querySelector("[data-matrix-all]"), () => true],
-        ...[...form.querySelectorAll("[data-matrix-grade]")].map(input => [input, cell => cell.dataset.grade === input.dataset.matrixGrade]),
-        ...[...form.querySelectorAll("[data-matrix-importance]")].map(input => [input, cell => cell.dataset.importance === input.dataset.matrixImportance]),
+        [form.querySelector("[data-matrix-all]"), cells],
+        ...[...form.querySelectorAll("[data-matrix-grade]")].map(input => [
+            input, cells.filter(cell => cell.dataset.grade === input.dataset.matrixGrade),
+        ]),
+        ...[...form.querySelectorAll("[data-matrix-importance]")].map(input => [
+            input, cells.filter(cell => cell.dataset.importance === input.dataset.matrixImportance),
+        ]),
     ].filter(([input]) => input);
     const sync = () => {
-        for (const [input, matches] of parents) {
-            const children = cells.filter(matches), checked = children.filter(child => child.checked).length;
+        for (const [input, children] of parents) {
+            const checked = children.filter(child => child.checked).length;
             input.checked = children.length > 0 && checked === children.length;
             input.indeterminate = checked > 0 && checked < children.length;
         }
     };
-    const changed = () => {
-        sync();
+    const status = form.querySelector("[data-matrix-status]");
+    const message = form.querySelector("[data-matrix-message]");
+    const edited = () => {
         form.dataset.qualitySelectionChanged = "1";
-        form.dispatchEvent(new Event("quality-selection-change"));
+        if (message && !form.dataset.qualityChartsLoading) message.textContent = status.dataset.pending;
     };
-    for (const [input, matches] of parents) input.addEventListener("change", () => {
-        for (const child of cells.filter(matches)) child.checked = input.checked;
-        changed();
+    for (const [input, children] of parents) input.addEventListener("change", () => {
+        for (const child of children) child.checked = input.checked;
+        sync();
+        edited();
     });
-    for (const input of [...cells, ...form.querySelectorAll("[data-matrix-from], [data-matrix-to], [data-matrix-unknown]")]) input.addEventListener("change", changed);
+    for (const input of cells) input.addEventListener("change", () => {sync(); edited();});
+    for (const input of form.querySelectorAll("[data-matrix-from], [data-matrix-to], [data-matrix-unknown]")) {
+        input.addEventListener("input", edited);
+        input.addEventListener("change", edited);
+    }
     form.addEventListener("submit", event => event.preventDefault());
     sync();
 }
 
-/** Apply the latest native selection once its complete catalog is ready. */
+/** Use one confirmed selection for every saved summary, figure and directory. */
 export function initializeQualityMatrix() {
     const form = document.querySelector("[data-quality-matrix]");
     if (!form || form.hasAttribute("data-matrix-enhanced")) return;
     initializeQualitySelection(form);
     const data = qualityMetadata(form);
-    if (!data) return;
-    form.setAttribute("data-matrix-enhanced", "");
+    const apply = form.querySelector("[data-matrix-apply]");
+    if (!data || !apply) return;
     const inputs = [...form.querySelectorAll("[data-matrix-cell]")];
     const rows = document.querySelector("[data-quality-analysis]")?.analysisRows || [...document.querySelectorAll("[data-analysis-row]")];
     const from = form.querySelector("[data-matrix-from]");
     const to = form.querySelector("[data-matrix-to]");
     const unknown = form.querySelector("[data-matrix-unknown]");
+    const status = form.querySelector("[data-matrix-status]");
+    const message = status.querySelector("[data-matrix-message]");
+    const spinner = status.querySelector("[data-matrix-spinner]");
+    const results = document.querySelector("[data-quality-results]");
     const grades = data.grades;
-    const importance = data.importance;
-    const key = (grade, level) => `${grade}:${level}`;
+    const key = (grade, level) => grade + ":" + level;
     const yearTable = document.querySelector(".analysis-year-data");
-    const yearLabel = yearTable?.tHead.rows[0].cells[0].textContent;
-    const totalLabel = yearTable?.tHead.rows[0].cells[yearTable.tHead.rows[0].cells.length - 1].textContent;
-    const authorRows = [...document.querySelectorAll("[data-matrix-author]")];
-    const authorCounts = new Map(authorRows.map(row => {
+    const yearHead = yearTable?.tHead.rows[0];
+    const yearLabel = yearHead?.cells[0].textContent;
+    const totalLabel = yearHead?.cells[yearHead.cells.length - 1].textContent;
+    const yearHost = document.querySelector('[data-quality-chart="years"]');
+    const gradeHost = document.querySelector('[data-quality-chart="grades"]');
+    const importanceHost = document.querySelector('[data-quality-chart="importance"]');
+    const maximum = data.length_scale_maximum ?? proseLengthMaximum(data.cells);
+    const authorRows = [...document.querySelectorAll("[data-matrix-author]")].map(row => {
         const link = row.cells[2].querySelector("a");
-        return [row, link.textContent.replace(/[\d,]+/, "{count}")];
-    }));
+        return {
+            row, link,
+            label: link.textContent.replace(/[\d,]+/, "{count}"),
+            pages: row.dataset.pageIds ? JSON.parse(row.dataset.pageIds).map(String) : null,
+        };
+    });
 
-    /** Read only passive, same-document SVG generated by the chart endpoint. */
-    function chartSVG(value) {
-        if (typeof value !== "string" || value.length > 4 * 1024 * 1024) throw new Error("Invalid chart");
-        const parsed = new DOMParser().parseFromString(value, "image/svg+xml");
-        const svg = parsed.documentElement;
-        if (svg.localName !== "svg" || parsed.querySelector("parsererror, script, foreignObject, iframe, object, embed, image")) throw new Error("Invalid chart SVG");
-        for (const element of [svg, ...svg.querySelectorAll("*")]) {
-            for (const attribute of element.attributes) {
-                if (/^on/i.test(attribute.name) || (attribute.localName === "href" && !attribute.value.startsWith("#"))) throw new Error("Unsafe chart SVG");
-            }
+    function renderDistribution(host, group, options, selected, total) {
+        if (!host) return;
+        const groups = new Map();
+        for (const cell of selected) {
+            const code = cell[group];
+            if (!groups.has(code)) groups.set(code, []);
+            groups.get(code).push(cell);
         }
-        return document.importNode(svg, true);
-    }
-
-    function renderPieTable(dimension, options, selected, total, lengthCharts) {
-        const host = document.querySelector(`[data-quality-chart="${dimension === "grade" ? "grades" : "importance"}"]`);
-        const body = host?.closest("figure").querySelector("tbody");
-        if (!body) return;
         const entries = [];
-        const ordered = dimension === "grade" ? [...options].sort((left, right) => (left.distribution_order ?? left.order) - (right.distribution_order ?? right.order)) : options;
-        for (const option of ordered) {
-            const count = selected.filter(cell => cell[dimension] === option.value).reduce((sum, cell) => sum + cell.pages, 0);
-            if (!count) continue;
-            const row = node("tr"), heading = node("th"), label = chartLink(dimension, option.value, option.label);
-            heading.scope = "row";
-            const caption = node("span", undefined, "analysis-assessment-label"), swatch = svgNode("svg", {viewBox: "0 0 12 12", width: 12, height: 12, class: "analysis-swatch", "aria-hidden": "true"});
-            swatch.append(svgNode("rect", {width: 12, height: 12, fill: option.color})); caption.append(swatch, label); heading.append(caption);
-            const miniCell = node("td", undefined, "analysis-mini-cell"), chartKey = `${dimension}:${option.value}`;
-            miniCell.dataset.qualityLength = chartKey;
-            miniCell.append(lengthCharts.get(chartKey) || document.createTextNode("—"));
-            const countCell = node("td", undefined, "analysis-number"), countLabel = node("span", undefined, "analysis-count");
-            countLabel.append(node("span", format(count)), node("small", `${(count / Math.max(1, total) * 100).toFixed(1)}%`)); countCell.append(countLabel);
-            row.append(heading, countCell, miniCell); entries.push(row);
+        for (const option of options) {
+            const cells = groups.get(option.value);
+            if (cells) entries.push({option, summary: combineCells(cells)});
         }
-        body.replaceChildren(...entries);
+        const body = host.closest("figure").querySelector("tbody");
+        const tableRows = entries.map(({option, summary}) => {
+            const row = node("tr"), heading = node("th");
+            heading.scope = "row";
+            const caption = node("span", undefined, "analysis-assessment-label");
+            caption.append(swatch(option.color), chartLink(group, option.value, option.label));
+            heading.append(caption);
+            const count = node("span", undefined, "analysis-count");
+            count.append(node("span", format(summary.pages)), node("small", (summary.pages / total * 100).toFixed(1) + "%"));
+            const countCell = node("td", undefined, "analysis-number");
+            countCell.append(count);
+            const length = node("td", undefined, "analysis-mini-cell");
+            length.dataset.qualityLength = key(group, option.value);
+            length.append(violinFigure(summary, group, option, data.labels, maximum));
+            row.append(heading, countCell, length);
+            return row;
+        });
+        body.replaceChildren(...tableRows);
+        host.replaceChildren(pieFigure(entries, group, total, chartCaption(host)));
     }
 
-    function renderYearTable(selected) {
-        if (!yearTable) return;
-        const selectedGrades = grades.filter(grade => inputs.some(input => input.checked && input.dataset.grade === grade.value));
-        const {years, legend} = qualityYearSummary(selected, selectedGrades, Number(from.value), Number(to.value));
+    function swatch(color) {
+        const svg = svgNode("svg", {viewBox: "0 0 12 12", width: 12, height: 12, class: "analysis-swatch", "aria-hidden": "true"});
+        svg.append(svgNode("rect", {width: 12, height: 12, fill: color}));
+        return svg;
+    }
+
+    function chartCaption(host) {
+        return host.dataset.chartCaption || host.querySelector("svg")?.getAttribute("aria-label") || "";
+    }
+
+    function renderYears(selected, selectedGrades, firstYear, lastYear) {
+        if (!yearTable || !yearHost) return;
+        const {years, legend} = qualityYearSummary(selected, selectedGrades, firstYear, lastYear);
         const legendList = document.querySelector(".analysis-legend");
         if (legendList) legendList.replaceChildren(...legend.map(grade => {
-            const item = node("li"), swatch = svgNode("svg", {viewBox:"0 0 12 12",width:12,height:12,"aria-hidden":"true"});
-            swatch.append(svgNode("rect",{width:12,height:12,fill:grade.color})); item.append(swatch,document.createTextNode(" " + grade.label)); return item;
+            const item = node("li");
+            item.append(swatch(grade.color), document.createTextNode(" " + grade.label));
+            return item;
         }));
-        const head = node("tr"); head.append(node("th", yearLabel));
-        for (const grade of selectedGrades) head.append(node("th", grade.label));
-        head.append(node("th", totalLabel, "analysis-total-column")); yearTable.tHead.replaceChildren(head); yearTable.tBodies[0].replaceChildren();
-        for (const year of years) {
-            const row = node("tr"); row.append(node("th", year.year));
-            for (const count of year.grades) row.append(node("td", count));
-            row.append(node("td", format(year.pages), "analysis-total-column")); yearTable.tBodies[0].append(row);
+        const head = node("tr");
+        for (const label of [yearLabel, ...selectedGrades.map(grade => grade.label), totalLabel]) {
+            const column = node("th", label);
+            column.scope = "col";
+            head.append(column);
         }
+        head.lastElementChild.className = "analysis-total-column";
+        yearTable.tHead.replaceChildren(head);
+        yearTable.tBodies[0].replaceChildren(...years.map(year => {
+            const row = node("tr"), label = node("th", year.year);
+            label.scope = "row";
+            row.append(label, ...year.grades.map(count => node("td", count)));
+            row.append(node("td", format(year.pages), "analysis-total-column"));
+            return row;
+        }));
+        yearHost.replaceChildren(annualFigure(years, selectedGrades, chartCaption(yearHost)));
     }
 
-    let chartSequence = 0, chartTimer, chartController;
-    /** Keep the previous plots until the latest complete Matplotlib response arrives. */
-    function requestCharts(selected, chosen, total) {
-        if (!data.chart_generation || !data.chart_url || typeof fetch !== "function") return;
-        const request = ++chartSequence;
-        chartController?.abort();
-        clearTimeout(chartTimer);
-        const url = new URL(data.chart_url, location.href);
-        if (url.origin !== location.origin || url.pathname !== "/quality-analysis/charts/") return;
-        const status = document.querySelector("[data-quality-chart-status]");
-        Object.entries({generation:data.chart_generation,basis:data.authorship_basis || "current",cells:[...chosen].sort().join(","),from:from.value,to:to.value,unknown:unknown.checked ? "1" : "0"}).forEach(([name,value]) => url.searchParams.set(name,value));
-        form.dataset.qualityChartsLoading = "1";
-        chartTimer = setTimeout(async () => {
-            chartController = new AbortController();
-            try {
-                let response;
-                for (let attempt = 0; attempt < 4; attempt++) {
-                    response = await fetch(url, {credentials:"same-origin",redirect:"error",signal:chartController.signal,headers:{Accept:"application/json"}});
-                    if (response.status !== 429) break;
-                    await new Promise(resolve => setTimeout(resolve, 250 * (attempt + 1)));
-                    if (request !== chartSequence) return;
-                }
-                if (!response.ok || !response.headers.get("Content-Type")?.startsWith("application/json")) throw new Error("Charts unavailable");
-                const result = await response.json();
-                if (request !== chartSequence || !form.isConnected) return;
-                if (result.generation !== data.chart_generation || !result.lengths || typeof result.lengths !== "object") throw new Error("Stale chart generation");
-                const charts = new Map([["grades",chartSVG(result.grades_svg)],["importance",chartSVG(result.importance_svg)],["years",chartSVG(result.years_svg)]]);
-                const lengths = new Map(Object.entries(result.lengths).map(([key,value]) => [key,chartSVG(value)]));
-                for (const [key, svg] of charts) document.querySelector(`[data-quality-chart="${key}"]`)?.replaceChildren(svg);
-                renderPieTable("grade", grades, selected, total, lengths);
-                renderPieTable("importance", importance, selected, total, lengths);
-                renderYearTable(selected);
-                if (status) status.textContent = "";
-                document.dispatchEvent(new Event("quality-charts-replaced"));
-            } catch (error) {
-                if (request === chartSequence && error.name !== "AbortError" && status) status.textContent = data.chart_failed || "Charts could not update.";
-            } finally {
-                if (request === chartSequence) {delete form.dataset.qualityChartsLoading; chartController = void 0;}
-            }
-        }, 150);
-    }
+    const distributionGrades = [...grades].sort((left, right) =>
+        (left.distribution_order ?? left.order) - (right.distribution_order ?? right.order));
+    const matches = (selection, grade, importance, year) =>
+        selection.chosen.has(key(grade, importance)) &&
+        yearSelected(year, selection.firstYear, selection.lastYear, selection.includeUnknown);
 
-    function render(updateCharts = true) {
-        if (!from.checkValidity() || !to.checkValidity() || Number(from.value) > Number(to.value)) return;
-        const chosen = new Set(inputs.filter(input => input.checked).map(input => key(input.dataset.grade, input.dataset.importance)));
-        const selected = data.cells.filter(cell => chosen.has(key(cell.grade, cell.importance)) && yearSelected(cell.year, Number(from.value), Number(to.value), unknown.checked));
-        const undated = data.cells.filter(cell => cell.year === null && chosen.has(key(cell.grade, cell.importance))).reduce((sum, cell) => sum + cell.pages, 0);
+    function render(selection) {
+        const selected = data.cells.filter(cell => matches(selection, cell.grade, cell.importance, cell.year));
+        const total = selected.reduce((sum, cell) => sum + cell.pages, 0);
+        renderDistribution(gradeHost, "grade", distributionGrades, selected, total);
+        renderDistribution(importanceHost, "importance", data.importance, selected, total);
+        renderYears(selected, grades.filter(grade => selection.grades.has(grade.value)), selection.firstYear, selection.lastYear);
+        const undated = data.cells.reduce((count, cell) =>
+            count + (cell.year === null && selection.chosen.has(key(cell.grade, cell.importance)) ? cell.pages : 0), 0);
         const undatedLabel = document.querySelector("[data-undated-count]");
         if (undatedLabel) undatedLabel.textContent = undatedLabel.dataset.label.replace("{count}", format(undated));
+
         const ids = new Set();
         for (const row of rows) {
-            const keep = chosen.has(key(row.dataset.grade, row.dataset.importance)) && yearSelected(row.dataset.year, Number(from.value), Number(to.value), unknown.checked);
-            row.dataset.cohort = keep ? "1" : "0"; if (keep) ids.add(row.dataset.pageId);
+            const keep = matches(selection, row.dataset.grade, row.dataset.importance, row.dataset.year);
+            row.dataset.cohort = keep ? "1" : "0";
+            if (keep) ids.add(row.dataset.pageId);
         }
         form.qualitySelectedIds = ids;
-        for (const row of document.querySelectorAll("[data-matrix-page]")) row.dataset.cohort = ids.has(row.dataset.matrixPage) ? "1" : "0";
-        for (const row of authorRows) {
-            const link = row.cells[2].querySelector("a"), dialog = document.getElementById(link.getAttribute("aria-controls"));
-            const pages = row.qualityPageIds ||= row.dataset.pageIds ? JSON.parse(row.dataset.pageIds).map(String) : null;
-            const count = pages ? pages.filter(id => ids.has(id)).length :
-                [...(dialog?.querySelectorAll("[data-matrix-page]") || [])].filter(item => item.dataset.cohort !== "0").length;
-            row.dataset.cohort = count ? "1" : "0"; row.cells[2].dataset.sort = String(count); link.textContent = authorCounts.get(row).replace("{count}", String(count));
+        for (const row of document.querySelectorAll("[data-matrix-page]")) {
+            row.dataset.cohort = ids.has(row.dataset.matrixPage) ? "1" : "0";
         }
-        const total = selected.reduce((sum, cell) => sum + cell.pages, 0);
-        const totalNode = document.querySelector("[data-matrix-total]"); if (totalNode) totalNode.textContent = format(total);
-        if (updateCharts) requestCharts(selected, chosen, total);
+        for (const {row, link, label, pages} of authorRows) {
+            const dialog = pages ? null : document.getElementById(link.getAttribute("aria-controls"));
+            const count = pages ? pages.filter(id => ids.has(id)).length :
+                dialog?.querySelectorAll('[data-matrix-page][data-cohort="1"]').length ?? 0;
+            row.dataset.cohort = count ? "1" : "0";
+            row.cells[2].dataset.sort = String(count);
+            link.textContent = label.replace("{count}", String(count));
+        }
+        const totalNode = document.querySelector("[data-matrix-total]");
+        if (totalNode) totalNode.textContent = format(total);
         document.dispatchEvent(new Event("quality-cohort-change"));
+        document.dispatchEvent(new Event("quality-charts-replaced"));
     }
-    form.addEventListener("quality-selection-change", () => render());
-    render(form.dataset.qualitySelectionChanged === "1");
+
+    function selection(checked, firstYear, lastYear, includeUnknown) {
+        return {
+            firstYear, lastYear, includeUnknown,
+            chosen: new Set(checked.map(input => key(input.dataset.grade, input.dataset.importance))),
+            grades: new Set(checked.map(input => input.dataset.grade)),
+        };
+    }
+
+    async function confirm(event) {
+        event.preventDefault();
+        if (form.dataset.qualityChartsLoading) return;
+        if (Number(from.value) > Number(to.value)) {
+            message.textContent = status.dataset.yearOrder;
+            to.focus();
+            return;
+        }
+        const chosen = selection(inputs.filter(input => input.checked), Number(from.value), Number(to.value), unknown.checked);
+        delete form.dataset.qualitySelectionChanged;
+        form.dataset.qualityChartsLoading = "1";
+        apply.setAttribute("aria-disabled", "true");
+        results?.setAttribute("aria-busy", "true");
+        spinner.hidden = false;
+        message.textContent = status.dataset.working;
+        try {
+            // Paint the progress state before combining the saved cells.
+            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            if (!form.isConnected) return;
+            render(chosen);
+            message.textContent = form.dataset.qualitySelectionChanged ? status.dataset.pending : status.dataset.applied;
+        } catch {
+            message.textContent = status.dataset.failed;
+        } finally {
+            delete form.dataset.qualityChartsLoading;
+            apply.removeAttribute("aria-disabled");
+            results?.removeAttribute("aria-busy");
+            spinner.hidden = true;
+        }
+    }
+
+    const defaultGrades = new Set(grades.filter(grade => grade.checked).map(grade => grade.value));
+    render(selection(inputs.filter(input => defaultGrades.has(input.dataset.grade)), Number(from.min), Number(to.max), true));
+    form.setAttribute("data-matrix-enhanced", "");
+    form.addEventListener("submit", event => void confirm(event));
+    apply.hidden = false;
+    apply.disabled = false;
 }

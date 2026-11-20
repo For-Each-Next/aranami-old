@@ -19,7 +19,10 @@ from wiki_fixtures import article_url
 
 from data.website import save_snapshot
 from shared.sources.wiki import WikiReader
-from tasks.website.collect import enrich_project_assessments
+from tasks.website.collect import (
+    _dashboard_news,  # ruff: ignore[import-private-name] - Exercise bulletin continuity.
+    enrich_project_assessments,
+)
 from tasks.zhwiki import homepage
 
 
@@ -171,6 +174,69 @@ class TestProjectAssessmentEnrichment(TestCase):
             },
         ]
         assert enrich_project_assessments([], pl.DataFrame()) == []
+
+
+class TestDashboardNewsDates(TestCase):
+    """Recover the introduction from complete bulletin revisions."""
+
+    @staticmethod
+    def test_previous_window_date_is_replaced_by_first_appearance() -> None:
+        """Recover the first date using only missing revisions."""
+        start = dt.date(2026, 11, 1)
+        today = dt.date(2026, 11, 20)
+        end = today + dt.timedelta(days=1)
+        introduced = dt.date(2026, 11, 14)
+        previous = {
+            "period": {"end": end.isoformat()},
+            "homepage": {
+                "news": [
+                    {
+                        "title": "Game",
+                        "date": today.isoformat(),
+                        "displayed_on": today.isoformat(),
+                        "date_kind": "window_start",
+                    },
+                ],
+            },
+        }
+        empty = '<div id="column-itn"></div>'
+        shown = "<div id=\"column-itn\">'''[[Game]]'''</div>"
+        published = dt.datetime.combine(introduced, dt.time(), dt.UTC)
+        origin = dt.datetime.combine(start, dt.time(), dt.UTC)
+        reader = Mock()
+        reader.resolve.side_effect = lambda title: title
+
+        def history(title: str, since: dt.date, until: dt.date) -> list[dict]:
+            """Supply a revision range and its leading baseline.
+
+            Returns:
+                A fixture timeline with the original insertion.
+            """
+            if title != "Template:Itn":
+                return [{"text": "{{Separated entries}}", "timestamp": origin}]
+            revision = {"text": shown, "timestamp": published}
+            if since == today:
+                return [revision]
+            assert until == today
+            return [{"text": empty, "timestamp": origin}, revision]
+
+        reader.history.side_effect = history
+        with patch(
+            "tasks.website.collect.page_url",
+            side_effect=lambda _site, title: article_url(title),
+        ):
+            rows = _dashboard_news(reader, {"Game"}, start, end, previous)
+        assert rows == [
+            {
+                "title": "Game",
+                "url": article_url("Game"),
+                "date": introduced.isoformat(),
+                "date_kind": "appearance",
+                "displayed_on": today.isoformat(),
+            },
+        ]
+        reader.history.assert_any_call("Template:Itn", today, end)
+        reader.history.assert_any_call("Template:Itn", start, today)
 
 
 class TestRevisionBoundaries(TestCase):

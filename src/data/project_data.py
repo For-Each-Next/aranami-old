@@ -16,6 +16,9 @@ import hashlib
 import io
 import json
 import os
+from copy import deepcopy
+from dataclasses import replace
+from functools import partial
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from time import monotonic
@@ -34,8 +37,9 @@ from shared.support.assessment_encoding import (
     encode_assessments,
     restore_assessment_schema,
 )
+from shared.support.cache import FileReadCache
 from shared.support.dataset_activity import dataset_activity
-from shared.support.files import read_regular, staging_directory
+from shared.support.files import staging_directory
 from shared.support.parquet import (
     parquet_metadata,
     report_parquet_activity,
@@ -44,6 +48,7 @@ from shared.support.parquet import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from typing import BinaryIO
 
 ACTIVATION_DATE = dt.date(2026, 11, 3)
 SCHEMA = {
@@ -430,26 +435,25 @@ def _profile_metadata(frame: pl.DataFrame, identifier: object) -> dict:
     }
 
 
-def _read_details(
+def _decode_snapshot(
+    stream: BinaryIO,
     path: Path,
     site_name: str,
     project: str,
     boundary_date: dt.date,
-) -> tuple[ReportBundle, dict[str, object] | None] | None:
-    """Read and validate a bounded immutable snapshot.
+) -> tuple[ReportBundle, dict[str, object] | None]:
+    """Decode and validate one open immutable snapshot.
 
     Returns:
-        Retained facts and embedded storage metadata, or none when
-        this file does not exist. Both describe the same open file.
+        Retained facts and embedded storage metadata from the same file.
 
     Raises:
         ValueError: Saved metadata or rows violate their contract.
-        OSError: A saved file is unsafe or unreadable.
     """
-    try:
-        payload = read_regular(path, _MAX_BYTES)
-    except FileNotFoundError:
-        return None
+    payload = stream.read(_MAX_BYTES + 1)
+    if len(payload) > _MAX_BYTES:
+        message = "Daily project snapshot exceeds its size bound."
+        raise ValueError(message)
     manifest = _manifest(payload)
     try:
         started = dt.datetime.fromisoformat(manifest.get("started_at"))
@@ -550,6 +554,43 @@ def _read_details(
             "Daily project snapshot identity, boundary, or integrity mismatch."
         )
         raise ValueError(message)
+    return ReportBundle(path, manifest, {"members": frame}, ""), storage
+
+
+type _Snapshot = tuple[ReportBundle, dict[str, object] | None]
+_SNAPSHOT_FILES = FileReadCache[_Snapshot](
+    max_bytes=64 * 1024 * 1024,
+    size=lambda snapshot: snapshot[0].tables["members"].estimated_size(),
+)
+
+
+def _read_details(
+    path: Path,
+    site_name: str,
+    project: str,
+    boundary_date: dt.date,
+) -> _Snapshot | None:
+    """Reuse immutable validated facts and detach each caller's values.
+
+    Returns:
+        Complete facts and storage metadata, or none for a missing file.
+    """
+    try:
+        bundle, storage = _SNAPSHOT_FILES.read(
+            path,
+            _MAX_BYTES,
+            (site_name, project, boundary_date),
+            partial(
+                _decode_snapshot,
+                path=path,
+                site_name=site_name,
+                project=project,
+                boundary_date=boundary_date,
+            ),
+        )
+    except FileNotFoundError:
+        return None
+    manifest = bundle.manifest
     report_activity(
         "saved",
         "project_membership",
@@ -567,7 +608,11 @@ def _read_details(
             "written_at": storage["written_at"] if storage else "",
         },
     )
-    return ReportBundle(path, manifest, {"members": frame}, ""), storage
+    return replace(
+        bundle,
+        manifest=deepcopy(manifest),
+        tables={"members": bundle.tables["members"].clone()},
+    ), deepcopy(storage)
 
 
 def _read(

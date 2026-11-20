@@ -204,53 +204,23 @@ Copying must not reinterpret wikitext. Keep a native fallback when Clipboard
 fails, date bounds, issue identities, labeled controls and source-linked edit
 URLs. [Newsletter drafts](newsletter.md) defines editorial behavior.
 
-## FA/GA editor statistics
+## Article Statistics
 
-The Tools menu links to `/quality-authorship/`, a directory of editors with
-retained experience writing FA, FL, A, AL, GA and Bplus video-game articles. Its
-introduction helps newer editors find potential mentors and links to
-human-checked year-end reviews and earlier content introductions.
-Only articles whose latest saved project assessment is FA, FL, A, AL, GA or
-Bplus contribute to these totals. The current project page list supplies unique
-`page_id` keys; historical records join through those identities. Delisted,
-departed and redirected articles retain their history but leave the directory.
-Hourly project collection saves current eligibility under `data/daily/`;
-missing eligibility makes the directory unavailable until collection succeeds.
-The native table shows editor and talk links, independent all-article and FA/FL
-counts such as `44 articles (7 featured)`, and the latest observed public edit.
-The two counts open separate native dialogs with the complete and featured-only
-selections. Article, grade and listing-date columns are sortable; their default
-order is newest listing first regardless of grade. Editor, contribution-total
-and latest-activity columns are also sortable. Row numbers are not sortable.
-Sorting resets pagination, and opening either dialog restores its default order
-and first page. Native tables and fragment links work without JavaScript.
+The main navigation links to `/quality-analysis/`. The earlier author-directory
+URL redirects here. The page displays current article and list assessments,
+saved measurements, and main contributors in one cohort. Use the grade,
+importance and year controls, then select **Apply filters** to update the
+figures, coverage and article lists together. The in-page status announces
+the update and its outcome. The matrix, distribution summaries and annual
+table show all their rows. Article lists retain paging even when empty.
 
-Each registered editor whose retained contribution is strictly greater than
-33% of eligible content receives one whole article count. The largest
-contribution alone does not qualify when it remains at or below that threshold.
-An article may therefore count for multiple authors. Scores use the final
-revision of the listing's UTC day. References are excluded when reliable exact
-alignment is available; otherwise the retained API-byte fallback includes them.
-In exact-source scoring, comments count and whitespace remains in the eligible
-total, with unknown ownership because WikiWho omits separators.
-Anonymous and unassigned bytes remain in the denominator. Each editor/article
-appears once at its strongest retained grade and latest listing of that grade.
-Nominations alone do not establish authorship. The directory reads the current
-v4 byte evidence and preserves older contracts for their original consumers.
-
-A compact icon after a shared article title identifies the other qualifying
-registered editors in a localized, escaped tooltip and accessible label. Article
-labels follow the selected Chinese conversion table; canonical titles, URLs and
-review fragments keep their source spelling. Listing dates link only retained,
-verified review anchors. Latest activity links to the editor's contributions and
-remains a separately saved public-edit observation; missing dates stay unknown.
-Page requests never query Wikipedia or the replicas.
-
-The class matrix defaults to high-quality grades and can select every article
-and list grade. Both selections use the same saved catalog. Plain searches fold
-Simplified and Traditional characters. The regex option matches the titles as
-written. Table footers retain the page size and navigation after an empty search.
-Main-page highlights refresh hourly. Newsletter facts keep their daily cadence.
+The directory links to contributor details and each account's latest observed
+public edit. Hourly idle work refreshes due accounts across both authorship
+views, independent of whether attribution changed. The exact review anchors,
+wiki titles and contribution URLs remain tied to their saved source evidence.
+Plain article search folds Simplified and Traditional characters. Regular
+expressions match titles as written. The [Article Statistics
+reference](quality-analysis.md) describes the retained proofs.
 
 B/BL listing dates use the first talk revision of the latest continuous
 literal B/BL banner range, including page creation when fully visible.

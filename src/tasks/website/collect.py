@@ -12,6 +12,7 @@ import hashlib
 import logging
 import math
 from functools import partial
+from operator import itemgetter
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -47,6 +48,7 @@ from shared.sources.quarry.projects import query_pages_by_wikiproject
 from shared.sources.revisions import RevisionTextCache
 from shared.sources.wiki import WikiReader
 from shared.support.titles import page_url
+from tasks.articles.history import prepared_news
 from tasks.website import pageviews
 from tasks.zhwiki import consistency, discussions, homepage, reviews
 from tasks.zhwiki.game_titles import refresh_game_titles
@@ -290,7 +292,7 @@ def _report_plan(
                 f"upcoming-days:{_UPCOMING_DAYS}"
             )
             if name == "recognized"
-            else f"days:{days}:complete-extracts:active-news-first-day:1"
+            else f"days:{days}:complete-extracts:active-news-first-day:2"
             if name == "news_history"
             else f"days:{days}:script-extracts:closed-passed-dyk-queue:1"
             if name == "dyk"
@@ -497,25 +499,26 @@ def _retained_events(
     )
 
 
-def _dashboard_news(
+def _dashboard_news(  # ruff: ignore[too-many-arguments]
     read: WikiReader,
     members: set[str],
     start: dt.date,
     end: dt.date,
     previous: dict | None,
+    *,
+    retained_events: Callable[[], pl.DataFrame] | None = None,
 ) -> list[dict[str, str]]:
-    """Keep the first observed day of each still-displayed news item.
+    """Recover the start date of each active news appearance.
 
     Returns:
-        Active articles with separate dates for appearance and display
-        observation. Verified continuity allows reuse across refreshes.
+        Active articles with distinct introduction and display dates.
     """
     today = end - dt.timedelta(days=1)
     saved = (
         {
             row["title"]: row
             for row in previous["homepage"]["news"]
-            if row.get("displayed_on")
+            if row.get("displayed_on") and row["date_kind"] == "appearance"
         }
         if previous
         else {}
@@ -530,6 +533,23 @@ def _dashboard_news(
         else start
     )
     begin = max(start, begin)
+    recent = {}
+
+    def history(title: str, since: dt.date, until: dt.date) -> list[dict]:
+        """Extend the short interval for unresolved start dates.
+
+        Returns:
+            Complete display revisions with the carried-in baseline.
+        """
+        if since == begin:
+            rows = read.history(title, since, until)
+            recent[title] = rows
+            return rows
+        cutoff = dt.datetime.combine(begin, dt.time(), tzinfo=dt.UTC)
+        return [
+            *read.history(title, since, begin),
+            *[row for row in recent[title] if row["timestamp"] >= cutoff],
+        ]
 
     def collect(since: dt.date, cohort: set[str]) -> list[dict[str, str]]:
         """Read active homepage news for these members.
@@ -545,7 +565,7 @@ def _dashboard_news(
             url=partial(page_url, read.site),
             resolve=read.resolve,
             resolve_many=read.resolve_many,
-            history=read.history,
+            history=history,
             active=True,
         )
 
@@ -560,13 +580,30 @@ def _dashboard_news(
         if carried and begin > start
         else {}
     )
+    unverified = {
+        title
+        for title in carried
+        if title not in earlier
+        or earlier[title]["date_kind"] == "window_start"
+    }
+    archived = {}
+    if unverified and retained_events is not None:
+        for notice in prepared_news(
+            retained_events().filter(pl.col("title").is_in(unverified)),
+            dt.date.min,
+            start + dt.timedelta(days=1),
+            url=partial(page_url, read.site),
+        ):
+            if notice["title"] in unverified:
+                archived.setdefault(notice["title"], notice)
     for row in rows:
         if row["date_kind"] == "window_start":
-            old = saved.get(row["title"]) or earlier.get(row["title"])
+            title = row["title"]
+            old = saved.get(title) or archived.get(title) or earlier.get(title)
             if old:
                 row.update(date=old["date"], date_kind=old["date_kind"])
         row["displayed_on"] = today.isoformat()
-    return rows
+    return sorted(rows, key=itemgetter("date"), reverse=True)
 
 
 def _collect_report(  # ruff: ignore[too-many-arguments]
@@ -599,20 +636,17 @@ def _collect_report(  # ruff: ignore[too-many-arguments]
     )
     today = end - dt.timedelta(days=1)
     days = (end - start).days
-    events = None
-    if name == "newsletter":
-        events = _retained_events(
-            membership,
-            article_history_cache,
-            path=milestones_path,
-        )
     if name == "newsletter":
         data = collect_newsletter(
             read,
             membership,
             now=now or dt.datetime.now(dt.UTC),
             observations_path=observations_path,
-            article_history=events,
+            article_history=_retained_events(
+                membership,
+                article_history_cache,
+                path=milestones_path,
+            ),
             quality_history=_retained_events(
                 membership,
                 article_history_cache,
@@ -673,7 +707,21 @@ def _collect_report(  # ruff: ignore[too-many-arguments]
             if section == "news":
                 displays[section] = _assessed_section(
                     section,
-                    _dashboard_news(read, members, start, end, previous_data),
+                    _dashboard_news(
+                        read,
+                        members,
+                        start,
+                        end,
+                        previous_data,
+                        retained_events=partial(
+                            _retained_events,
+                            membership,
+                            article_history_cache,
+                            path=milestones_path,
+                        )
+                        if milestones_path and milestones_path.is_file()
+                        else None,
+                    ),
                     membership,
                 )
                 continue

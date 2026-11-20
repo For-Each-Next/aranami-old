@@ -132,80 +132,6 @@ class TestHubDispatch(TestCase):
         website.assert_not_called()
 
     @staticmethod
-    def test_dispatch_reuses_sources_and_preserves_schedule_advice() -> None:
-        """Share successful reads until each dispatch finishes."""
-        fetch = Mock(
-            return_value=TopPageviews(
-                "zh.wikipedia.org",
-                ("2026", "10", "19"),
-                pl.DataFrame({"views": [12]}),
-            ),
-        )
-        observed = []
-        advice = dt.datetime(2026, 10, 21, tzinfo=dt.UTC)
-
-        def observe() -> None:
-            """Read the same top-list observation for either output."""
-            observed.append(
-                read_top_pageviews(
-                    "zh.wikipedia.org",
-                    ("2026", "10", "19"),
-                    fetch,
-                ),
-            )
-
-        def report(_name: str, *, dry: bool) -> dt.datetime:
-            """Build the wiki output and return confirmed advice.
-
-            Returns:
-                The next execution after confirmed completion.
-            """
-            assert not dry
-            observe()
-            return advice
-
-        updater = Mock(refresh=Mock(side_effect=observe))
-        with patch.object(hub.monitor, "_dispatch", side_effect=report):
-            for _pass in range(2):
-                assert (
-                    hub.dispatch_report(
-                        "pageviews",
-                        dry=False,
-                        updater=updater,
-                    )
-                    is advice
-                )
-        assert [item.articles.to_dicts() for item in observed] == [
-            [{"views": 12}],
-        ] * 4
-        assert fetch.call_count == 2  # ruff: ignore[magic-value-comparison]
-        assert updater.refresh.call_count == 2  # ruff: ignore[magic-value-comparison]
-
-    def test_wiki_failure_still_attempts_website_and_propagates(self) -> None:
-        """Preserve the wiki failure after the website attempt."""
-        failure = RuntimeError("wiki fixture failure")
-        for website_error in (None, ValueError("ownership fixture")):
-            updater = Mock(refresh=Mock(side_effect=website_error))
-            with (
-                self.subTest(website_error=website_error),
-                patch.object(hub.monitor, "_dispatch", side_effect=failure),
-                patch.object(hub._LOGGER, "exception"),
-                self.assertRaises(RuntimeError) as raised,
-            ):
-                hub.dispatch_report("dyks", dry=False, updater=updater)
-            assert raised.exception is failure
-            updater.refresh.assert_called_once_with()
-
-    @staticmethod
-    def test_preview_never_refreshes_production_website() -> None:
-        """Honor preview isolation even when a collector is supplied."""
-        updater = Mock()
-        with patch.object(hub.monitor, "_dispatch") as dispatch:
-            hub.dispatch_report("dyks", dry=True, updater=updater)
-        dispatch.assert_called_once_with("dyks", dry=True)
-        updater.refresh.assert_not_called()
-
-    @staticmethod
     def test_daily_newsletter_waits_with_an_independent_source_cycle() -> None:
         """Queue daily collection with per-cycle source reuse."""
         fetch = Mock(
@@ -242,7 +168,7 @@ class TestHubDispatch(TestCase):
             ]
             * 2
         )
-        assert fetch.call_count == 2  # ruff: ignore[magic-value-comparison]
+        fetch.assert_called_once()
 
 
 class TestHubLifecycle(TestCase):
@@ -439,9 +365,7 @@ class TestHubLifecycle(TestCase):
         )
         updater.start.assert_called_once_with()
         scheduler.shutdown.assert_called_once_with(wait=True)
-        assert start.call_args.kwargs["dispatch"].keywords == {
-            "updater": updater,
-        }
+        assert "dispatch" not in start.call_args.kwargs
         assert start.call_args.kwargs["start_paused"] is True
         scheduler.resume.assert_called_once_with()
         options = scheduler.add_job.call_args.kwargs

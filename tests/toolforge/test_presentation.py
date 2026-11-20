@@ -32,7 +32,6 @@ from status_fixtures import (
 from test_consistency_presentation import consistency_snapshot
 from test_dataset_viewer import dataset_fixture
 
-from data.articles.current_quality import current_quality_identity
 from shared.config import routine_configuration
 from shared.deployment import resource_root
 from webservice.browser import browser_document
@@ -73,7 +72,6 @@ from webservice.presentation import (
     wiki_link,
     wiki_url,
 )
-from webservice.quality_chart_requests import chart_generation
 
 
 def _fixtures() -> dict[str, object]:
@@ -492,9 +490,6 @@ def write_interface_fixtures(
     }).write_parquet(stored / "assessments-20260808.parquet")
     chart_runtime = destination / ".quality-chart-runtime"
     analysis = saved_analysis_fixture(now, runtime=chart_runtime)
-    analysis["analysis"]["chart_generation"] = chart_generation(
-        current_quality_identity(chart_runtime),
-    )
     for locale in ("en", "zh-hans", "zh-hant"):
         directory = destination / locale
         directory.mkdir(parents=True, exist_ok=True)

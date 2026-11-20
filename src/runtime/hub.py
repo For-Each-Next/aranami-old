@@ -44,7 +44,6 @@ from runtime.dashboard import (
     collect_dashboard_pass,
 )
 from runtime.project_observations import (
-    DAILY_REPORTS,
     collect_project_categories,
     collect_project_membership,
     link_rollover_membership,
@@ -134,45 +133,6 @@ class HubConfig:
         report_intervals(self.refresh_intervals)
 
 
-def dispatch_report(
-    name: str,
-    *,
-    dry: bool,
-    updater: DashboardUpdater | None,
-) -> dt.datetime | None:
-    """Run a wiki task and then refresh due website data in one cycle.
-
-    Website collection is attempted even if the wiki task fails. The
-    wiki exception still reaches the scheduler, and successful report
-    completion advice remains unchanged.
-
-    Args:
-        name: Independently scheduled wiki task identifier.
-        dry: Suppress live wiki publication and website collection.
-        updater: Managed website collector, absent in preview mode.
-
-    Returns:
-        The wiki task's next-run advice, or null for ordinary retries.
-    """
-    with project_cycle(daily=name in DAILY_REPORTS, dry=dry):
-        try:
-            advice = monitor._dispatch(name, dry=dry)  # ruff: ignore[private-member-access]
-        except Exception:
-            if not dry and updater is not None:
-                try:
-                    updater.refresh()
-                except Exception as error:
-                    _LOGGER.exception(
-                        "Website refresh failed after wiki task failure (%s).",
-                        type(error).__name__,
-                    )
-            raise
-        else:
-            if not dry and updater is not None:
-                updater.refresh()
-            return advice
-
-
 def refresh_website(updater: DashboardUpdater) -> None:
     """Check due website reports in an independent source cycle.
 
@@ -243,7 +203,7 @@ def refresh_article_history() -> None:
         )
 
 
-def refresh_project_data() -> None:
+def refresh_project_data() -> None:  # ruff: ignore[complex-structure] - Independent project, rollover and comparison outcomes.
     """Capture configured projects independently before daily consumers.
 
     Startup recovery captures only the actual current UTC boundary.
@@ -265,22 +225,20 @@ def refresh_project_data() -> None:
     ):
         for language, project in PROJECT_DATA_SCOPES:
             try:  # ruff: ignore[too-many-statements-in-try-clause]
-                project_capture.capture(
-                    pywikibot.Site(language, "wikipedia"),
-                    project,
-                    instant.date(),
-                )
+                site = pywikibot.Site(language, "wikipedia")
+                if instant.hour != 0 or language != "zh":
+                    project_capture.capture(site, project, instant.date())
                 if language != "zh":
                     if instant.hour == 0 and language == "en":
                         link_rollover_membership(
-                            pywikibot.Site(language, "wikipedia"),
+                            site,
                             project,
                             instant.date(),
                         )
                         english_talks.prune_daily(instant.date())
                     continue
                 members = collect_project_membership(
-                    pywikibot.Site(language, "wikipedia"),
+                    site,
                     project,
                     now=instant,
                 )
@@ -526,7 +484,6 @@ def run(config: HubConfig) -> None:
         scheduler = monitor.start(
             dry=config.dry,
             run_immediately=config.run_immediately,
-            dispatch=partial(dispatch_report, updater=updater),
             start_paused=True,
         )
         resources.callback(stop_jobs, scheduler, updater)

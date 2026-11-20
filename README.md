@@ -1,9 +1,5 @@
 # Aranami
 
-Aranami v0.9.18 collects article statistics during idle time and names saved
-assessment evidence Rating history. The [CHANGELOG](CHANGELOG.md) records completed work.
-The original v0.9.8 release remains available in its Git tag.
-
 Aranami (荒波, “rough waves”) maintains Wikipedia project reports and provides
 consistency checks and newsletter drafts. It serves
 [WikiProject Video games on Chinese Wikipedia](https://zh.wikipedia.org/wiki/WikiProject:电子游戏)
@@ -71,8 +67,6 @@ refetched. Project snapshots always come from new complete queries.
 [Architecture](docs/architecture.md) defines ownership, data and migration.
 The [documentation index](docs/README.md) links component references.
 
-The original archived release is tagged `v0.9.8` in
-[aranami-old](https://github.com/For-Each-Next/aranami-old).
 [CHANGELOG](CHANGELOG.md) records the completed releases.
 Historical records remain available through normal data readers after old-format
 extractors retire. Source is licensed under [CC0 1.0 Universal](LICENSE);

@@ -1,4 +1,4 @@
-/** Keep keyboard navigation on Matplotlib-generated SVG figures. */
+/** Keep keyboard navigation on saved and browser-rendered SVG figures. */
 const figures = new WeakMap();
 
 /** Keep the visible rectangle inside the original figure at a bounded scale. */

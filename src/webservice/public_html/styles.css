@@ -1471,7 +1471,7 @@ ul.consistency-cards {
 }
 
 .server-metrics col:first-child {
-    width: 35%;
+    width: max(5.5rem, 24%);
 }
 
 .server-metrics th {
@@ -1480,6 +1480,14 @@ ul.consistency-cards {
 
 .server-metrics td {
     font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+}
+
+.server-metrics .server-start { display: block; }
+
+@media (max-width: 30rem) {
+    .server-metrics th, .server-metrics td { padding-inline: .55rem; }
+    .server-metrics time { font-size: .875em; }
 }
 
 .log-download a {

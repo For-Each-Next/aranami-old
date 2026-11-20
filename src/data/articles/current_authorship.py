@@ -350,14 +350,7 @@ def _read(
         ValueError: A legacy revision identity is invalid.
     """
     bundle = store.read(_KEY, locked=locked)
-    tables = (
-        dict(bundle.tables)
-        if bundle is not None
-        else {
-            name: pl.DataFrame(schema=schema)
-            for name, schema in _SCHEMAS.items()
-        }
-    )
+    tables = dict(bundle.tables) if bundle is not None else empty_tables()
     tables.setdefault("targets", pl.DataFrame(schema=TARGET_SCHEMA))
     tables["evidence"] = restore_contributor_characters(tables["evidence"])
     legacy_evidence = {
@@ -425,6 +418,17 @@ def _read(
         )
     _validate(tables)
     return tables
+
+
+def empty_tables() -> dict[str, pl.DataFrame]:
+    """Prepare empty observations for a missing current store.
+
+    Returns:
+        Every store table with its declared schema.
+    """
+    return {
+        name: pl.DataFrame(schema=schema) for name, schema in _SCHEMAS.items()
+    }
 
 
 def load(runtime: Path) -> dict[str, pl.DataFrame]:

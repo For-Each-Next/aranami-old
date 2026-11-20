@@ -20,6 +20,34 @@ if TYPE_CHECKING:
     from typing import BinaryIO
 
 
+def stat_identity(info: os.stat_result) -> tuple[int, ...]:
+    """Identify a file generation from its filesystem metadata.
+
+    Returns:
+        The device, inode, type, size and change timestamps.
+    """
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_mode,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    )
+
+
+def file_identity(path: Path) -> tuple[int, ...] | None:
+    """Read a path identity without following symlinks.
+
+    Returns:
+        Metadata for the selected path, or none when it is absent.
+    """
+    try:
+        return stat_identity(path.lstat())
+    except FileNotFoundError:
+        return None
+
+
 def staging_directory(path: Path) -> Path:
     """Locate disposable staging space outside durable report folders.
 

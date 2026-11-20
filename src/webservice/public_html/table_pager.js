@@ -1,5 +1,6 @@
 /** Provide the standard footer for tables without their own paging controls. */
 const managed = [
+    "[data-no-pagination]",
     "[data-quality-analysis]",
     "[data-quality-authorship-table]",
     "[data-execution-history]",

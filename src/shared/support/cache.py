@@ -16,11 +16,12 @@ import json
 import logging
 import os
 import re
-import stat
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from pathlib import Path
 from shutil import rmtree
 from tempfile import NamedTemporaryFile
+from threading import Lock
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
@@ -30,6 +31,7 @@ from shared.support.assessment_encoding import (
     restore_assessment_schema,
 )
 from shared.support.dataset_activity import dataset_activity
+from shared.support.files import open_regular, stat_identity
 from shared.support.parquet import (
     parquet_metadata,
     report_parquet_activity,
@@ -37,12 +39,79 @@ from shared.support.parquet import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
+    from typing import BinaryIO
 
 _LOGGER = logging.getLogger(__name__)
 _METADATA_KEY = "aranami.cache"
 _MAX_CONTRACT_BYTES = 200
+_MAX_RETAINED_FILES = 16
 _TIMESTAMP = re.compile(r"\d{8}T\d{6}\.parquet")
+
+
+class FileReadCache[T]:
+    """Reuse validated in-process reads of bounded atomic files."""
+
+    def __init__(
+        self,
+        *,
+        max_bytes: int,
+        size: Callable[[T], int],
+    ) -> None:
+        """Set the retained decoded-byte budget and sizing function."""
+        self._max_bytes = max_bytes
+        self._size = size
+        self._bytes = 0
+        self._entries: OrderedDict[
+            tuple[Path, tuple],
+            tuple[tuple[int, ...], T, int],
+        ] = OrderedDict()
+        self._lock = Lock()
+
+    def read(
+        self,
+        path: Path,
+        bound: int,
+        variant: tuple,
+        decode: Callable[[BinaryIO], T],
+    ) -> T:
+        """Validate an open generation once and reuse its decoded value.
+
+        Treat returned objects as immutable. Detach frames or metadata
+        before mutating them. Failed reads are retryable.
+
+        Returns:
+            The successfully decoded value from the opened file.
+        """
+        key = path.absolute(), variant
+        with self._lock, open_regular(path, bound) as stream:
+            identity = stat_identity(os.fstat(stream.fileno()))
+            previous = self._entries.pop(key, None)
+            if previous is not None:
+                if previous[0] == identity:
+                    self._entries[key] = previous
+                    return previous[1]
+                self._bytes -= previous[2]
+            value = decode(stream)
+            size = max(1, self._size(value))
+            if (
+                size <= self._max_bytes
+                and stat_identity(os.fstat(stream.fileno())) == identity
+            ):
+                while self._entries and (
+                    len(self._entries) >= _MAX_RETAINED_FILES
+                    or self._bytes + size > self._max_bytes
+                ):
+                    self._bytes -= self._entries.popitem(last=False)[1][2]
+                self._entries[key] = identity, value, size
+                self._bytes += size
+            return value
+
+
+_TABLE_FILES = FileReadCache[pl.DataFrame](
+    max_bytes=64 * 1024 * 1024,
+    size=pl.DataFrame.estimated_size,
+)
 
 
 def cache_key(family: str, *identities: str) -> str:
@@ -127,6 +196,7 @@ class ParquetCache:
         max_rows: Maximum accepted row count.
         max_bytes: Maximum compressed and decoded table size.
         observe: Emit local file activity during an active collection.
+        reuse: Share decoded bytes for this exact file generation.
     """
 
     schema: Mapping[str, pl.DataType | type[pl.DataType]]
@@ -135,6 +205,7 @@ class ParquetCache:
     max_bytes: int
     observe: bool = True
     annotations: Mapping[str, str] = field(default_factory=dict)
+    reuse: bool = False
 
     def __post_init__(self) -> None:
         """Freeze the schema and reject unusable cache definitions.
@@ -223,32 +294,41 @@ class ParquetCache:
             OSError: The cache path is unsafe or cannot be opened.
             ValueError: Its metadata or content violates this contract.
         """
-        if path.parent.is_symlink():
-            message = "Cache directories cannot be symbolic links."
-            raise OSError(message)
-        descriptor = os.open(
-            path,
-            os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
-        )
-        with os.fdopen(descriptor, "rb") as stream:
-            details = os.fstat(stream.fileno())
-            if (
-                not stat.S_ISREG(details.st_mode)
-                or details.st_size > self.max_bytes
-            ):
-                message = "A cache must be a bounded regular file."
-                raise ValueError(message)
-            metadata = pl.read_parquet_metadata(stream)
-            identity = json.loads(metadata.get(_METADATA_KEY, "null"))
-            if (
-                not isinstance(identity, dict)
-                or type(identity.get("schema")) is not int
-                or identity != {"schema": 1, "contract": self.contract}
-            ):
-                message = "Cache metadata does not match its contract."
-                raise ValueError(message)
-            stream.seek(0)
-            frame = pl.read_parquet(stream, n_rows=self.max_rows + 1)
+        if self.reuse:
+            return _TABLE_FILES.read(
+                path,
+                self.max_bytes,
+                (
+                    self.contract,
+                    self.max_rows,
+                    self.max_bytes,
+                    tuple(self.schema.items()),
+                ),
+                self._decode,
+            ).clone()
+        with open_regular(path, self.max_bytes) as stream:
+            return self._decode(stream)
+
+    def _decode(self, stream: BinaryIO) -> pl.DataFrame:
+        """Validate and decode metadata and records from one open file.
+
+        Returns:
+            A complete table with the logical schema for this owner.
+
+        Raises:
+            ValueError: The stored contract does not match this reader.
+        """
+        metadata = pl.read_parquet_metadata(stream)
+        identity = json.loads(metadata.get(_METADATA_KEY, "null"))
+        if (
+            not isinstance(identity, dict)
+            or type(identity.get("schema")) is not int
+            or identity != {"schema": 1, "contract": self.contract}
+        ):
+            message = "Cache metadata does not match its contract."
+            raise ValueError(message)
+        stream.seek(0)
+        frame = pl.read_parquet(stream, n_rows=self.max_rows + 1)
         declarations = json.loads(metadata.get("aranami.storage", "{}"))
         if declarations.get("columns"):
             frame = restore_assessment_schema(frame, declarations["columns"])

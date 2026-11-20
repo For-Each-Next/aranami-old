@@ -1,4 +1,4 @@
-"""Sample bounded local hub-container observations for the About page.
+"""Sample bounded service-container observations for the About page.
 
 The schedule heartbeat calls :func:`sample_runtime` without network
 requests. Saved readers validate them through data.runtime.resources.
@@ -10,8 +10,9 @@ import shutil
 import time
 from pathlib import Path
 
-from data.runtime.resources import MAX_TEXT
-from shared.deployment import project_version
+from shared.deployment import project_build_time, project_version
+
+MAX_TEXT = 80
 
 _PREVIOUS_CPU: tuple[float, float, float | None] | None = None
 _MAX_COUNTER_DIGITS = 19
@@ -68,10 +69,10 @@ def _memory_working_set(root: Path) -> int | None:
 
 
 def sample_runtime() -> dict[str, object]:
-    """Observe the hub environment and its Linux cgroup allocation.
+    """Observe the service environment and its Linux cgroup allocation.
 
     CPU percentages measure time used since the preceding observation;
-    one fully used core is 100%. Memory reports the hub container's
+    one fully used core is 100%. Memory reports the service container's
     working set, excluding inactive file cache, against its allocation.
     Missing cgroup counters leave the associated measurements unknown.
 
@@ -121,7 +122,7 @@ def sample_runtime() -> dict[str, object]:
 
 
 def _environment() -> dict[str, str | None]:
-    """Read bounded software identities from the running hub generation.
+    """Read bounded software identities from the running service.
 
     Returns:
         Explicit operating-system, interpreter, and application facts.
@@ -141,6 +142,7 @@ def _environment() -> dict[str, str | None]:
         "python_implementation": platform.python_implementation(),
         "python_compiler": platform.python_compiler(),
         "aranami_version": version,
+        "aranami_built_at": project_build_time(),
     }
     return {
         key: value.strip()[:MAX_TEXT] or None if value is not None else None

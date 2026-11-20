@@ -5,34 +5,21 @@ maintenance and newsletter data. Use this guide to inspect or run it on
 Toolforge. Local development remains offline; account access and service
 replacement are in [Administration](administration.md).
 
-## FA/GA editor statistics
+## Article Statistics
 
-Open **Tools → FA/GA editor statistics** to find editors with retained experience
-writing high-quality video-game articles. User and talk links support contacting
-an editor for advice. Contribution totals show whole articles and the featured
-subset, such as `44 articles (7 featured)`. The total opens all counted articles;
-the featured count opens only FA and FL articles. Both dialogs show titles,
-grades, listing dates and elapsed days, newest listings first. Sort any column
-except the row number. Coauthor icons identify other qualifying editors.
+Open **Article Statistics** to explore assessments, listing dates,
+article lengths and contributors. Choose grades, importance levels and years
+in the matrix, then select **Apply filters**. The browser updates the figures,
+coverage and tables from the downloaded catalog. The summary tables show their
+full fixed sets. Article directories and lists opened from figures are paginated.
 
-Only currently high-quality project articles count: FA, FL, A, AL, GA and Bplus.
-The latest saved hourly project assessment determines inclusion. Delisted
-articles leave the directory while their historical evidence remains retained.
-
-An editor qualifies when they have the largest retained byte contribution
-(including ties) or at least 33% of the full eligible source at the end of the
-listing day. References and citation templates are excluded when source alignment
-is reliable; otherwise the saved API-byte fallback includes them. Comments and
-whitespace remain in the exact-source total.
-WikiWho does not identify whitespace owners, so those bytes remain unassigned.
-Each qualified registered editor receives one whole article count. Each article
-contributes once per editor at its strongest retained grade. These automatic
-estimates can miss collaborative work; inclusion does not imply availability.
-
-The latest-active column links the latest saved public edit date to the editor's
-contributions and shows its age, or unknown when unavailable. Listing dates link
-to retained review sections when verified. Chinese title labels follow the
-selected language variant while links retain their canonical source identity.
+The main contributor directory counts current articles and lists where a
+registered editor supplied over 33% of the eligible content and at least
+500 attributed characters. It defaults to high-quality grades. The
+listing-time authorship option uses saved proof for the exact listing revision.
+Contributor links open the matching articles and the last-active date links
+to the account's contributions. Activity comes from the latest saved public
+Wiki Replica observation, refreshed during the hourly idle authorship pass.
 
 ## Inspect results and logs
 
@@ -64,9 +51,8 @@ tail -n 100 logs/diagnostics/YYYYMMDD.000.log
 ```
 
 Choose a UTC log date and segment. `state/observability/status.json` retains the
-four independent status domains; logs explain their activity. Project and traffic
-facts are under `data/parsed/`; report results and newsletter archives are under
-`data/parsed/`. Read these through data APIs rather than editing them.
+four independent status domains; logs explain their activity. See the [saved-data map](data/storage.md) for project observations,
+traffic facts, report results and newsletter archives. Read these through data APIs rather than editing them.
 
 ## Routine names and UTC triggers
 
@@ -116,7 +102,7 @@ can be reused by other consumers.
 Submit a one-off Toolforge job using the pinned runtime launcher:
 
 ```shell
-toolforge jobs run aranami-preview --image python3.13 --mount=all \
+toolforge jobs run aranami-preview --image python3.13 --no-filelog --mount=all \
   --command 'tool_dir=/data/project/aranami; set -eu; . "$tool_dir/app/scripts/toolforge/runtime-env.sh"; export PYWIKIBOT_DIR="$tool_dir"; exec "$runtime_python" -c "from runtime import run_once; run_once(dry=True, tasks=[\"new_pages\", \"pageviews\"])"'
 toolforge jobs logs aranami-preview
 ```

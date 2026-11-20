@@ -94,6 +94,19 @@ class ParquetCacheTests(TestCase):
         assert identity == {"schema": 1, "contract": "fixture:1"}
         assert self.path.stat().st_mode & 0o777 == 0o600
 
+    def test_decoded_reads_follow_atomic_replacement(self) -> None:
+        """Reuse decoding and invalidate after atomic replacement."""
+        cache = replace(self.cache, reuse=True)
+        cache.write(self.path, self.frame)
+        with patch("polars.read_parquet", wraps=pl.read_parquet) as decode:
+            cache.read(self.path).drop_in_place("value")
+            assert cache.read(self.path).equals(self.frame)
+            decode.assert_called_once()
+            changed = pl.DataFrame({"value": [4]})
+            cache.write(self.path, changed)
+            assert cache.read(self.path).equals(changed)
+            assert decode.call_count == 2
+
     def test_empty_table_round_trip(self) -> None:
         """Preserve the exact schema of a confirmed empty cache."""
         frame = self.frame.clear()

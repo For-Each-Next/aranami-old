@@ -7,6 +7,7 @@ case "$token" in ''|*[!a-f0-9]*) printf '%s\n' 'Expected a selected source gener
 test "${#token}" -eq 32 && test "$source_name" = "app-staging-$token"
 app_dir="$tool_dir/$source_name"
 runtime_python=$(python3 "$app_dir/scripts/toolforge/validate-source.py" runtime "$app_dir")
+export PYTHONUNBUFFERED=1
 export PYTHONPATH="$app_dir/src"
 export PYTHONPYCACHEPREFIX="$tool_dir/cache/pycache"
 # Bound native worker pools on hosts larger than the tool's allocation.

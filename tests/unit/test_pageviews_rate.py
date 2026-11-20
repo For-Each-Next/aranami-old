@@ -13,7 +13,7 @@ from http import HTTPStatus
 from io import BytesIO
 from typing import TYPE_CHECKING
 from unittest import TestCase
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 from urllib.error import HTTPError
 
 from shared.sources import pageviews, pageviews_rate
@@ -184,35 +184,17 @@ class TestPageviewsRate(TestCase):
                 payload = (
                     daily
                     if "/per-article/" in request.full_url
-                    else _top_payload(_DAY)
+                    else _top_payload(
+                        _STOP if request.full_url.endswith("/20") else _DAY,
+                    )
                 )
                 return BytesIO(json.dumps(payload).encode())
-
-            def website_fetch(_uri: str, **_options: object) -> Mock:
-                """Record the website transport's daily request.
-
-                Args:
-                    _uri: Requested top-list URL.
-                    **_options: Unused transport settings.
-
-                Returns:
-                    Successful response for the website's daily list.
-                """
-                starts.append(clock.now_ns)
-                response = Mock(status_code=HTTPStatus.OK)
-                response.json.return_value = _top_payload(_STOP)
-                return response
 
             with (
                 patch.object(
                     pageviews.urllib.request,
                     "urlopen",
                     side_effect=open_request,
-                ),
-                patch.object(
-                    website_pageviews.http,
-                    "fetch",
-                    side_effect=website_fetch,
                 ),
                 patch.object(pageviews.pywikibot, "Page") as page,
                 source_cycle(),

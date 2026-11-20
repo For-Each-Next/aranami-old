@@ -90,7 +90,7 @@ current count is zero. Central
 68% and 95% intervals are linear empirical 16th–84th and 2.5th–97.5th
 percentiles. They describe the measured current cohort rather than minimum
 assessment requirements. Measured zero differs from an unknown measurement.
-Matplotlib `Axes.violinplot` renders the measured samples with Scott bandwidth
+The script-free Matplotlib figure uses `Axes.violinplot` with Scott bandwidth
 and 129 evaluation positions between the observed minimum and maximum. Constant samples remain a vertical mark; unknown
 measurements add no density. These values are saved before HTTP rendering.
 Page size uses known current SQL byte length even while prose is pending.
@@ -149,14 +149,13 @@ Bounded analysis and authorship passes refresh it after their checkpoints.
 Background presentation then renders twelve localized presets into
 `data/webservice/quality-page-*.json`. Each preset contains a small initial
 page, a separate article catalog and individual contributor detail pages.
-HTTP readers deliver the prepared initial responses. Filtered chart requests
-select rows from the same bounded saved frontend catalog and render them through
-Matplotlib without source requests or persistent writes. Generation tokens reject
-stale requests and responses. Tables update locally while the new figures load.
-The browser keeps the prepared default charts until a filtered Matplotlib
-response is ready. A failed request retains the last successful figures. Focused figures accept arrow keys, plus/minus and Home for keyboard
-pan, zoom and reset. Miniature violins retain statistic tooltips and article-list
-clicks. Matplotlib creates the geometry; browser controls manipulate its SVG.
+The browser draws the default figures from the prepared summaries while the
+catalog downloads once. Selecting **Apply filters** updates
+the figures and tables from the same confirmed cohort. The pies and annual
+stacked bars use stored counts, and the violin charts combine saved densities
+and exact length histograms. Focused figures accept arrow keys, plus/minus
+and Home for pan, zoom and reset. Figures link to paginated article lists.
+Script-free views use prepared Matplotlib figures and native tables.
 
 Analysis and all-grade authorship keep separate short-lived workers scheduled hourly
 at :02 UTC after ordinary collection and regular idle reports finish. The parent retains no article bodies or

@@ -19,7 +19,9 @@ from data.articles import (
     authorship_store,
     current_assessments,
     current_authorship,
+    current_quality,
     milestone_store,
+    quality_analysis,
     quality_authors,
 )
 from data.articles.storage import AUTHORSHIP_PATH, MILESTONES_PATH
@@ -208,6 +210,28 @@ class SavedQualityAuthorCorrectionTests(TestCase):
                 schema=current_authorship.EVIDENCE_SCHEMA,
             ),
         )
+        self.articles = pl.DataFrame(
+            [
+                {
+                    "page_id": 1,
+                    "title": "Quality game",
+                    "grade": "GA",
+                    "article_revision_id": 200,
+                    "talk_page_id": 101,
+                    "talk_revision_id": 901,
+                    "listed_date": _DAY,
+                },
+                {
+                    "page_id": 2,
+                    "title": "Current B list",
+                    "grade": "BL",
+                    "article_revision_id": 300,
+                    "talk_page_id": 102,
+                    "talk_revision_id": 400,
+                },
+            ],
+            schema=quality_analysis.ARTICLE_SCHEMA,
+        )
         self.raw_files = {
             path: path.read_bytes()
             for path in (self.runtime / "data/parsed").rglob("*.parquet")
@@ -234,11 +258,16 @@ class SavedQualityAuthorCorrectionTests(TestCase):
         observed = pl.DataFrame(
             [
                 {"name": name, "last_active": _NOW - dt.timedelta(hours=1)}
-                for name in ("Original", "Exact")
+                for name in ("Original",)
             ],
             schema=users.SCHEMA,
         )
         with (
+            patch.object(
+                quality_analysis,
+                "load_articles",
+                return_value=self.articles,
+            ),
             patch.object(
                 activity_collector,
                 "fetch_user_activity",
@@ -254,12 +283,12 @@ class SavedQualityAuthorCorrectionTests(TestCase):
                 Mock(),
                 runtime=self.runtime,
             )
-        assert set(fetch.call_args.args[1]) == {"Original", "Exact"}
+        assert set(fetch.call_args.args[1]) == {"Original"}
         load.assert_called_once_with(self.runtime / proofs.DEFAULT_PATH)
         saved = quality_authors.load_activity(
             self.runtime / quality_authors.ACTIVITY_PATH,
         )
-        assert set(saved["name"]) == {"Original", "Exact"}
+        assert set(saved["name"]) == {"Original"}
         self._assert_raw_files_unchanged()
 
     def test_optional_b_failure_keeps_corrected_hq_activity_refreshing(
@@ -270,11 +299,16 @@ class SavedQualityAuthorCorrectionTests(TestCase):
         observed = pl.DataFrame(
             [
                 {"name": name, "last_active": _NOW - dt.timedelta(hours=1)}
-                for name in ("Original", "Exact")
+                for name in ("Original",)
             ],
             schema=users.SCHEMA,
         )
         with (
+            patch.object(
+                quality_analysis,
+                "load_articles",
+                return_value=self.articles,
+            ),
             patch.object(
                 current_authorship,
                 "load",
@@ -285,17 +319,17 @@ class SavedQualityAuthorCorrectionTests(TestCase):
                 "fetch_user_activity",
                 return_value=observed,
             ) as fetch,
-            patch.object(activity_collector._LOGGER, "warning") as warning,
+            patch.object(current_quality._LOGGER, "warning") as warning,
         ):
             activity_collector.refresh_quality_author_activity(
                 Mock(),
                 runtime=self.runtime,
             )
-        assert set(fetch.call_args.args[1]) == {"Original", "Exact"}
+        assert set(fetch.call_args.args[1]) == {"Original"}
         assert set(
             quality_authors.load_activity(
                 self.runtime / quality_authors.ACTIVITY_PATH,
             )["name"],
-        ) == {"Original", "Exact"}
+        ) == {"Original"}
         warning.assert_called_once()
         self._assert_raw_files_unchanged()

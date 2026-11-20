@@ -567,17 +567,15 @@ class QualityActivitySourceTests(TestCase):
             schema=users.SCHEMA,
         )
         with (
-            patch.object(collector.authorship_store, "load"),
-            patch.object(collector.milestone_store, "load"),
             patch.object(
-                current_assessments,
-                "load",
-                return_value=_assessments(),
+                collector.current_quality,
+                "author_activity_names",
+                return_value=names,
             ),
             patch.object(
                 store,
-                "prepare_current_quality_articles",
-                return_value=names,
+                "load_activity",
+                return_value=pl.DataFrame(schema=store.ACTIVITY_SCHEMA),
             ),
             patch.object(
                 collector,
@@ -595,17 +593,15 @@ class QualityActivitySourceTests(TestCase):
     def test_source_failure_preserves_previous_saved_activity() -> None:
         """Preserve saved activity after a replica failure."""
         with (
-            patch.object(collector.authorship_store, "load"),
-            patch.object(collector.milestone_store, "load"),
             patch.object(
-                current_assessments,
-                "load",
-                return_value=_assessments(),
+                collector.current_quality,
+                "author_activity_names",
+                return_value=pl.DataFrame({"name": ["Yumeto"]}),
             ),
             patch.object(
                 store,
-                "prepare_current_quality_articles",
-                return_value=pl.DataFrame({"name": ["Yumeto"]}),
+                "load_activity",
+                return_value=pl.DataFrame(schema=store.ACTIVITY_SCHEMA),
             ),
             patch.object(
                 collector,

@@ -5,6 +5,20 @@ v0.8.8 was consolidated into the v0.9.2 release.
 
 ## Until 0.10
 
+### 0.9.21 (2026-11-20 15:50 UTC)
+
+Overview: Updated Article Statistics and server status, reduced repeated
+collection and storage reads, and corrected stale dashboard observations.
+
+- Kept fixed overview tables unpaginated and retained paging for article lists.
+- Added explicit filter confirmation and progress feedback, and rendered
+  distribution and annual figures in the browser from the saved catalog.
+- Displayed Hub and Web metrics side by side and enabled Toolforge job logs.
+- Reused validated snapshot generations and Pageviews top lists, and separated
+  scheduled website refreshes from report dispatch.
+- Refreshed contributor activity across both authorship views and recovered
+  first news-appearance dates from revision history and retained notices.
+
 ### 0.9.20 (2026-11-20 14:38 UTC)
 
 Overview: Finished the compact contributor article layout for narrow screens.

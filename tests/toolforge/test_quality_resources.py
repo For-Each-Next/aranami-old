@@ -695,7 +695,10 @@ class QualityResourcePresentationTests(unittest.TestCase):
                 Interface(locale),
             )["quality_analysis"]["years"][1]["segments"][0]["color"]
             assert f'fill="{color}"' in legend
-            table = output.split('<table class="analysis-year-data">', 1)[1]
+            table = output.split(
+                '<table class="analysis-year-data" data-no-pagination>',
+                1,
+            )[1]
             table = table.split("</table>", 1)[0]
             assert '<th scope="row">2025</th>' in table
             assert '<th scope="row">2026</th>' in table

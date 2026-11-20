@@ -96,8 +96,20 @@ class QualityAuthorshipHTTPTests(TestCase):
         with (
             TemporaryDirectory() as directory,
             patch(
-                "webservice.quality_pages.read_current_quality",
-                side_effect=saved,
+                "webservice.quality_pages.read_quality_presets",
+                side_effect=lambda root: (
+                    (
+                        basis,
+                        grades,
+                        saved(
+                            root,
+                            authorship_basis=basis,
+                            all_grades=grades,
+                        ),
+                    )
+                    for basis in ("current", "listed")
+                    for grades in (False, True)
+                ),
             ),
             patch(
                 "webservice.quality_pages.current_quality_identity",

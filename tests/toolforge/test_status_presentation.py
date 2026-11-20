@@ -244,7 +244,7 @@ class StatusPresentationTests(unittest.TestCase):  # ruff: ignore[too-many-publi
         """Avoid an active uptime clock for stopped services."""
         self.status["services"]["scheduler"]["lifecycle"] = "stopped"
         context = self.context()
-        assert context["server"]["state"] == "Stopped"
+        assert context["server"]["rows"][0]["cells"][0]["value"] == "Stopped"
         assert context["footer"]["started"] is None
 
     def test_service_status_uses_its_lifecycle_time(self) -> None:
@@ -259,8 +259,10 @@ class StatusPresentationTests(unittest.TestCase):  # ruff: ignore[too-many-publi
             for locale in ("en", "zh-hans", "zh-hant"):
                 with self.subTest(lifecycle=lifecycle, locale=locale):
                     interface = Interface(locale)
-                    server = self.context(locale)["server"]
-                    assert server["state"] == interface.text(
+                    server = self.context(locale)["server"]["rows"][0][
+                        "cells"
+                    ][0]
+                    assert server["value"] == interface.text(
                         f"observability.service.{lifecycle}",
                     )
                     assert server["time"]["value"] == instant
@@ -290,18 +292,20 @@ class StatusPresentationTests(unittest.TestCase):  # ruff: ignore[too-many-publi
             stopping_at="2026-10-18T11:59:45Z",
         )
         service["updated_at"] = "2026-10-18T12:00:20Z"
-        assert self.context()["server"]["time"]["value"] == (
-            "2026-10-18T11:59:45Z"
-        )
+        assert self.context()["server"]["rows"][0]["cells"][0]["time"][
+            "value"
+        ] == ("2026-10-18T11:59:45Z")
         del service["stopping_at"]
-        assert not self.context()["server"]["time"]["known"]
+        assert not self.context()["server"]["rows"][0]["cells"][0]["time"][
+            "known"
+        ]
 
     def test_legacy_stopped_time_uses_terminal_observation(self) -> None:
         """Use the final observation for older stopped records."""
         service = self.status["services"]["scheduler"]
         service["lifecycle"] = "stopped"
         assert (
-            self.context()["server"]["time"]["value"]
+            self.context()["server"]["rows"][0]["cells"][0]["time"]["value"]
             == (service["updated_at"])
         )
 
@@ -313,11 +317,14 @@ class StatusPresentationTests(unittest.TestCase):  # ruff: ignore[too-many-publi
             cpu_percent=0,
             cpu_limit=None,
         )
-        rows = self.context()["runtime"]
-        assert rows[1]["value"].startswith("0 B / ")
-        assert rows[2]["value"] == "0.0%"
+        rows = self.context()["server"]["rows"]
+        assert rows[2]["cells"][0]["value"].startswith("0 B / ")
+        assert rows[3]["cells"][0]["value"] == "0.0%"
         self.status["services"]["scheduler"]["freshness"] = "stale"
-        assert "0.0%" not in self.context()["runtime"][2]["value"]
+        assert (
+            "0.0%"
+            not in self.context()["server"]["rows"][3]["cells"][0]["value"]
+        )
 
     def test_one_version_uses_build_time_independently_of_restarts(
         self,
@@ -333,11 +340,11 @@ class StatusPresentationTests(unittest.TestCase):  # ruff: ignore[too-many-publi
                 self.now,
                 built_at=built_at,
             )
-            rows = context["runtime"]
-            assert len(rows) == 3
-            assert rows[0]["label"] == interface.text("server.version")
-            assert rows[0]["value"] == "1.0.0a26"
-            assert rows[0]["updated"]["value"] == built_at
+            rows = context["server"]["rows"]
+            assert len(rows) == 5
+            assert rows[1]["label"] == interface.text("server.version")
+            assert rows[1]["cells"][1]["value"] == "1.0.0a26"
+            assert rows[1]["cells"][1]["time"]["value"] == built_at
             self.status["services"]["scheduler"]["started_at"] = (
                 "2026-10-18T12:00:00Z"
             )
@@ -348,7 +355,7 @@ class StatusPresentationTests(unittest.TestCase):  # ruff: ignore[too-many-publi
                     "1.0.0a26",
                     self.now,
                     built_at=built_at,
-                )["runtime"][0]["updated"]["value"]
+                )["server"]["rows"][1]["cells"][1]["time"]["value"]
                 == built_at
             )
 

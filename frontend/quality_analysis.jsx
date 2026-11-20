@@ -10,14 +10,14 @@ export function DistributionPanel(context, rows, dimension, caption) {
             <figcaption id={"analysis-" + attribute(dimension) + "-pie-heading"} class="visually-hidden">
                 {display(caption)}
             </figcaption>
-            <div data-quality-chart={attribute(dimension === "class" ? "grades" : "importance")}>
+            <div data-quality-chart={attribute(dimension === "class" ? "grades" : "importance")} data-chart-caption={caption}>
                 {display(
                     dimension === "class"
                         ? quality_analysis?.charts?.grades_svg
                         : quality_analysis?.charts?.importance_svg,
                 )}
             </div>
-            <table class="analysis-pie-key">
+            <table class="analysis-pie-key" data-no-pagination="">
                 <caption class="visually-hidden">{display(caption)}</caption>
                 <thead>
                     <tr>
@@ -85,14 +85,8 @@ export function DistributionPanel(context, rows, dimension, caption) {
                             >
                                 {display(
                                     quality_analysis?.charts?.lengths?.[
-                                        attribute(dimension === "class" ? "grade" : "importance") +
-                                            attribute(":") +
-                                            attribute(
-                                                dimension === "class"
-                                                    ? category?.grade
-                                                    : category?.importance,
-                                            )
-                                    ] ?? "—",
+                                        dimension === "class" ? "grade:" + category?.grade : "importance:" + category?.importance
+                                    ] ?? <span class="analysis-violin-placeholder">—</span>,
                                 )}
                             </td>
                         </tr>
@@ -124,12 +118,14 @@ function AssessmentMatrix(context) {
     const { t, quality_analysis } = context;
     return hasContent(quality_analysis?.matrix) ? (
         <>
-            <p class="context" data-quality-chart-status={""} role="status" aria-live="polite"></p>
             <form
                 action="/quality-analysis/"
                 method="get"
                 class="analysis-selection"
                 data-quality-matrix={""}
+                ref={form => {
+                    if (form) form.qualityOverview = {analysis: quality_analysis, labels: t.quality_analysis};
+                }}
                 data-authorship-icon={iconHref(context, "message-notice")}
                 {...(hasContent(quality_analysis?.metadata_url)
                     ? {
@@ -164,7 +160,7 @@ function AssessmentMatrix(context) {
                     role="region"
                     aria-label={t.quality_analysis.grades}
                 >
-                    <table class="analysis-matrix">
+                    <table class="analysis-matrix" data-no-pagination="">
                         <thead>
                             <tr>
                                 <th scope="col">
@@ -264,6 +260,20 @@ function AssessmentMatrix(context) {
                         <input type="checkbox" data-matrix-unknown={""} checked />{" "}
                         {t.quality_analysis.unknown_time}
                     </label>
+                </div>
+                <div class="analysis-filter-actions">
+                    <button type="submit" class="ui-button ui-button--primary" data-matrix-apply="" disabled>
+                        {t.quality_analysis.apply_filters}
+                    </button>
+                    <p class="context" role="status" data-matrix-status=""
+                        data-pending={t.quality_analysis.filters_pending}
+                        data-working={t.quality_analysis.filters_working}
+                        data-applied={t.quality_analysis.filters_applied}
+                        data-failed={t.quality_analysis.filters_failed}
+                        data-year-order={t.quality_analysis.filters_year_order}>
+                        <span class="quality-detail-loading" data-matrix-spinner="" hidden aria-hidden="true"></span>
+                        <span data-matrix-message=""></span>
+                    </p>
                 </div>
             </form>
         </>
@@ -451,7 +461,7 @@ function QualityOverview(context) {
                             role="region"
                             aria-label={attribute(t.quality_analysis.years)}
                         >
-                            <div data-quality-chart="years">
+                            <div data-quality-chart="years" data-chart-caption={t.quality_analysis.years}>
                                 {display(quality_analysis?.charts?.years_svg)}
                             </div>
                         </div>
@@ -478,7 +488,7 @@ function QualityOverview(context) {
                                 role="region"
                                 aria-label={attribute(t.quality_analysis.years)}
                             >
-                                <table class="analysis-year-data">
+                                <table class="analysis-year-data" data-no-pagination="">
                                     <caption class="visually-hidden">
                                         {display(t.quality_analysis.years)}
                                     </caption>

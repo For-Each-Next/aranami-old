@@ -57,6 +57,8 @@ from data.website import read_snapshot, validate_dashboard_snapshot
 from shared.config import routine_configuration
 from shared.deployment import project_version, resource_root
 from shared.newsletter import Issue
+from shared.support.files import file_identity
+from shared.support.resources import sample_runtime
 from webservice import browser
 from webservice.asgi import DjangoWebsite, LiveSocket, SocketDisconnectError
 from webservice.asset_cache import AssetCache
@@ -105,7 +107,7 @@ lazy from webservice.presentation import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable, Sequence
+    from collections.abc import AsyncIterator, Callable, Iterable, Sequence
     from typing import BinaryIO
 
     from django.core.handlers.asgi import ASGIRequest
@@ -142,6 +144,21 @@ _CONTENT_TYPES = {
     ".svg": "image/svg+xml",
     ".png": "image/png",
 }
+
+
+def _saved_identities(paths: Iterable[Path]) -> tuple:
+    """Observe saved files and tolerate temporarily unavailable paths.
+
+    Returns:
+        One identity per input path in the caller's order.
+    """
+    identities = []
+    for path in paths:
+        try:
+            identities.append(file_identity(path))
+        except OSError:
+            identities.append(None)
+    return tuple(identities)
 
 
 def _newsletter_selection(
@@ -1314,23 +1331,7 @@ class _PublicViews:
                 "state/observability/status.json",
             )
         ]
-        paths.append(Path(__file__).resolve().parents[2] / "pyproject.toml")
-        identities = []
-        for path in paths:
-            try:
-                info = path.lstat()
-            except OSError:
-                identities.append(None)
-            else:
-                identities.append((
-                    info.st_dev,
-                    info.st_ino,
-                    info.st_mode,
-                    info.st_size,
-                    info.st_mtime_ns,
-                    info.st_ctime_ns,
-                ))
-        return tuple(identities)
+        return _saved_identities(paths)
 
     def _dashboard(self) -> dict[str, object] | None:
         """Return saved dashboard data or None when unavailable."""
@@ -1846,26 +1847,15 @@ class _PublicViews:
 
     def _live_identity(self) -> tuple:
         """Return saved-status metadata without reading datasets."""
-        identities = []
-        for name in (
-            "state/observability",
-            "state/observability/status.json",
-            "state/observability/server-sample.json",
-            "state/observability/dataset-updates.json",
-        ):
-            try:
-                info = (self.runtime / name).lstat()
-            except OSError:
-                identities.append(None)
-            else:
-                identities.append((
-                    info.st_ino,
-                    info.st_mode,
-                    info.st_size,
-                    info.st_mtime_ns,
-                    info.st_ctime_ns,
-                ))
-        return tuple(identities)
+        return _saved_identities(
+            self.runtime / name
+            for name in (
+                "state/observability",
+                "state/observability/status.json",
+                "state/observability/server-sample.json",
+                "state/observability/dataset-updates.json",
+            )
+        )
 
     async def live_socket(self, websocket: LiveSocket) -> None:
         """Push saved-status changes until the client disconnects.
@@ -2155,7 +2145,7 @@ async def _website_lifecycle(app: DjangoWebsite) -> AsyncIterator[None]:
                 "sequence": sequence,
                 "config_id": None,
                 "schedules": {"routines": {}, "collections": {}},
-                "resources": None,
+                "resources": await asyncio.to_thread(sample_runtime),
             },
             runtime=app.state.runtime,
         )
@@ -2274,7 +2264,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             proxy_headers=False,
             access_log=False,
             server_header=False,
-            log_level="warning",
+            log_level="info",
         )
 
 

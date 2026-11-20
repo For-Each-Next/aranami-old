@@ -17,9 +17,12 @@ __all__ = (
     "source_cycle",
 )
 
+from collections import OrderedDict
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from threading import Lock
+from time import monotonic
 from typing import TYPE_CHECKING
 
 import polars as pl
@@ -42,6 +45,7 @@ class _SourceCycle:
     top_pageviews: dict[tuple[str, ...], TopPageviews] = field(
         default_factory=dict,
     )
+    shared_top: TopPageviewsCache | None = None
     active: bool = True
     revisions: dict[str, pl.DataFrame] = field(default_factory=dict)
     project_groups: dict[tuple[str, ...], pl.DataFrame] = field(
@@ -62,6 +66,43 @@ _CYCLE: ContextVar[_SourceCycle | None] = ContextVar(
 )
 
 
+_MAX_TOP_LISTS = 24
+
+
+class TopPageviewsCache:
+    """Share recent site top lists between independent passes."""
+
+    def __init__(self) -> None:
+        """Start a bounded cache for one collection mode."""
+        self._values: OrderedDict[
+            tuple[str, ...],
+            tuple[float, TopPageviews],
+        ] = OrderedDict()
+        self._lock = Lock()
+
+    def read(
+        self,
+        key: tuple[str, ...],
+        load: Callable[[], TopPageviews | None],
+    ) -> TopPageviews | None:
+        """Retain each complete list once for up to an hour.
+
+        Returns:
+            A detached list, or none for a missing observation.
+        """
+        with self._lock:
+            existing = self._values.pop(key, None)
+            if existing is not None and existing[0] > monotonic():
+                self._values[key] = existing
+                return existing[1].clone()
+            value = load()
+            if value is not None:
+                if len(self._values) >= _MAX_TOP_LISTS:
+                    self._values.popitem(last=False)
+                self._values[key] = (monotonic() + 3600, value.clone())
+            return value
+
+
 @contextmanager
 def source_cycle(
     *,
@@ -70,6 +111,7 @@ def source_cycle(
     category_reader: (
         Callable[[str], tuple[pl.DataFrame, frozenset[str]] | None] | None
     ) = None,
+    top_pageviews: TopPageviewsCache | None = None,
 ) -> Iterator[None]:
     """Share exact successful source reads until this update pass ends.
 
@@ -85,6 +127,7 @@ def source_cycle(
             of querying current membership.
         category_reader: Runtime-selected hourly category observations
             and categories whose complete global membership was read.
+        top_pageviews: Optional cache shared with other runtime passes.
 
     Yields:
         Control to the caller's sequential update work.
@@ -92,6 +135,7 @@ def source_cycle(
     cycle = _SourceCycle(
         membership_reader=membership_reader,
         category_reader=category_reader,
+        shared_top=top_pageviews,
     )
     parent = _CYCLE.get()
     if share_project_groups and parent is not None and parent.active:
@@ -324,7 +368,11 @@ def read_top_pageviews(
         return read()
     key = project, "all-access", *period
     if key not in cycle.top_pageviews:
-        observation = read()
+        observation = (
+            cycle.shared_top.read(key, read)
+            if cycle.shared_top is not None
+            else read()
+        )
         if observation is None:
             return None
         cycle.top_pageviews[key] = observation.clone()

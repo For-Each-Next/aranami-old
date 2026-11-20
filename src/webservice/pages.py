@@ -375,6 +375,17 @@ def _render_browser(name: str, context: Record, fallback: str) -> str:
                 .render(context),
             ),
         }
+    if (
+        name == "quality_analysis.html"
+        and context["quality_analysis"]["matrix"]
+    ):
+        context = {
+            **context,
+            "quality_analysis": {
+                **context["quality_analysis"],
+                "charts": {},
+            },
+        }
     return browser.render_document(
         name.removesuffix(".html"),
         context,

@@ -5,7 +5,8 @@ Readers accept explicit bounded facts without sampling the host system.
 
 import math
 
-MAX_TEXT = 80
+from shared.support.resources import MAX_TEXT
+
 _TEXT_FIELDS = {"python", "system", "machine"}
 _OPTIONAL_TEXT_FIELDS = {
     "os_release",
@@ -13,6 +14,7 @@ _OPTIONAL_TEXT_FIELDS = {
     "python_implementation",
     "python_compiler",
     "aranami_version",
+    "aranami_built_at",
 }
 _NUMBER_FIELDS = {
     "memory_bytes",

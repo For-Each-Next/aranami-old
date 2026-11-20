@@ -11,12 +11,12 @@ from apscheduler.triggers.interval import IntervalTrigger
 from data.runtime.server_samples import save_sample
 from data.runtime.status import get_boot_id, save_status, utc_now
 from runtime.idle_scheduler import IdleScheduler
-from runtime.server_status import sample_runtime
 from shared.config import (
     COLLECTION_DEFINITIONS,
     TASK_DEFINITIONS,
     configuration_id,
 )
+from shared.support.resources import sample_runtime
 
 _LOGGER = logging.getLogger(__name__)
 _SEQUENCE = count(1)

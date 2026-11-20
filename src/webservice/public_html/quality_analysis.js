@@ -3,12 +3,13 @@ import { compareValues, initializeQualityAuthorship } from "./quality_authorship
 import { initializeQualityCoverage } from "./quality_coverage.js";
 import { initializeQualityChartControls } from "./quality_chart_controls.js";
 import { traditional } from "./quality_search_characters.js";
-import { initializeQualityMatrix, initializeQualitySelection, prepareCatalogRows, catalogRows, articleElement, qualityMetadata, loadQualityMetadata } from "./quality_matrix.js";
+import { initializeQualityFigures, initializeQualityMatrix, initializeQualitySelection, prepareCatalogRows, catalogRows, articleElement, qualityMetadata, loadQualityMetadata } from "./quality_matrix.js";
 
 /** Keep the prepared overview usable while its full catalog loads after paint. */
 export function initializeQualityPage(previous = {}) {
-    if (typeof initializeQualityChartControls === "function") initializeQualityChartControls();
     const form = document.querySelector("[data-quality-matrix]");
+    initializeQualityFigures(form);
+    if (typeof initializeQualityChartControls === "function") initializeQualityChartControls();
     const complete = () => {
         initializeQualityAnalysis(previous);
         initializeQualityMatrix();
@@ -22,7 +23,7 @@ export function initializeQualityPage(previous = {}) {
     form.setAttribute("data-quality-loading", "");
     const status = form.querySelector("[data-quality-load-status]");
     const retry = form.querySelector("[data-quality-retry]");
-    const loading = form.dataset.loading || "Loading article filters…";
+    const loading = form.dataset.loading || "Loading article statistics…";
     const failure = form.dataset.loadFailed || "Article filters could not load. Try again.";
     if (status) {status.textContent = loading; status.hidden = false;}
     if (retry) retry.hidden = true;

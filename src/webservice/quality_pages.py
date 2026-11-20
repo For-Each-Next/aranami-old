@@ -14,14 +14,13 @@ if TYPE_CHECKING:
 from data.articles import quality_pages
 from data.articles.current_quality import (
     current_quality_identity,
-    read_current_quality,
+    read_quality_presets,
 )
 from data.runtime.status import read_status
 from shared.config import routine_configuration
 from shared.deployment import project_version
 from webservice import pages
 from webservice.presentation import local_url
-from webservice.quality_chart_requests import chart_generation
 
 _LANGUAGES = {"en": "English", "zh-hans": "简体中文", "zh-hant": "繁體中文"}
 
@@ -40,68 +39,60 @@ def prepare_quality_pages(runtime: Path) -> None:
         "version": project_version(),
         "routines": routine_configuration(),
     }
-    for basis in ("current", "listed"):
-        for all_grades in (False, True):
-            data = read_current_quality(
-                runtime,
-                authorship_basis=basis,
-                all_grades=all_grades,
+    for basis, all_grades, data in read_quality_presets(runtime):
+        query = {}
+        if all_grades:
+            query["all_grades"] = "1"
+        if basis == "listed":
+            query["listing_authors"] = "1"
+        for locale in _LANGUAGES:
+            navigation = {
+                "path": "/quality-analysis/",
+                "languages": [
+                    {
+                        "label": label,
+                        "tag": {
+                            "zh-hans": "zh-Hans",
+                            "zh-hant": "zh-Hant",
+                        }.get(language, language),
+                        "url": local_url(
+                            "/quality-analysis/",
+                            **query,
+                            lang=language,
+                        ),
+                        "current": language == locale,
+                    }
+                    for language, label in _LANGUAGES.items()
+                ],
+            }
+            cohort = "all" if all_grades else "0"
+            content, client, resources = pages.render_quality_preset(
+                data,
+                status,
+                config,
+                locale,
+                navigation=navigation,
+                resource_prefix=(
+                    f"/quality-analysis/resources/{locale}/{cohort}/{basis}/"
+                ),
+                fallback=local_url(
+                    "/quality-analysis/",
+                    **query,
+                    lang=locale,
+                    render="html",
+                ),
             )
-            data["analysis"]["chart_generation"] = chart_generation(source)
-            query = {}
-            if all_grades:
-                query["all_grades"] = "1"
-            if basis == "listed":
-                query["listing_authors"] = "1"
-            for locale in _LANGUAGES:
-                navigation = {
-                    "path": "/quality-analysis/",
-                    "languages": [
-                        {
-                            "label": label,
-                            "tag": {
-                                "zh-hans": "zh-Hans",
-                                "zh-hant": "zh-Hant",
-                            }.get(language, language),
-                            "url": local_url(
-                                "/quality-analysis/",
-                                **query,
-                                lang=language,
-                            ),
-                            "current": language == locale,
-                        }
-                        for language, label in _LANGUAGES.items()
-                    ],
-                }
-                cohort = "all" if all_grades else "0"
-                content, client, resources = pages.render_quality_preset(
-                    data,
-                    status,
-                    config,
+            if current_quality_identity(runtime) != source:
+                return
+            quality_pages.save(
+                quality_pages.path_for(
+                    runtime,
                     locale,
-                    navigation=navigation,
-                    resource_prefix=(
-                        "/quality-analysis/resources/"
-                        f"{locale}/{cohort}/{basis}/"
-                    ),
-                    fallback=local_url(
-                        "/quality-analysis/",
-                        **query,
-                        lang=locale,
-                        render="html",
-                    ),
-                )
-                if current_quality_identity(runtime) != source:
-                    return
-                quality_pages.save(
-                    quality_pages.path_for(
-                        runtime,
-                        locale,
-                        basis=basis,
-                        all_grades=all_grades,
-                    ),
-                    content,
-                    source,
-                    resources=resources,
-                    browser=client,
-                )
+                    basis=basis,
+                    all_grades=all_grades,
+                ),
+                content,
+                source,
+                resources=resources,
+                browser=client,
+            )

@@ -8,7 +8,9 @@ catalog without joining data or calculating statistics.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import polars as pl
 
@@ -27,9 +29,13 @@ from data.articles.storage import AUTHORSHIP_PATH, DEFAULT_ROOT, HISTORY_PATH
 from data.reports import ReportStore
 from shared.assessment_profiles import assessment_profile
 from shared.support.dataset_activity import dataset_activity
-from shared.support.files import atomic_json, read_json_object
+from shared.support.files import atomic_json, file_identity, read_json_object
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 STAMP = pl.Datetime("us", "UTC")
+_LOGGER = logging.getLogger(__name__)
 GRADES = quality_analysis.GRADES
 _QUALITY = quality_analysis.QUALITY_GRADES
 _CONTRIBUTORS = pl.List(pl.Struct(authorship_store.CONTRIBUTOR_SCHEMA))
@@ -61,7 +67,6 @@ _QUANTILES = {
 }
 _DENSITY = pl.List(pl.Struct({"position": pl.Float64, "density": pl.Float64}))
 _DENSITY_STEPS = 128
-_MAIN_SHARE_THRESHOLD = 0.33
 GRADE_SCHEMA = {
     "grade": pl.String,
     "pages": pl.Int64,
@@ -497,6 +502,27 @@ def _summary_tables(
     }
 
 
+def _registered_credits(articles: pl.DataFrame) -> pl.DataFrame:
+    """Select registered contributor names against each article's proof.
+
+    Returns:
+        Unique qualifying article and account pairs.
+    """
+    return (
+        articles
+        .select("page_id", "authorship_editors")
+        .explode("authorship_editors", empty_as_null=False)
+        .unnest("authorship_editors")
+        .filter(
+            (pl.col("share") > authorship_store.MAIN_SHARE_THRESHOLD)
+            & pl.col("editor").str.contains(r"^[1-9][0-9]*$")
+            & pl.col("name").is_not_null(),
+        )
+        .select("page_id", "name")
+        .unique()
+    )
+
+
 def _author_table(
     articles: pl.DataFrame,
     activity: pl.DataFrame,
@@ -507,17 +533,11 @@ def _author_table(
         Precomputed author totals and their current-cohort page details.
     """
     names = (
-        articles
-        .select("page_id", "authorship_editors")
-        .explode("authorship_editors", empty_as_null=False)
-        .unnest("authorship_editors")
-        .filter(
-            (pl.col("share") > _MAIN_SHARE_THRESHOLD)
-            & pl.col("editor").str.contains(r"^[1-9][0-9]*$")
-            & pl.col("name").is_not_null(),
-        )
+        _registered_credits(articles)
         .group_by("page_id")
-        .agg(pl.col("name").unique().sort().alias("authors"))
+        .agg(
+            pl.col("name").sort().alias("authors"),
+        )
     )
     article_credits = (
         articles
@@ -588,6 +608,41 @@ def _author_table(
     )
 
 
+def _authorship_variants(
+    articles: pl.DataFrame,
+    evidence: pl.DataFrame,
+    b_tables: dict[str, pl.DataFrame],
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Use the same exact listing and current proof in both consumers.
+
+    Returns:
+        Catalog rows with listing-time and current-revision credits.
+    """
+    joined = _article_rows(articles, _proofs(articles, evidence, b_tables))
+    current_proofs = (
+        articles
+        .select("page_id", pl.col("article_revision_id").alias("revision_id"))
+        .join(
+            b_tables["evidence"],
+            on=current_authorship.KEY,
+            how="inner",
+            validate="1:1",
+        )
+        .select(
+            "page_id",
+            pl.col("creation_revision").alias("authorship_start_revision"),
+            pl.col("revision_id").alias("authorship_end_revision"),
+            pl.col("creation_timestamp").alias("authorship_start_timestamp"),
+            pl.col("revision_timestamp").alias("authorship_end_timestamp"),
+            pl.col("eligible_bytes").alias("authorship_eligible_bytes"),
+            "contributors",
+        )
+        .cast(_PROOF_SCHEMA)
+    )
+    current_rows = _article_rows(articles, current_proofs)
+    return joined, current_rows
+
+
 def prepare_current_quality(
     articles: pl.DataFrame,
     evidence: pl.DataFrame,
@@ -608,7 +663,7 @@ def prepare_current_quality(
     Returns:
         The browser catalog and its normal/all-class presets.
     """
-    joined = _article_rows(articles, _proofs(articles, evidence, b_tables))
+    joined, current_rows = _authorship_variants(articles, evidence, b_tables)
     defaults = []
     for grades in (_QUALITY, GRADES):
         selected = joined.filter(
@@ -631,27 +686,6 @@ def prepare_current_quality(
         defaults.append({
             name: _iso(frame.to_dicts()) for name, frame in tables.items()
         })
-    current_proofs = (
-        articles
-        .select("page_id", pl.col("article_revision_id").alias("revision_id"))
-        .join(
-            b_tables["evidence"],
-            on=current_authorship.KEY,
-            how="inner",
-            validate="1:1",
-        )
-        .select(
-            "page_id",
-            pl.col("creation_revision").alias("authorship_start_revision"),
-            pl.col("revision_id").alias("authorship_end_revision"),
-            pl.col("creation_timestamp").alias("authorship_start_timestamp"),
-            pl.col("revision_timestamp").alias("authorship_end_timestamp"),
-            pl.col("eligible_bytes").alias("authorship_eligible_bytes"),
-            "contributors",
-        )
-        .cast(_PROOF_SCHEMA)
-    )
-    current_rows = _article_rows(articles, current_proofs)
     payload = {
         "articles": _iso(joined.to_dicts()),
         "current_articles": _iso(current_rows.to_dicts()),
@@ -992,6 +1026,57 @@ def _coverage_clocks(
     }
 
 
+def _authorship_inputs(
+    runtime: Path,
+    *,
+    require_current: bool = True,
+) -> tuple[pl.DataFrame, dict]:
+    """Read and reconcile retained author evidence for both variants.
+
+    Returns:
+        Listing evidence and the current-revision store tables.
+
+    Raises:
+        OSError: Required retained evidence is inaccessible.
+        ValueError: Required retained evidence is invalid.
+        PolarsError: Required Parquet evidence is unreadable.
+    """
+    high = authorship_store.load(runtime / AUTHORSHIP_PATH)
+    try:
+        b_tables = current_authorship.load(runtime)
+    except OSError, ValueError, pl.exceptions.PolarsError:
+        if require_current:
+            raise
+        _LOGGER.warning(
+            "Current-revision author evidence unavailable.",
+            exc_info=True,
+        )
+        b_tables = current_authorship.empty_tables()
+    proofs = authorship_corrections.load(
+        runtime / authorship_corrections.DEFAULT_PATH,
+    )
+    if not proofs.is_empty():
+        high = authorship_corrections.apply(high, proofs)
+        b_tables = quality_authors.apply_b_proofs(b_tables, proofs)
+    return high, b_tables
+
+
+def author_activity_names(runtime: Path) -> pl.DataFrame:
+    """Find registered contributors across both authorship views.
+
+    Returns:
+        Unique account names from the same evidence as the report.
+    """
+    articles = quality_analysis.load_articles(runtime)
+    if articles.is_empty():
+        return pl.DataFrame(schema={"name": pl.String})
+    evidence, current = _authorship_inputs(runtime, require_current=False)
+    variants = _authorship_variants(articles, evidence, current)
+    return pl.concat([
+        _registered_credits(rows).select("name") for rows in variants
+    ]).unique()
+
+
 def _refresh_locked(runtime: Path) -> bool:
     """Read sources and select the report under its projection lock.
 
@@ -1004,14 +1089,7 @@ def _refresh_locked(runtime: Path) -> bool:
         clock = dt.datetime.fromisoformat(
             quality_analysis.read_quality_analysis(runtime)["observed_at"],
         )
-    high = authorship_store.load(runtime / AUTHORSHIP_PATH)
-    b_tables = current_authorship.load(runtime)
-    proofs = authorship_corrections.load(
-        runtime / authorship_corrections.DEFAULT_PATH,
-    )
-    if not proofs.is_empty():
-        high = authorship_corrections.apply(high, proofs)
-        b_tables = quality_authors.apply_b_proofs(b_tables, proofs)
+    high, b_tables = _authorship_inputs(runtime)
     activity = quality_authors.load_activity(
         runtime / quality_authors.ACTIVITY_PATH,
     )
@@ -1053,18 +1131,7 @@ def current_quality_identity(runtime: Path = Path()) -> tuple:
     Returns:
         Bounded selector metadata, or an explicit missing identity.
     """
-    path = runtime / _PATH
-    try:
-        info = path.lstat()
-    except FileNotFoundError:
-        return (None,)
-    return (
-        info.st_ino,
-        info.st_mode,
-        info.st_size,
-        info.st_mtime_ns,
-        info.st_ctime_ns,
-    )
+    return file_identity(runtime / _PATH) or (None,)
 
 
 def _iso(value: object) -> object:
@@ -1106,10 +1173,76 @@ def read_current_quality(
     if authorship_basis not in {"listed", "current"}:
         message = "Unknown authorship basis."
         raise ValueError(message)
+    return _select_quality(
+        _read_quality_document(runtime),
+        assessment_comparison.read(runtime),
+        authorship_basis,
+        all_grades=all_grades,
+    )
+
+
+def read_quality_presets(runtime: Path) -> Iterator[tuple[str, bool, dict]]:
+    """Reuse one validated generation across the four prepared views.
+
+    Yields:
+        Authorship basis, grade scope, and its prepared saved-data view.
+    """
+    document = _read_quality_document(runtime)
+    if document is None:
+        return
+    comparison = assessment_comparison.read(runtime)
+    for basis in ("current", "listed"):
+        for all_grades in (False, True):
+            yield (
+                basis,
+                all_grades,
+                _select_quality(
+                    document,
+                    comparison,
+                    basis,
+                    all_grades=all_grades,
+                ),
+            )
+
+
+def _read_quality_document(runtime: Path) -> dict | None:
+    """Read and validate one universal catalog.
+
+    Returns:
+        The complete saved generation, or none if it is unavailable.
+
+    Raises:
+        ValueError: The catalog violates its saved contract.
+    """
     try:
         document = read_json_object(runtime / _PATH, _MAX_BYTES)
     except FileNotFoundError:
-        document = None
+        return None
+    if document.get("schema") != 1 or set(document) != {
+        "schema",
+        "observed_at",
+        "prepared_at",
+        "coverage_updated_at",
+        "selection",
+    }:
+        message = "Invalid current-quality presentation document."
+        raise ValueError(message)
+    _validate(document["selection"])
+    return document
+
+
+def _select_quality(
+    document: dict | None,
+    comparison: dict | None,
+    authorship_basis: str,
+    *,
+    all_grades: bool,
+) -> dict:
+    """Select one saved cohort without decoding the generation again.
+
+    Returns:
+        The selected analysis and authorship presentation inputs.
+    """
     if document is None:
         return {
             "available": False,
@@ -1136,17 +1269,7 @@ def read_current_quality(
                 "all_grades": all_grades,
             },
         }
-    if document.get("schema") != 1 or set(document) != {
-        "schema",
-        "observed_at",
-        "prepared_at",
-        "coverage_updated_at",
-        "selection",
-    }:
-        message = "Invalid current-quality presentation document."
-        raise ValueError(message)
     matrix = document["selection"]
-    _validate(matrix)
     if authorship_basis == "current":
         matrix = {
             **matrix,
@@ -1166,7 +1289,7 @@ def read_current_quality(
         "lengths_available": True,
         "selection": matrix,
         "authorship_basis": authorship_basis,
-        "assessment_comparison": assessment_comparison.read(runtime),
+        "assessment_comparison": comparison,
         "coverage_updated_at": {
             "total": coverage_clocks.get("total", observed),
             "authorship": coverage_clocks.get(

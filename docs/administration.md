@@ -80,9 +80,7 @@ Retain its version, manifest digest, unique staging path and printed promotion
 command. Uploading does not select the source or restart jobs.
 `TOOLFORGE_SSH_TARGET` overrides the configured maintainer;
 `TOOLFORGE_KNOWN_HOSTS` can select an existing verified host file. Keep host
-verification enabled. The user-selected 0.9.2 source consolidates the earlier
-unpublished alpha development. A deployment remains identified by its version
-and exact content digest, independently of release tags.
+verification enabled. Identify each deployment by its version and exact content digest.
 
 ## Promote the uploaded generation
 
@@ -113,8 +111,8 @@ and every generation still used by an active process.
 Only for initial installation or deliberately missing definitions:
 
 ```shell
-toolforge jobs run aranami-hub --image python3.13 --continuous --mount=all --mem 4Gi --command 'exec sh /data/project/aranami/app/scripts/toolforge/run-hub.sh'
-toolforge jobs run aranami-web --image python3.13 --continuous --mount=all --port 8000 --publish --command 'exec sh /data/project/aranami/app/scripts/toolforge/run-web.sh'
+toolforge jobs run aranami-hub --image python3.13 --continuous --no-filelog --mount=all --mem 4Gi --command 'exec sh /data/project/aranami/app/scripts/toolforge/run-hub.sh'
+toolforge jobs run aranami-web --image python3.13 --continuous --no-filelog --mount=all --port 8000 --publish --command 'exec sh /data/project/aranami/app/scripts/toolforge/run-web.sh'
 ```
 
 The image label is distinct from the managed Python 3.15 interpreter. Keep one
@@ -132,6 +130,12 @@ toolforge jobs show aranami-hub
 toolforge jobs logs aranami-hub
 toolforge jobs logs aranami-web
 ```
+
+The launch commands send process output to Toolforge's internal logs. Confirm
+`File log` is `no` for both jobs in `toolforge jobs show`. Use
+`toolforge jobs logs -f aranami-web` for web startup and runtime messages.
+The application also keeps its dated activity and diagnostic streams for the
+public Logs view.
 
 Confirm both services, one hub process, the public website, API configuration,
 version observations and expected UTC schedules. Verify complete adjacent

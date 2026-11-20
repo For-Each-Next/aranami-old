@@ -1,4 +1,4 @@
-"""Refresh saved public-edit observations for quality coauthors."""
+"""Refresh saved public-edit observations for the article directory."""
 
 from __future__ import annotations
 
@@ -9,15 +9,7 @@ from typing import TYPE_CHECKING
 
 import polars as pl
 
-from data.articles import (
-    authorship_corrections,
-    authorship_store,
-    current_assessments,
-    current_authorship,
-    milestone_store,
-    quality_authors,
-)
-from data.articles.storage import AUTHORSHIP_PATH, MILESTONES_PATH
+from data.articles import current_quality, quality_authors
 from shared.sources.quarry.users import fetch_user_activity
 
 if TYPE_CHECKING:
@@ -31,78 +23,40 @@ def refresh_quality_author_activity(
     *,
     runtime: Path = Path(),
 ) -> None:
-    """Checkpoint source activity independently of article evidence.
+    """Refresh due account observations for both all-grade directories.
+
+    Each eligible account is checked once per UTC hour. Missing article
+    evidence defers acquisition and failed pulls retain accepted values.
 
     Args:
         site: Existing Chinese Wikipedia source site.
-        runtime: Runtime root containing canonical recognition evidence.
-
-    Missing article evidence defers this optional view. Failed source
-    reads leave the last complete observations intact and are logged.
+        runtime: Runtime root containing the saved catalog inputs.
     """
     try:
         _refresh(site, runtime)
-    except Exception as error:  # ruff: ignore[blind-except] - Optional source retains prior observations.
-        _LOGGER.warning(
-            "Quality-author activity unavailable (%s).",
-            type(error).__name__,
-        )
+    except Exception:
+        _LOGGER.warning("Quality-author activity unavailable.", exc_info=True)
 
 
 def _refresh(site: BaseSite, runtime: Path) -> None:
-    """Read eligible names and retain complete activity observations."""
-    evidence = authorship_store.load(runtime / AUTHORSHIP_PATH)
-    events = milestone_store.load(runtime / MILESTONES_PATH)
-    assessments = current_assessments.load(
-        runtime / current_assessments.DEFAULT_PATH,
-    )
-    proofs = authorship_corrections.load(
-        runtime / authorship_corrections.DEFAULT_PATH,
-    )
-    if not proofs.is_empty():
-        evidence = authorship_corrections.apply(evidence, proofs)
-    quality = quality_authors.prepare_current_quality_articles(
-        events,
-        evidence,
-        assessments,
-    )
-    try:
-        b_tables = quality_authors.apply_b_proofs(
-            current_authorship.load(runtime),
-            proofs,
-        )
-        b_articles, _ = quality_authors.prepare_current_b_articles(
-            b_tables,
-            assessments,
-        )
-        b_names = b_articles.select("name")
-    except (OSError, ValueError, pl.exceptions.PolarsError) as error:
-        _LOGGER.warning(
-            "B-class author activity unavailable (%s).",
-            type(error).__name__,
-        )
-        b_names = pl.DataFrame(schema={"name": pl.String})
-    names = pl.concat([
-        quality.select("name"),
-        b_names,
-    ]).unique()
+    """Read only the accounts whose saved observations are due."""
+    names = current_quality.author_activity_names(runtime)
     if names.is_empty():
         return
-    observed = fetch_user_activity(site, names["name"].to_list())
-    stamp = dt.datetime.now(dt.UTC)
-    activity = (
-        names
+    path = runtime / quality_authors.ACTIVITY_PATH
+    hour = dt.datetime.now(dt.UTC).replace(minute=0, second=0, microsecond=0)
+    checked = quality_authors.load_activity(path).filter(
+        pl.col("observed_at") >= hour,
+    )
+    due = names.join(checked, on="name", how="anti")
+    if due.is_empty():
+        return
+    observed = fetch_user_activity(site, due["name"].to_list())
+    refreshed = (
+        due
         .join(observed, on="name", how="left", validate="1:1")
-        .with_columns(
-            pl
-            .lit(stamp.isoformat())
-            .str.to_datetime(time_zone="UTC")
-            .alias("observed_at"),
-        )
+        .with_columns(pl.lit(dt.datetime.now(dt.UTC)).alias("observed_at"))
         .select(list(quality_authors.ACTIVITY_SCHEMA))
         .cast(quality_authors.ACTIVITY_SCHEMA)
     )
-    quality_authors.save_activity(
-        runtime / quality_authors.ACTIVITY_PATH,
-        activity,
-    )
+    quality_authors.save_activity(path, refreshed)

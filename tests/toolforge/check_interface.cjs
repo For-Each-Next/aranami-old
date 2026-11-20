@@ -10,7 +10,6 @@ const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
 const { once } = require("node:events");
-const { createInterface } = require("node:readline");
 
 const fixtureRoot = path.resolve(process.argv[2]);
 const outputRoot = path.resolve(process.argv[3]);
@@ -49,24 +48,6 @@ async function main() {
 }
 
 async function checkInterface(assetRoot) {
-    const chartRequests = new Map();
-    let chartSequence = 0;
-    const chartWorker = spawn(path.resolve(__dirname, '../../.venv/bin/python'), ['-u', path.join(__dirname, 'chart_fixture_server.py'), fixtureRoot], {
-        cwd: path.resolve(__dirname, '../..'),
-        env: {...process.env, PYTHONPATH:'src:tests/toolforge', PYWIKIBOT_NO_USER_CONFIG:'2', MPLCONFIGDIR:path.join(outputRoot,'matplotlib-cache')},
-        stdio:['pipe', 'pipe', 'pipe'],
-    });
-    let chartErrors = '';
-    chartWorker.stderr.on('data', chunk => chartErrors += chunk.toString());
-    createInterface({input:chartWorker.stdout}).on('line', line => {
-        const result = JSON.parse(line), operation = chartRequests.get(result.id);
-        chartRequests.delete(result.id);
-        operation?.resolve(result);
-    });
-    chartWorker.on('exit', code => {
-        for (const operation of chartRequests.values()) operation.reject(new Error('Chart renderer exited ' + code + ': ' + chartErrors.slice(-1000)));
-        chartRequests.clear();
-    });
     let pendingStartupScripts;
     let pendingQualityCatalogs;
     let pendingQualityDetails;
@@ -78,14 +59,7 @@ async function checkInterface(assetRoot) {
         const requestURL = new URL(request.url, "http://localhost");
         const locale = locales.includes(requestURL.searchParams.get('lang')) ? requestURL.searchParams.get('lang') : 'en';
         if (requestURL.pathname === '/quality-analysis/charts/') {
-            const id = ++chartSequence;
-            bounded(new Promise((resolve, reject) => {
-                chartRequests.set(id, {resolve, reject});
-                chartWorker.stdin.write(JSON.stringify({id, query:requestURL.searchParams.toString()}) + '\n');
-            }), 'Matplotlib chart render', 30000).then(result => {
-                response.setHeader('Content-Type', 'application/json; charset=utf-8');
-                response.writeHead(result.status).end(JSON.stringify(result.body));
-            }).catch(error => response.writeHead(500).end(JSON.stringify({error:error.message})));
+            response.writeHead(500).end('Figures must render in the browser.');
             return;
         }
         const attribution = {
@@ -318,12 +292,16 @@ async function checkInterface(assetRoot) {
             assert.deepEqual(unresolved, [], phase + ': visible text, hover text and accessible labels must interpolate every placeholder');
         };
         const checkQualityPagination = async locale => {
-            const states = await evaluate(`(() => {
+            const states = await evaluate(`(async () => {
                 const template = ${JSON.stringify(interfaceMessages['reports.page_status'][locale])};
                 const expected = (start, end, total) => template.replace('{start}', String(start)).replace('{end}', String(end)).replace('{total}', String(total));
                 const states = [], host = document.querySelector('[data-quality-analysis]'), form = document.querySelector('[data-quality-matrix]');
                 const cells = [...form.querySelectorAll('[data-matrix-cell]')], checked = cells.map(input => input.checked);
-                cells.forEach(input => input.checked = true); cells[0].dispatchEvent(new Event('change'));
+                const apply = async () => {
+                    form.querySelector('[data-matrix-apply]').click();
+                    while (form.dataset.qualityChartsLoading) await new Promise(resolve => setTimeout(resolve, 10));
+                };
+                cells.forEach(input => input.checked = true); cells[0].dispatchEvent(new Event('change')); await apply();
                 const size = host.querySelector('[data-analysis-size]'), search = host.querySelector('[data-analysis-search]');
                 const record = (name, selector, start, end, total) => states.push({name, actual: document.querySelector(selector).textContent, expected: expected(start, end, total), rows:document.querySelectorAll(selector === '[data-chart-page-status]' ? '[data-chart-article]' : '[data-analysis-row]').length, expectedRows:total ? end - start + 1 : 0});
                 size.value = '20'; size.dispatchEvent(new Event('change'));
@@ -368,7 +346,7 @@ async function checkInterface(assetRoot) {
                 host.analysisRows.forEach(row => row.dataset.importance = 'Low'); open();
                 record('sector empty', '[data-chart-page-status]', 0, 0, 0); dialog.close();
                 host.analysisRows.forEach((row, index) => row.dataset.importance = oldImportance[index]);
-                cells.forEach((input, index) => input.checked = checked[index]); cells[0].dispatchEvent(new Event('change'));
+                cells.forEach((input, index) => input.checked = checked[index]); cells[0].dispatchEvent(new Event('change')); await apply();
                 return states;
             })()`);
             assert.ok(states.length === 15 && states.every(state => state.actual === state.expected && state.rows === state.expectedRows), 'localized article ranges must report matching rows across paging, page size, sort and empty states: ' + JSON.stringify(states));
@@ -397,7 +375,7 @@ async function checkInterface(assetRoot) {
             await evaluate(`(async () => {
                 const deadline = performance.now() + 30000;
                 while (document.querySelector('[data-quality-charts-loading="1"]')) {
-                    if (performance.now() > deadline) throw new Error('Filtered Matplotlib charts did not finish');
+                    if (performance.now() > deadline) throw new Error('Applying figure filters did not finish');
                     await new Promise(resolve => setTimeout(resolve, 20));
                 }
             })()`);
@@ -407,20 +385,20 @@ async function checkInterface(assetRoot) {
                 const from = Number(form.querySelector('[data-matrix-from]').value), to = Number(form.querySelector('[data-matrix-to]').value), unknown = form.querySelector('[data-matrix-unknown]').checked;
                 const violins = [...document.querySelectorAll('.analysis-mini-violin')].map(svg => {
                     const anchor = svg.querySelector('a[data-chart-group]'), group = anchor?.dataset.chartGroup, code = svg.dataset.analysisViolin;
-                    if (!metadata) return svg.dataset.chartRenderer === 'matplotlib' && Boolean(svg.getAttribute('aria-label'));
+                    if (!metadata) return svg.dataset.chartRenderer === 'browser' && Boolean(svg.getAttribute('aria-label'));
                     const cells = metadata.cells.filter(cell => checked.has(cell.grade + '/' + cell.importance) && cell[group] === code && (cell.year === null ? unknown : cell.year >= from && cell.year <= to));
                     const sample = cells.flatMap(cell => cell.histogram.flatMap(item => Array(item.count).fill(item.value))).sort((a,b) => a-b);
                     const percentile = p => { const position = (sample.length - 1) * p; return sample[Math.floor(position)] + (sample[Math.ceil(position)] - sample[Math.floor(position)]) * (position % 1); };
                     const values = sample.length ? {minimum:sample[0], p25:percentile(.25), p50:percentile(.5), p75:percentile(.75), maximum:sample.at(-1), mean:sample.reduce((sum,value) => sum+value,0)/sample.length} : {};
                     const marks = [...svg.querySelectorAll('[data-statistic]')];
-                    return svg.dataset.chartRenderer === 'matplotlib' && Boolean(svg.getAttribute('aria-label'))
+                    return svg.dataset.chartRenderer === 'browser' && Boolean(svg.getAttribute('aria-label'))
                         && marks.length === Object.keys(values).length && marks.every(mark => Math.abs(Number(mark.dataset.value) - values[mark.dataset.statistic]) < .001 && Boolean(mark.querySelector('title')?.textContent));
                 });
                 const plots = [...document.querySelectorAll('[data-quality-chart] > svg')];
-                return {matplotlib:plots.length === 3 && plots.every(svg => svg.dataset.chartRenderer === 'matplotlib'),
+                return {browserFigures:plots.length === 3 && plots.every(svg => svg.dataset.chartRenderer === 'browser'),
                     violins:violins.length > 0 && violins.every(Boolean), fits:document.documentElement.scrollWidth <= innerWidth + 1};
             })()`);
-            assert.deepEqual(state, {matplotlib:true, violins:true, fits:true}, phase + ': actual Matplotlib plots must preserve saved statistic values and fit the page');
+            assert.deepEqual(state, {browserFigures:true, violins:true, fits:true}, phase + ': browser figures must preserve saved statistic values and fit the page');
             await checkQualityText(phase);
         };
         const inputCapabilities = await evaluate(`({
@@ -1516,6 +1494,7 @@ async function checkInterface(assetRoot) {
                             records: host.analysisRows.length, enhanced: host.hasAttribute('data-analysis-enhanced'),
                             unknown: matrix.querySelector('[data-matrix-unknown]').checked,
                             countsHidden: !matrix.querySelector('[data-matrix-count], [data-matrix-grade-count]'),
+                            fixedTables: !document.querySelector('[data-quality-matrix] .ui-table-pager, .analysis-pie-panel .ui-table-pager, .analysis-chart-data .ui-table-pager'),
                             from: matrix.querySelector('[data-matrix-from]').value,
                             firstYear: Number(document.querySelector('.analysis-year-data tbody th').textContent),
                             pies: document.querySelectorAll('[data-analysis-pie]').length,
@@ -1523,7 +1502,7 @@ async function checkInterface(assetRoot) {
                             sizesUnlinked: !host.querySelector('tbody td:last-child a'),
                             fits: document.documentElement.scrollWidth <= innerWidth + 1};
                     })()`);
-                    assert.deepEqual(metrics, {rows: 20, records: 48, enhanced: true, unknown: true, countsHidden: true, from: '2009', firstYear: 2009, pies: 2, footer: true, sizesUnlinked: true, fits: true});
+                    assert.deepEqual(metrics, {rows: 20, records: 48, enhanced: true, unknown: true, countsHidden: true, fixedTables: true, from: '2009', firstYear: 2009, pies: 2, footer: true, sizesUnlinked: true, fits: true});
                     await checkQualityOrdinals();
                     await checkQualityTableLayout(locale);
                     const coverage = await evaluate(`(() => {
@@ -1551,7 +1530,7 @@ async function checkInterface(assetRoot) {
                         svg.dispatchEvent(new KeyboardEvent('keydown', {key:'Home', bubbles:true}));
                         return zoomed && panned && svg.getAttribute('viewBox') === original && !host.querySelector('button');
                     }))()`);
-                    assert.ok(chartControls.length === 3 && chartControls.every(Boolean), 'Matplotlib figures must support keyboard navigation and retain unobstructed charts');
+                    assert.ok(chartControls.length === 3 && chartControls.every(Boolean), 'Figures must support keyboard navigation and retain unobstructed charts');
 
                     const initialYears = await evaluate(`(() => {
                         const data = document.querySelector('[data-quality-matrix]').qualityMetadata;
@@ -1570,11 +1549,15 @@ async function checkInterface(assetRoot) {
                             const host = document.querySelector('[data-quality-analysis]'), form = document.querySelector('[data-quality-matrix]');
                             const original = window.fetch; let requests = 0;
                             window.fetch = (...args) => {
-                                if (new URL(args[0], location.href).pathname.startsWith('/quality-analysis/resources/')) requests++;
+                                if (new URL(args[0], location.href).pathname.startsWith('/quality-analysis/')) requests++;
                                 return original(...args);
                             };
-                            const ready = async () => {
+                            const apply = async () => {
+                                form.querySelector('[data-matrix-apply]').click();
+                                const busy = !form.querySelector('[data-matrix-spinner]').hidden;
+
                                 while (form.dataset.qualityChartsLoading) await new Promise(resolve => setTimeout(resolve, 10));
+                                return busy;
                             };
                             const rowStyles = row => [...row.cells].map(cell => {
                                 const style = getComputedStyle(cell);
@@ -1590,11 +1573,13 @@ async function checkInterface(assetRoot) {
                             const total = () => Number(document.querySelector('[data-matrix-total]').textContent.replaceAll(',', ''));
                             const initial = total();
                             for (const code of ['B','BL','C','CL']) form.querySelector('[data-matrix-grade="'+code+'"]').click();
+                            const unchangedUntilApply = total() === initial;
+                            const applying = await apply();
                             const expanded = total() > initial;
                             const from = form.querySelector('[data-matrix-from]'); from.value = '2026'; from.dispatchEvent(new Event('change'));
                             const unknown = form.querySelector('[data-matrix-unknown]'); unknown.click();
+                            await apply();
                             const ranged = host.analysisRows.filter(row => row.dataset.cohort === '1').every(row => row.dataset.year === '2026');
-                            await ready();
                             const chart = document.querySelector('[data-chart-year="2026"][data-chart-value="B"]');
                             chart.dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true}));
                             const dialog = document.getElementById('analysis-chart-articles');
@@ -1602,8 +1587,8 @@ async function checkInterface(assetRoot) {
                             const exact = dialog.open && dialog.querySelectorAll('[data-chart-article]').length === expected && expected > 0;
                             dialog.close(); from.value = '2009'; from.dispatchEvent(new Event('change')); unknown.click();
                             form.querySelector('[data-matrix-all]').click();
-                            if (total() !== 48) form.querySelector('[data-matrix-all]').click();
-                            await ready();
+
+                            await apply();
                             const previousRow = host.querySelector('[data-analysis-row]');
                             host.querySelector('[data-analysis-next]').click();
                             const visible = [...host.querySelectorAll('[data-analysis-row]')];
@@ -1659,7 +1644,7 @@ async function checkInterface(assetRoot) {
                             const selectAnnualGrade = async code => {
                                 for (const input of form.querySelectorAll('[data-matrix-cell]')) input.checked = input.dataset.grade === code;
                                 form.querySelector('[data-matrix-cell]').dispatchEvent(new Event('change'));
-                                await ready();
+                                await apply();
                                 const grade = form.qualityMetadata.grades.find(grade => grade.value === code);
                                 const hasBars = form.qualityMetadata.cells.some(cell => cell.grade === code && cell.year >= 2009 && cell.year <= Number(form.querySelector('[data-matrix-to]').value) && cell.pages > 0);
                                 const legend = [...document.querySelectorAll('.analysis-legend li')];
@@ -1676,22 +1661,22 @@ async function checkInterface(assetRoot) {
                                 const dots = [...svg.querySelectorAll('.analysis-violin-quartile')];
                                 const extrema = [...svg.querySelectorAll('.analysis-violin-extreme')];
                                 const median = svg.querySelector('.analysis-violin-median');
-                                return !svg.querySelector(':scope > title') && svg.getAttribute('aria-label').endsWith(expected) && (measured ? dots.length === 2 && dots.every(dot => Number(dot.getAttribute('x1')) === 0) && Number(median.getAttribute('x1')) === 0 && extrema.length === 2 && Number(svg.querySelector('.analysis-violin-mean')?.dataset.meanX) === 0 : dots.length === 0 && !median && !extrema.length && !svg.querySelector('.analysis-violin-mean'));
+                                return !svg.querySelector(':scope > title') && svg.getAttribute('aria-label').endsWith(expected) && (measured ? dots.length === 2 && dots.every(dot => Number(dot.dataset.value) === 0) && Number(median.dataset.value) === 0 && extrema.length === 2 && Number(svg.querySelector('.analysis-violin-mean')?.dataset.meanX) === 0 : dots.length === 0 && !median && !extrema.length && !svg.querySelector('.analysis-violin-mean'));
                             };
                             const quantileStates = await violinState('C', 1) && await violinState('B', 0);
                             from.value = '2009'; from.dispatchEvent(new Event('change'));
                             for (const input of form.querySelectorAll('[data-matrix-cell]')) input.checked = false;
                             form.querySelector('[data-matrix-cell]').dispatchEvent(new Event('change'));
-                            await ready();
+                            await apply();
                             const emptySelection = annual.tHead.rows[0].cells.length === 2 && [...annual.tBodies[0].rows].every(row => row.cells.length === 2) && document.querySelectorAll('.analysis-legend li, .analysis-year-columns [data-chart-value]').length === 0 && host.querySelectorAll('[data-analysis-row]').length === 0;
                             const defaultGrades = form.qualityMetadata.grades.filter(item => item.checked).map(item => item.value);
                             for (const input of form.querySelectorAll('[data-matrix-cell]')) input.checked = defaultGrades.includes(input.dataset.grade);
                             form.querySelector('[data-matrix-cell]').dispatchEvent(new Event('change'));
-                            await ready();
+                            await apply();
                             window.fetch = original;
-                            return {attribution:Boolean(attribution),expanded,ranged,exact,pagination,rowParity,freshRows,shortHeaders,compactUnits,chartPagination,chartSorting,chartSortReset,roles:exactRoles && secondaryNotMain && secondarySignificant && primaryMatches && boundaryIncluded,totalsOnly,yearSelection,quantileStates,emptySelection,requests};
+                            return {attribution:Boolean(attribution),expanded,unchangedUntilApply,applying,ranged,exact,pagination,rowParity,freshRows,shortHeaders,compactUnits,chartPagination,chartSorting,chartSortReset,roles:exactRoles && secondaryNotMain && secondarySignificant && primaryMatches && boundaryIncluded,totalsOnly,yearSelection,quantileStates,emptySelection,requests};
                         })()`, 60000);
-                        assert.deepEqual(interaction, {attribution:true,expanded:true,ranged:true,exact:true,pagination:true,rowParity:true,freshRows:true,shortHeaders:true,compactUnits:true,chartPagination:true,chartSorting:true,chartSortReset:true,roles:true,totalsOnly:true,yearSelection:true,quantileStates:true,emptySelection:true,requests:0});
+                        assert.deepEqual(interaction, {attribution:true,expanded:true,unchangedUntilApply:true,applying:true,ranged:true,exact:true,pagination:true,rowParity:true,freshRows:true,shortHeaders:true,compactUnits:true,chartPagination:true,chartSorting:true,chartSortReset:true,roles:true,totalsOnly:true,yearSelection:true,quantileStates:true,emptySelection:true,requests:0});
                         await checkQualityPagination(locale);
                         await checkQualityDistributions('filtered');
                         await evaluate("document.querySelector('[data-chart-group]').dispatchEvent(new MouseEvent('click', {bubbles:true,cancelable:true}))");
@@ -1706,10 +1691,12 @@ async function checkInterface(assetRoot) {
                             const shot = await call('Page.captureScreenshot', {format:'png',captureBeyondViewport:false},sessionId);
                             fs.writeFileSync(path.join(outputRoot, `${locale}-quality-analysis-${section}-${width}.png`), Buffer.from(shot.data,'base64'));
                         }
-                        await evaluate(`(() => {
+                        await evaluate(`(async () => {
                             const host = document.querySelector('[data-quality-analysis]'), form = document.querySelector('[data-quality-matrix]');
                             for (const input of form.querySelectorAll('[data-matrix-cell]')) input.checked = true;
                             form.querySelector('[data-matrix-cell]').dispatchEvent(new Event('change'));
+                            form.querySelector('[data-matrix-apply]').click();
+                            while (form.dataset.qualityChartsLoading) await new Promise(resolve => setTimeout(resolve, 10));
                             host.querySelector('[data-analysis-next]').click();
                             document.getElementById('analysis-articles').scrollIntoView();
                         })()`);
@@ -1717,11 +1704,13 @@ async function checkInterface(assetRoot) {
                         await checkQualityTableLayout(locale);
                         const articleShot = await call('Page.captureScreenshot', {format:'png',captureBeyondViewport:false},sessionId);
                         fs.writeFileSync(path.join(outputRoot, `${locale}-quality-analysis-articles-page2-${width}.png`), Buffer.from(articleShot.data,'base64'));
-                        await evaluate(`(() => {
+                        await evaluate(`(async () => {
                             const form = document.querySelector('[data-quality-matrix]');
                             const grades = form.qualityMetadata.grades.filter(grade => grade.checked).map(grade => grade.value);
                             for (const input of form.querySelectorAll('[data-matrix-cell]')) input.checked = grades.includes(input.dataset.grade);
                             form.querySelector('[data-matrix-cell]').dispatchEvent(new Event('change'));
+                            form.querySelector('[data-matrix-apply]').click();
+                            while (form.dataset.qualityChartsLoading) await new Promise(resolve => setTimeout(resolve, 10));
                         })()`);
                         await evaluate('window.scrollTo(0,0)');
                     }
@@ -2109,12 +2098,17 @@ async function checkInterface(assetRoot) {
                 pendingQualityCatalogs = undefined;
                 for (const send of queued) send();
                 await waitForQuality();
-                const appliedSelection = await evaluate(`(() => {
+                const appliedSelection = await evaluate(`(async () => {
                     const form = document.querySelector('[data-quality-matrix]');
-                    return {selected: [...form.querySelectorAll('[data-matrix-cell]')].map(input => input.checked), actual: document.querySelector('[data-matrix-total]').textContent, expected: form.qualityMetadata.cells.reduce((sum, cell) => sum + cell.pages, 0).toLocaleString(document.documentElement.lang)};
+                    const total = document.querySelector('[data-matrix-total]');
+                    const beforeApply = total.textContent;
+                    form.querySelector('[data-matrix-apply]').click();
+                    while (form.dataset.qualityChartsLoading) await new Promise(resolve => setTimeout(resolve, 10));
+                    return {selected: [...form.querySelectorAll('[data-matrix-cell]')].map(input => input.checked), beforeApply, actual: total.textContent, expected: form.qualityMetadata.cells.reduce((sum, cell) => sum + cell.pages, 0).toLocaleString(document.documentElement.lang)};
                 })()`);
                 assert.deepEqual(appliedSelection.selected, pendingSelection.selected, 'catalog readiness must preserve the latest selection');
-                assert.equal(appliedSelection.actual, appliedSelection.expected, 'the completed catalog must apply the pending selection to totals');
+                assert.equal(appliedSelection.beforeApply, initial.overview, 'catalog readiness preserves the applied figures');
+                assert.equal(appliedSelection.actual, appliedSelection.expected, 'confirmation applies the pending selection to totals');
                 await checkQualityDistributions('after catalog');
                 assert.equal(qualityResourceRequests.filter(name => name.endsWith('.json')).length, 1, 'catalog consumers must share one request');
                 qualityDeferredLoads++;
@@ -2499,7 +2493,6 @@ async function checkInterface(assetRoot) {
         console.log(JSON.stringify(result, null, 2));
         assert.equal(failures.length, 0, "responsive interface checks failed");
     } finally {
-        chartWorker.kill("SIGTERM");
         socket?.close();
         browser.kill("SIGTERM");
         if (browser.exitCode === null) {

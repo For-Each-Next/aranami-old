@@ -55,6 +55,12 @@
     "zh-hant": "狀態"
   },
   "server.hub": {"en": "Hub", "zh-hans": "调度服务（Hub）", "zh-hant": "排程服務（Hub）"},
+  "server.web": {"en": "Web", "zh-hans": "网页服务（Web）", "zh-hant": "網頁服務（Web）"},
+  "server.heartbeat": {
+    "en": "Last observed",
+    "zh-hans": "最近观测",
+    "zh-hant": "最近觀測"
+  },
   "server.memory": {
     "en": "Memory",
     "zh-hans": "内存",
@@ -4603,6 +4609,36 @@
     "zh-hans": "应用",
     "zh-hant": "套用"
   },
+  "quality_analysis.apply_filters": {
+    "en": "Apply filters",
+    "zh-hans": "确认筛选",
+    "zh-hant": "確認篩選"
+  },
+  "quality_analysis.filters_pending": {
+    "en": "Apply filters to update the figures and tables.",
+    "zh-hans": "确认筛选后将更新图表和表格。",
+    "zh-hant": "確認篩選後將更新圖表和表格。"
+  },
+  "quality_analysis.filters_working": {
+    "en": "Updating figures and tables…",
+    "zh-hans": "正在更新图表和表格…",
+    "zh-hant": "正在更新圖表和表格…"
+  },
+  "quality_analysis.filters_applied": {
+    "en": "Filters applied.",
+    "zh-hans": "筛选已完成。",
+    "zh-hant": "篩選已完成。"
+  },
+  "quality_analysis.filters_failed": {
+    "en": "The results could not update. Try applying the filters again.",
+    "zh-hans": "无法更新结果。请再次确认筛选。",
+    "zh-hant": "無法更新結果。請再次確認篩選。"
+  },
+  "quality_analysis.filters_year_order": {
+    "en": "Enter an end year on or after the start year.",
+    "zh-hans": "结束年份应不早于开始年份。",
+    "zh-hant": "結束年份應不早於開始年份。"
+  },
   "quality_analysis.count_column": {
     "en": "Count",
     "zh-hans": "数量",
@@ -4614,9 +4650,9 @@
     "zh-hant": "長度分布"
   },
   "quality_analysis.loading_catalog": {
-    "en": "Loading article filters…",
-    "zh-hans": "正在加载条目筛选…",
-    "zh-hant": "正在載入條目篩選…"
+    "en": "Loading article statistics…",
+    "zh-hans": "正在加载条目统计…",
+    "zh-hant": "正在載入條目統計…"
   },
   "quality_analysis.catalog_failed": {
     "en": "Article filters could not load. The saved overview remains visible. Retry, or reload the page if the report has changed.",

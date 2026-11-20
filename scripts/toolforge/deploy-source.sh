@@ -140,7 +140,7 @@ setup_job="aranami-setup-$token"
 if [ -L app ]; then cp -P app "$backup/app.before"; fi
 # Dependency installation never mutates the active environment or source.
 setup_started=true
-toolforge jobs run "$setup_job" --image python3.13 --mount=all \
+toolforge jobs run "$setup_job" --image python3.13 --no-filelog --mount=all \
     --command "env ARANAMI_TOOL_DIR=$tool_dir sh $stage/scripts/toolforge/setup-env.sh $stage $receipt $environment" --wait 1800
 # --wait is not evidence of a successful container exit: require exact proof.
 python3 "$validator" receipt "$stage" "$receipt"
@@ -185,5 +185,5 @@ for service in aranami-web aranami-hub; do
 done
 printf '%s\n' 'Validated code activated; existing services replaced. Missing or paused services were not started.' \
     "Backup: $backup" \
-    "First website start: toolforge jobs run aranami-web --image python3.13 --continuous --mount=all --port 8000 --publish --command 'exec sh $tool_dir/app/scripts/toolforge/run-web.sh'" \
-    "First hub start (live publication): toolforge jobs run aranami-hub --image python3.13 --continuous --mount=all --mem 4Gi --command 'exec sh $tool_dir/app/scripts/toolforge/run-hub.sh'"
+    "First website start: toolforge jobs run aranami-web --image python3.13 --continuous --no-filelog --mount=all --port 8000 --publish --command 'exec sh $tool_dir/app/scripts/toolforge/run-web.sh'" \
+    "First hub start (live publication): toolforge jobs run aranami-hub --image python3.13 --continuous --no-filelog --mount=all --mem 4Gi --command 'exec sh $tool_dir/app/scripts/toolforge/run-hub.sh'"

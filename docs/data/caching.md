@@ -2,7 +2,7 @@
 
 Caches avoid repeated downloads and parsing. Removing them must not erase
 retained project snapshots, detailed Pageviews, article evidence, newsletter
-archives or publication baselines. Those belong under `reports/` and have
+archives or publication baselines. Those belong under `data/` and have
 strict durable readers described in [Saved data](storage.md).
 
 Each tabular cache owner declares a `shared.support.cache.ParquetCache` with
@@ -86,13 +86,13 @@ A failed optional refresh retains verified prior labels. The HTTP layer only
 reads this cache and falls back to local script conversion for uncovered
 titles. Canonical titles, page IDs, source URLs and anchors stay unchanged.
 
-Hourly page and category files name the completed UTC hour, such as
-`2026111400.parquet` written at 01:00, and retain the newest two periods.
-Chinese wpvg lists live directly under `data/parsed`, alongside named child
-project lists and `categories-<hour>.parquet`. Daily Chinese page lists remain
-permanent under `data/archive`. Full revision text lives in the sharded
-`data/revisions` store; only acquisition and parsing use it. See
-[Saved data](storage.md) for schemas, retention and the complete fileset map.
+Hourly project and category files under `data/raw/` name the completed UTC
+hour, such as `2026111400.parquet` written at 01:00, and retain the newest two
+periods. Chinese project daily files remain permanent under `data/archive/`.
+Validated daily and hourly Parquet generations reuse bounded process memory
+across consumers. A replacement file is validated before reusing its data.
+Full revision text lives in the sharded `data/revisions/` store. See
+[Saved data](storage.md) for the schemas and retention rules.
 Category coverage distinguishes complete project-page links from additional
 global assessment-list matches. Missing coverage cannot establish emptiness.
 
@@ -102,7 +102,9 @@ Public records contain relative filenames; HTTP reads with no collector observer
 do not create activity records. Consecutive template-alias stages are condensed
 only for display, preserving the underlying source evidence.
 
-Continuous Pageviews may be supplemented; incomplete or gapped history needs a
+The report and dashboard share validated site-wide top lists for one hour in
+the hub. Missing or failed lists can be retried. Preview passes have a separate
+cache. Continuous Pageviews may be supplemented; incomplete or gapped history needs a
 full request. Coverage sentinels alone do not establish observations. The cache
 is an optimization alongside the durable detailed dataset, not its replacement.
 Raw source text is independent of parser versions; extracted facts are not.

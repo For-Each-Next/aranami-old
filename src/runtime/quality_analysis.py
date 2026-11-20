@@ -318,6 +318,8 @@ def _collect_authorship(  # ruff: ignore[too-many-arguments] - Preserve explicit
 ) -> None:
     """Spend unused range time on attribution within one deadline."""
     deadline = monotonic() + time_budget
+    if not should_yield():
+        refresh_quality_author_activity(site, runtime=runtime)
     _collect_historical_authorship(
         site,
         membership,
@@ -349,8 +351,6 @@ def _collect_authorship(  # ruff: ignore[too-many-arguments] - Preserve explicit
         time_budget=max(0, deadline - monotonic()),
         should_yield=should_yield,
     )
-    if monotonic() < deadline and not should_yield():
-        refresh_quality_author_activity(site, runtime=runtime)
 
 
 def _collect_historical_authorship(

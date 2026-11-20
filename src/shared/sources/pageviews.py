@@ -326,16 +326,7 @@ def fetch_top_dataframe(
     period = _top_period(start, stop)
     if period is None:
         return pl.DataFrame(schema=_TOP_FRAME_SCHEMA)
-    project = site.hostname().strip().lower()
-    observation = read_top_pageviews(
-        project,
-        period,
-        lambda: parse_top_observation(
-            _request_top_payload(project, period),
-            project,
-            period,
-        ),
-    )
+    observation = fetch_top_observation(site.hostname(), period)
     if observation is None or observation.articles.is_empty():
         message = "Wikimedia top-pageviews list is not available yet"
         raise ValueError(message)
@@ -344,6 +335,37 @@ def fetch_top_dataframe(
         pl.col("source_rank").cast(pl.Int64).alias("top"),
     )
     return _article_top_ranks(site, ranks)
+
+
+def fetch_top_observation(
+    hostname: str,
+    period: tuple[str, str, str],
+) -> TopPageviews | None:
+    """Read a validated site-wide top list using the shared cache.
+
+    Returns:
+        Validated raw ranks and views, or none for an absent result.
+    """
+    project = hostname.strip().lower()
+    return read_top_pageviews(
+        project,
+        period,
+        lambda: parse_top_observation(
+            _request_top_payload(project, period),
+            project,
+            period,
+        ),
+    )
+
+
+def top_list_url(project: str, period: tuple[str, str, str]) -> str:
+    """Address the all-access top list for one exact site and period.
+
+    Returns:
+        The official analytics endpoint used to read the observation.
+    """
+    root = "https://wikimedia.org/api/rest_v1/metrics/pageviews/top/"
+    return root + "/".join((project, "all-access", *period))
 
 
 def _request_top_payload(
@@ -368,11 +390,9 @@ def _request_top_payload(
         wiki=project,
         target="/".join(period),
     )
-    base = "https://wikimedia.org/api/rest_v1/metrics/pageviews/top/"
-    segments = (project, "all-access", *period)
     # ruff: ignore[suspicious-url-open-usage]
     request = urllib.request.Request(
-        f"{base}{'/'.join(segments)}",
+        top_list_url(project, period),
         headers={"Accept": "application/json", "User-Agent": USER_AGENT},
     )
     try:

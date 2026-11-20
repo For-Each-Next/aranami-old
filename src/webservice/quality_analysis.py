@@ -25,7 +25,6 @@ from shared.assessment_profiles import assessment_profile
 from webservice.presentation import (
     Interface,
     display_title,
-    local_url,
     title_url,
     utc_time,
 )
@@ -286,6 +285,7 @@ def _lengths(
                 2,
             ),
             "median_x": round(prose_length_position(median or 0, maximum), 2),
+            "mean": points.get("mean"),
             "mean_x": round(
                 prose_length_position(points["mean"], maximum),
                 2,
@@ -814,13 +814,6 @@ def quality_analysis_context(data: dict, interface: Interface) -> dict:
                 ),
             },
             "last_year": selection["last_year"],
-            "chart_generation": data.get("chart_generation"),
-            "chart_url": local_url(
-                "/quality-analysis/charts/",
-                lang=interface.message_locale,
-            ),
-            "authorship_basis": data.get("authorship_basis", "current"),
-            "chart_failed": interface.text("quality_authorship.update_failed"),
             "grades": [
                 {
                     "value": code,

@@ -354,10 +354,10 @@ class AuthorWorkerTests(TestCase):
 
     @staticmethod
     def test_range_time_reduces_the_remaining_overall_deadline() -> None:
-        """Share elapsed time and forbid post-deadline activity."""
-        for after_range, before_activity, remaining, activities in (
-            (130, 180, 210, 1),
-            (341, 341, 0, 0),
+        """Refresh activity ahead of range and attribution work."""
+        for after_range, before_versions, remaining in (
+            (130, 180, 210),
+            (341, 341, 0),
         ):
             with (
                 patch.object(
@@ -366,8 +366,7 @@ class AuthorWorkerTests(TestCase):
                     side_effect=[
                         100,
                         after_range,
-                        before_activity,
-                        before_activity,
+                        before_versions,
                     ],
                 ),
                 patch.object(worker, "_collect_historical_authorship"),
@@ -389,7 +388,7 @@ class AuthorWorkerTests(TestCase):
                 )
             assert authors.call_args.kwargs["time_budget"] * 2 == remaining
             assert authors.call_args.kwargs["max_requests"] == 40
-            assert activity.call_count == activities
+            activity.assert_called_once()
 
     @staticmethod
     def test_authorship_lease_precedes_any_source_client() -> None:

@@ -22,89 +22,45 @@ from __future__ import annotations
 import datetime as dt
 from http import HTTPStatus
 from typing import TYPE_CHECKING
+from urllib.error import HTTPError
 
 import polars as pl
-from pywikibot.comms import http
 
-from shared.identity import USER_AGENT
-from shared.sources import pageviews_rate
-from shared.sources.cycle import read_top_pageviews
-from shared.sources.pageviews import article_rank_filter, parse_top_observation
+from shared.sources.pageviews import (
+    article_rank_filter,
+    fetch_top_observation,
+    top_list_url,
+)
 from shared.support.titles import page_title, page_url
 
 if TYPE_CHECKING:
     from pywikibot.site import BaseSite
 
-_API_ROOT = (
-    "https://wikimedia.org/api/rest_v1/metrics/pageviews/top/"
-    "zh.wikipedia.org/all-access/"
-)
+_PROJECT = "zh.wikipedia.org"
 _ITEM_LIMIT = 12
 _LOOKBACK_DAYS = 7
 
 
-def _source_url(day: dt.date) -> str:
-    """Build the fixed daily all-access endpoint for one UTC date.
-
-    Args:
-        day: Completed UTC date whose observation is requested.
-
-    Returns:
-        Auditable official API URL.
-    """
-    return _API_ROOT + day.strftime("%Y/%m/%d")
-
-
-def _fetch_payload(day: dt.date) -> object:
-    """Fetch one raw daily list without hiding network failures.
-
-    Pywikibot supplies its configured user agent and socket timeout.
-
-    Args:
-        day: Completed UTC date whose list is requested.
-
-    Returns:
-        Decoded payload, or none for HTTP 404.
-
-    Raises:
-        ValueError: A response violates the verified daily contract.
-    """
-    pageviews_rate.wait_for_pageviews_request()
-    response = http.fetch(
-        _source_url(day),
-        headers={"accept": "application/json", "user-agent": USER_AGENT},
-        default_error_handling=False,
-    )
-    if isinstance(response, Exception):
-        raise response
-    if response.status_code == HTTPStatus.NOT_FOUND:
-        return None
-    response.raise_for_status()
-    if response.status_code != HTTPStatus.OK:
-        message = "Pageviews returned an unexpected HTTP response."
-        raise ValueError(message)
-    return response.json()
+def _period(day: dt.date) -> tuple[str, str, str]:
+    """Return the API selectors for a completed UTC date."""
+    return day.strftime("%Y"), day.strftime("%m"), day.strftime("%d")
 
 
 def _request(day: dt.date) -> pl.DataFrame | None:
-    """Validate a daily list, sharing successful hub-cycle observations.
-
-    Args:
-        day: Completed UTC date whose list is requested.
+    """Load a shared top list, skipping only absent daily observations.
 
     Returns:
-        Validated observations, or none for HTTP 404 or no result.
+        Articles with raw ranks, or none if the date is absent.
+
+    Raises:
+        HTTPError: An HTTP error other than 404 prevented collection.
     """
-    period = day.strftime("%Y"), day.strftime("%m"), day.strftime("%d")
-    observation = read_top_pageviews(
-        "zh.wikipedia.org",
-        period,
-        lambda: parse_top_observation(
-            _fetch_payload(day),
-            "zh.wikipedia.org",
-            period,
-        ),
-    )
+    try:
+        observation = fetch_top_observation(_PROJECT, _period(day))
+    except HTTPError as error:
+        if error.code != HTTPStatus.NOT_FOUND:
+            raise
+        return None
     if observation is None:
         return None
     return observation.articles.rename({"source_rank": "_source_rank"})
@@ -206,7 +162,7 @@ def collect_pageviews(
                 {**item, "url": page_url(site, item["title"])}
                 for item in items.to_dicts()
             ],
-            "source_url": _source_url(day),
+            "source_url": top_list_url(_PROJECT, _period(day)),
         }
     message = "No daily pageviews observation exists in the past seven dates."
     raise RuntimeError(message)

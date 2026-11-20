@@ -17,6 +17,7 @@
 .analysis-number { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .analysis-number small { color: #627577; }
 .analysis-year-scroll { max-width: 100%; overflow-x: auto; }
+[data-quality-chart="years"] { min-height: 300px; }
 .analysis-year-columns { display: block; width: auto; min-width: 100%; max-width: none; height: 300px; }
 .analysis-year-grid { stroke: #dce6e7; stroke-width: 1; }
 .analysis-axis-label, .analysis-column-total { font: 13px system-ui, sans-serif; fill: #405b60; }
@@ -63,6 +64,14 @@
 .analysis-pie-panel { margin: 0; min-width: 0; overflow-x: auto; }
 .analysis-pie-panel h4 { font-size: 1.05rem; margin-bottom: .5rem; }
 .analysis-pie { display: block; width: 100%; max-width: 280px; height: auto; margin: .5rem auto 1rem; }
+.analysis-pie-panel [data-quality-chart] { display: flow-root; }
+.analysis-pie-panel [data-quality-chart]:empty::before {
+    content: "";
+    display: block;
+    width: min(100%, 280px);
+    aspect-ratio: 1;
+    margin: .5rem auto 1rem;
+}
 .analysis-pie-empty { fill: #f5f7f7; stroke: #a2a9b1; stroke-width: 1; }
 .analysis-pie-slice { stroke: #fff; stroke-width: 2; stroke-linejoin: round; }
 .analysis-pie-key { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
@@ -90,13 +99,18 @@
 .analysis-matrix th, .analysis-matrix td { padding: .65rem; border-bottom: 1px solid var(--border-color-base, #aaa); text-align: center; }
 .analysis-matrix tbody th:first-child { text-align: start; }
 .analysis-matrix label { display: inline-flex; align-items: center; gap: .35rem; }
-.analysis-year-filter { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; margin: 1rem 0 2rem; }
+.analysis-year-filter { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; margin: 1rem 0; }
 .analysis-year-filter input[type="number"] { width: 6em; padding: .4rem; }
 .analysis-selection { margin-block: 1.5rem; }
+.analysis-filter-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }
+.analysis-filter-actions p { margin: 0; }
+.analysis-filter-actions .quality-detail-loading { margin: 0 .4em 0 0; }
+.analysis-filter-actions .quality-detail-loading[hidden] { display: none; }
 
 .ui-dialog.analysis-authorship-dialog { width: min(40rem, calc(100vw - 2rem)); max-width: 40rem; }
 
 .analysis-mini-cell { min-width: 5rem; }
+.analysis-violin-placeholder { display: flex; align-items: center; min-height: 2rem; }
 .analysis-mini-violin { display: block; width: 100%; height: 2rem; }
 .analysis-mini-cell a { display: block; }
 .analysis-pie-key th, .analysis-pie-key td { padding: .45rem .35rem; }

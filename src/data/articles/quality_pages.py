@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 from data.prepared import read_values, values_path
-from shared.support.files import atomic_json, encode_json
+from shared.support.files import atomic_json, encode_json, file_identity
 
 MAX_BYTES = 16 * 1024 * 1024
 _RESOURCE_NAME = re.compile(
@@ -60,17 +60,7 @@ def identity(path: Path) -> tuple:
     Returns:
         Atomic-file identity, or an explicit missing identity.
     """
-    try:
-        info = values_path(path).lstat()
-    except FileNotFoundError:
-        return (None,)
-    return (
-        info.st_ino,
-        info.st_mode,
-        info.st_size,
-        info.st_mtime_ns,
-        info.st_ctime_ns,
-    )
+    return file_identity(values_path(path)) or (None,)
 
 
 def read(path: Path, *, browser: bool = False) -> str | None:

@@ -7,18 +7,18 @@ from __future__ import annotations
 
 import datetime as dt
 from unittest import TestCase
-from unittest.mock import Mock, patch
+from unittest.mock import patch
+from urllib.error import HTTPError
 
 from wiki_fixtures import offline_site as _site
 
-from shared.identity import USER_AGENT
 from tasks.website.pageviews import collect_pageviews
 
 
 def _response(
     day: str = "17",
     articles: list[dict[str, object]] | None = None,
-) -> Mock:
+) -> dict:
     """Build the observed official daily JSON contract without requests.
 
     Args:
@@ -28,23 +28,23 @@ def _response(
     Returns:
         Successful read-only response with the verified metadata shape.
     """
-    return Mock(
-        status_code=200,
-        json=Mock(
-            return_value={
-                "items": [
-                    {
-                        "project": "zh.wikipedia",
-                        "access": "all-access",
-                        "year": "2026",
-                        "month": "10",
-                        "day": day,
-                        "articles": articles or [],
-                    },
-                ],
+    return {
+        "items": [
+            {
+                "project": "zh.wikipedia",
+                "access": "all-access",
+                "year": "2026",
+                "month": "10",
+                "day": day,
+                "articles": articles or [],
             },
-        ),
-    )
+        ],
+    }
+
+
+def _http_error(status: int) -> HTTPError:
+    """Return an HTTP failure from the shared source transport."""
+    return HTTPError("https://wikimedia.org", status, "fixture", {}, None)
 
 
 class TestDailyPageviews(TestCase):
@@ -94,7 +94,7 @@ class TestDailyPageviews(TestCase):
             ]
         )
         with patch(
-            "tasks.website.pageviews.http.fetch",
+            "shared.sources.pageviews._request_top_payload",
             return_value=_response("15", articles),
         ):
             result = collect_pageviews(
@@ -136,7 +136,7 @@ class TestDailyPageviews(TestCase):
             for index, title in enumerate(titles, start=1)
         ]
         with patch(
-            "tasks.website.pageviews.http.fetch",
+            "shared.sources.pageviews._request_top_payload",
             return_value=_response(articles=articles),
         ):
             result = collect_pageviews(
@@ -165,7 +165,7 @@ class TestDailyPageviews(TestCase):
             ],
         )
         with patch(
-            "tasks.website.pageviews.http.fetch",
+            "shared.sources.pageviews._request_top_payload",
             return_value=response,
         ) as fetch:
             result = collect_pageviews(
@@ -204,11 +204,7 @@ class TestDailyPageviews(TestCase):
             "https://wikimedia.org/api/rest_v1/metrics/pageviews/top/"
             "zh.wikipedia.org/all-access/2026/10/17"
         )
-        fetch.assert_called_once_with(
-            result["source_url"],
-            headers={"accept": "application/json", "user-agent": USER_AGENT},
-            default_error_handling=False,
-        )
+        fetch.assert_called_once_with("zh.wikipedia.org", ("2026", "10", "17"))
 
     @staticmethod
     def test_top_twelve_uses_views_and_stable_source_rank_ties() -> None:
@@ -222,7 +218,7 @@ class TestDailyPageviews(TestCase):
             for index in range(14)
         ]
         with patch(
-            "tasks.website.pageviews.http.fetch",
+            "shared.sources.pageviews._request_top_payload",
             return_value=_response(articles=articles),
         ):
             result = collect_pageviews(
@@ -242,10 +238,10 @@ class TestDailyPageviews(TestCase):
     def test_only_absent_daily_results_fall_back_to_older_dates() -> None:
         """Skip HTTP 404 and explicit no-result responses only."""
         with patch(
-            "tasks.website.pageviews.http.fetch",
+            "shared.sources.pageviews._request_top_payload",
             side_effect=[
-                Mock(status_code=404),
-                Mock(status_code=200, json=Mock(return_value={"items": []})),
+                _http_error(404),
+                {"items": []},
                 _response("15", [{"article": "Game", "views": 9, "rank": 5}]),
             ],
         ) as fetch:
@@ -255,9 +251,7 @@ class TestDailyPageviews(TestCase):
                 site=_site(),
             )
         assert result["date"] == "2026-10-15"
-        assert [
-            call.args[0].rsplit("/", 1)[1] for call in fetch.call_args_list
-        ] == [
+        assert [call.args[1][-1] for call in fetch.call_args_list] == [
             "17",
             "16",
             "15",
@@ -274,7 +268,7 @@ class TestDailyPageviews(TestCase):
             with (
                 self.subTest(articles=articles),
                 patch(
-                    "tasks.website.pageviews.http.fetch",
+                    "shared.sources.pageviews._request_top_payload",
                     return_value=_response(articles=articles),
                 ) as fetch,
             ):
@@ -291,15 +285,13 @@ class TestDailyPageviews(TestCase):
         """Leave exhausted missing observations unavailable."""
         with (
             patch(
-                "tasks.website.pageviews.http.fetch",
-                return_value=Mock(status_code=404),
+                "shared.sources.pageviews._request_top_payload",
+                side_effect=_http_error(404),
             ) as fetch,
             self.assertRaisesRegex(RuntimeError, "past seven dates"),
         ):
             collect_pageviews(dt.date(2026, 10, 18), {"Game"}, site=_site())
-        assert [
-            call.args[0].rsplit("/", 1)[1] for call in fetch.call_args_list
-        ] == [
+        assert [call.args[1][-1] for call in fetch.call_args_list] == [
             "17",
             "16",
             "15",
@@ -315,18 +307,15 @@ class TestDailyPageviews(TestCase):
         """Propagate transient failures without selecting stale data."""
         for response in (
             OSError("Network unavailable."),
-            Mock(
-                status_code=503,
-                raise_for_status=Mock(side_effect=RuntimeError("HTTP 503")),
-            ),
+            _http_error(503),
         ):
             with (
                 self.subTest(response=response),
                 patch(
-                    "tasks.website.pageviews.http.fetch",
-                    return_value=response,
+                    "shared.sources.pageviews._request_top_payload",
+                    side_effect=response,
                 ) as fetch,
-                self.assertRaises((OSError, RuntimeError)),
+                self.assertRaises(OSError),
             ):
                 collect_pageviews(
                     dt.date(2026, 10, 18),
@@ -345,11 +334,11 @@ class TestDailyPageviews(TestCase):
             ("day", "16"),
         ):
             response = _response()
-            response.json.return_value["items"][0][key] = value
+            response["items"][0][key] = value
             with (
                 self.subTest(key=key),
                 patch(
-                    "tasks.website.pageviews.http.fetch",
+                    "shared.sources.pageviews._request_top_payload",
                     return_value=response,
                 ) as fetch,
                 self.assertRaisesRegex(ValueError, "period"),
@@ -379,7 +368,7 @@ class TestDailyPageviews(TestCase):
             with (
                 self.subTest(changes=changes),
                 patch(
-                    "tasks.website.pageviews.http.fetch",
+                    "shared.sources.pageviews._request_top_payload",
                     return_value=_response(articles=[article]),
                 ),
                 self.assertRaisesRegex(ValueError, "title, rank, or views"),
@@ -398,16 +387,13 @@ class TestDailyPageviews(TestCase):
             {"items": None},
             {"items": [None]},
             {"items": [{}, {}]},
-            _response(articles=[duplicate, duplicate]).json.return_value,
+            _response(articles=[duplicate, duplicate]),
         ):
             with (
                 self.subTest(value=value),
                 patch(
-                    "tasks.website.pageviews.http.fetch",
-                    return_value=Mock(
-                        status_code=200,
-                        json=Mock(return_value=value),
-                    ),
+                    "shared.sources.pageviews._request_top_payload",
+                    return_value=value,
                 ) as fetch,
                 self.assertRaises((TypeError, ValueError)),
             ):

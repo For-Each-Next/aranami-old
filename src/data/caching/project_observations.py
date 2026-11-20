@@ -111,6 +111,7 @@ def category_cache(
                     repr(tuple(ARTICLE_GRADE_CATEGORIES)).encode(),
                 ).hexdigest()
             ),
+            reuse=True,
             max_rows=2_000_000,
             max_bytes=128 * 1024 * 1024,
         ),
@@ -148,6 +149,7 @@ def cache(
                     ensure_ascii=False,
                 ),
             },
+            reuse=True,
             max_rows=1_000_000,
             max_bytes=128 * 1024 * 1024,
         ),

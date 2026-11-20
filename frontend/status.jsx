@@ -632,97 +632,46 @@ export function Routines(context) {
     );
 }
 
+/** Present each service in its own column of the metrics table. */
 export function Runtime(context) {
-    const { runtime, server, t } = context;
+    const { server, t } = context;
     return (
         <div id="server-runtime" class="ui-table">
             <div class="ui-table__table-wrapper">
-                <table class="ui-table__table server-metrics">
+                <table class="ui-table__table server-metrics" data-no-pagination="">
                     <caption class="visually-hidden">{t.server.heading}</caption>
-                    <colgroup>
-                        <col />
-                        <col />
-                    </colgroup>
+                    <colgroup><col /><col /><col /></colgroup>
+                    <thead>
+                        <tr>
+                            <td></td>
+                            <th scope="col">{t.server.hub}</th>
+                            <th scope="col">{t.server.web}</th>
+                        </tr>
+                    </thead>
                     <tbody>
-                        <tr>
-                            <th scope="row">{t.server.hub}</th>
-                            <td>
-                                <span
-                                    id="server-state"
-                                    {...(hasContent(server?.expires)
-                                        ? { "data-schedule-time": "" }
-                                        : {})}
-                                    data-stale-text={attribute(t.server.stale)}
-                                >
-                                    {display(server?.state)}
-                                </span>
-                                {hasContent(server?.time) ? (
-                                    <span class="server-start">
-                                        {display(server?.opening)}
-                                        {display(server?.time_label)}
-                                        {Time({
-                                            ...context,
-                                            time: server?.time,
-                                        })}
-                                        {hasContent(server?.time?.known) ? (
-                                            <>
-                                                {display(server?.separator)}
-                                                {Relative({
-                                                    ...context,
-                                                    relative: server?.time_relative,
-                                                })}
-                                            </>
-                                        ) : null}
-                                        {display(server?.closing)}
-                                    </span>
-                                ) : null}
-                            </td>
-                        </tr>
-                        <tr>
-                            <th scope="row">{t.observability.service_name.web}</th>
-                            <td>
-                                {display(server?.web?.state)}
-                                {server?.web?.observed?.known ? (
-                                    <span class="server-start">
-                                        {display(server.opening)}
-                                        {t.server.observed}
-                                        {Time({ ...context, time: server.web.observed })}
-                                        {display(server.closing)}
-                                    </span>
-                                ) : null}
-                            </td>
-                        </tr>
-                        {(runtime ?? []).map((row, rowIndex) => (
-                            <tr key={rowIndex}>
-                                <th scope="row">{display(row?.label)}</th>
-                                <td
-                                    {...(hasContent(row?.fresh) ? { "data-schedule-time": "" } : {})}
-                                    {...(hasContent(row?.stale)
-                                        ? {
-                                              "data-stale-text": attribute(row?.stale),
-                                          }
-                                        : {})}
-                                >
-                                    {display(row?.value)}
-                                    {hasContent(row?.updated) ? (
-                                        <span class="server-start">
-                                            {display(server?.opening)}
-                                            {display(t.server.updated)}
-                                            {Time({
-                                                ...context,
-                                                row: row,
-                                                time: row?.updated,
-                                            })}
-                                            {display(server?.separator)}
-                                            {Relative({
-                                                ...context,
-                                                row: row,
-                                                relative: row?.relative,
-                                            })}
-                                            {display(server?.closing)}
-                                        </span>
-                                    ) : null}
-                                </td>
+                        {(server?.rows ?? []).map(row => (
+                            <tr key={row.key} data-server-metric={row.key}>
+                                <th scope="row">{row.label}</th>
+                                {row.cells.map((cell, index) => (
+                                    <td key={index}>
+                                        {cell.value && (
+                                            <span id={row.key === "state" && index === 0 ? "server-state" : undefined}
+                                                data-observation-expires={cell.expires ?? undefined}
+                                                data-stale-text={cell.stale ?? undefined}>
+                                                {cell.value}
+                                            </span>
+                                        )}
+                                        {cell.time && (
+                                            <span class={cell.time_label ? "server-start" : undefined}>
+                                                {cell.time_label && <>{server.opening}{cell.time_label}</>}
+                                                {Time({...context, time: cell.time})}
+                                                {cell.time.known && cell.time_relative?.label &&
+                                                    <>{cell.time_label ? server.separator : " "}{Relative({...context, relative: cell.time_relative})}</>}
+                                                {cell.time_label && server.closing}
+                                            </span>
+                                        )}
+                                    </td>
+                                ))}
                             </tr>
                         ))}
                     </tbody>
@@ -733,7 +682,7 @@ export function Runtime(context) {
 }
 
 export function Server(context) {
-    const { server, t } = context;
+    const { t } = context;
     return (
         <section
             data-refresh-interval="1000"
@@ -743,11 +692,6 @@ export function Server(context) {
         >
             <h2 id="server-status-heading">{t.server.heading}</h2>
             {Runtime(context)}
-            <p class="source-updated">
-                {t.server.observed}
-                {Time({ ...context, time: server?.observed })}
-                {Relative({ ...context, relative: server?.relative })}
-            </p>
             <p
                 id="live-server-notice"
                 class="context"

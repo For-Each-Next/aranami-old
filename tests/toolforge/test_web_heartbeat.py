@@ -34,7 +34,7 @@ class WebHeartbeatTests(unittest.IsolatedAsyncioTestCase):
                 async with app.lifespan(app):
                     first = read_status(runtime)["services"]["web"]
                     assert first["lifecycle"] == "running"
-                    assert first["resources"] is None
+                    assert first["resources"]["aranami_version"] == "0.9.21"
                     assert first["schedules"] == {
                         "routines": {},
                         "collections": {},

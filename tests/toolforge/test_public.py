@@ -1328,7 +1328,7 @@ class PublicStartupTests(unittest.TestCase):
             proxy_headers=False,
             access_log=False,
             server_header=False,
-            log_level="warning",
+            log_level="info",
         )
 
     def test_help_and_invalid_ports_do_not_create_apps(self) -> None:
