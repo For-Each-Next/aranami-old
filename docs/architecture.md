@@ -329,7 +329,8 @@ browser behavior, including the common page and attribution layout.
 | `cache/` | Bounded disposable optimization |
 | `dry-run/` | Isolated observations, datasets and proposed edits |
 
-`data.runtime.status` owns the sole saved-status interface. Service lifecycle
+`data.runtime.status` owns the sole saved-status interface. Web writes its
+heartbeat through an independent store, merged with the hub snapshot on read. Service lifecycle
 and heartbeat describe the scheduler and web process; execution records describe
 individual reports and collections; dataset records describe accepted generations
 and coverage; publication records describe destination attempts and confirmed

@@ -40,6 +40,7 @@ process lifetime, including manual jobs.
 | `data/revisions/00/` through `FF/` | Revision text and metadata, sharded by revision ID |
 | `data/webservice/` | Pre-rendered quality-analysis presets for direct HTTP delivery |
 | `state/observability/status.json` | Versioned service, execution, dataset and publication observations |
+| `state/observability/web-status.json` | Independent Web lifecycle and resource heartbeat |
 | `state/` | Completion checkpoints, publication membership and active execution locks |
 | `cache/` | Disposable source and presentation optimizations |
 | `logs/activity/` | Versioned UTC activity segments correlated by service/run/attempt |

@@ -1,8 +1,8 @@
 """Retain independent service, execution, data, and publication facts.
 
-One bounded snapshot is the saved observability contract. It never
-controls publication or data retention. Readers do not create files;
-missing or damaged observations remain explicitly unavailable.
+Readers combine the hub snapshot and independently written Web status.
+These facts never control publication or data retention. Readers create
+no files, and missing or damaged observations remain unavailable.
 """
 
 from __future__ import annotations
@@ -47,6 +47,7 @@ _DELETE_CHARACTER = 127
 _PAGEVIEWS_READY_HOUR = 19
 _HEARTBEAT_MAX_AGE = 90
 MAX_BYTES = 64 * 1024 * 1024
+WEB_STATUS_NAME = "web-status.json"
 _DOMAINS = ("services", "executions", "datasets", "publications")
 _IDENTITY = re.compile(r"[0-9a-f]{32}")
 _LOCK = RLock()
@@ -781,6 +782,10 @@ def update_status(
         for domain, rows in changes.items()
     }
     path = status_path(runtime, dry=dry)
+    if validated.keys() == {"services"} and validated["services"].keys() == {
+        "web",
+    }:
+        path = path.with_name(WEB_STATUS_NAME)
     root = (runtime or Path.cwd()).resolve()
     parent = root
     for part in path.parent.relative_to(root).parts:
@@ -978,6 +983,38 @@ def record_dataset(
     return accepted
 
 
+def _merge_web_status(path: Path, value: dict, availability: str) -> str:
+    """Overlay independent Web status, preserving the legacy fallback.
+
+    Returns:
+        Availability of the combined observations.
+    """
+    try:
+        web_snapshot = _read(path.with_name(WEB_STATUS_NAME))
+    except (
+        OSError,
+        ValueError,
+        TypeError,
+        KeyError,
+        OverflowError,
+        RecursionError,
+    ):
+        web_snapshot = None
+    if web_snapshot is not None:
+        web = web_snapshot["services"].get("web")
+        if web is not None and _newer(
+            "services",
+            value["services"].get("web"),
+            web,
+        ):
+            value["services"]["web"] = web
+            if availability == "missing":
+                availability = "available"
+                for name in ("store_id", "revision", "written_at"):
+                    value[name] = web_snapshot[name]
+    return availability
+
+
 def read_status(runtime: Path, *, as_of: dt.datetime | None = None) -> dict:
     """Read saved status with explicit availability and freshness.
 
@@ -998,8 +1035,9 @@ def read_status(runtime: Path, *, as_of: dt.datetime | None = None) -> dict:
         raise ValueError(message)
     now = now.astimezone(dt.UTC)
     availability = "available"
+    path = status_path(runtime)
     try:
-        value = _read(status_path(runtime))
+        value = _read(path)
     except FileNotFoundError:
         availability = "missing"
     except OSError:
@@ -1014,6 +1052,7 @@ def read_status(runtime: Path, *, as_of: dt.datetime | None = None) -> dict:
             "written_at": None,
             **{domain: {} for domain in _DOMAINS},
         }
+    availability = _merge_web_status(path, value, availability)
     for row in value["services"].values():
         age = (now - _instant(row["heartbeat_at"])).total_seconds()
         row["freshness"] = (

@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from starlette.testclient import TestClient
 
-from data.runtime.status import read_status
+from data.runtime.status import WEB_STATUS_NAME, read_status, status_path
 from webservice.server import create_app
 
 
@@ -34,6 +34,9 @@ class WebHeartbeatTests(unittest.IsolatedAsyncioTestCase):
                 async with app.lifespan(app):
                     first = read_status(runtime)["services"]["web"]
                     assert first["lifecycle"] == "running"
+                    hub_status = status_path(runtime)
+                    assert not hub_status.exists()
+                    assert hub_status.with_name(WEB_STATUS_NAME).is_file()
                     assert first["resources"]["aranami_version"] == "0.9.21"
                     assert first["schedules"] == {
                         "routines": {},

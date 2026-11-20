@@ -13,7 +13,8 @@ collection and storage reads, and corrected stale dashboard observations.
 - Kept fixed overview tables unpaginated and retained paging for article lists.
 - Added explicit filter confirmation and progress feedback, and rendered
   distribution and annual figures in the browser from the saved catalog.
-- Displayed Hub and Web metrics side by side and enabled Toolforge job logs.
+- Displayed independent Hub and Web heartbeats side by side and enabled
+  Toolforge job logs.
 - Reused validated snapshot generations and Pageviews top lists, and separated
   scheduled website refreshes from report dispatch.
 - Refreshed contributor activity across both authorship views and recovered

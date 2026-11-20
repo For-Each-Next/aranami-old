@@ -52,7 +52,7 @@ from data.runtime.log_store import (
 )
 from data.runtime.logs import open_run_log
 from data.runtime.server_samples import read_live_status as read_status
-from data.runtime.status import get_boot_id, save_status
+from data.runtime.status import WEB_STATUS_NAME, get_boot_id, save_status
 from data.website import read_snapshot, validate_dashboard_snapshot
 from shared.config import routine_configuration
 from shared.deployment import project_version, resource_root
@@ -1329,6 +1329,7 @@ class _PublicViews:
                 "state",
                 "state/observability",
                 "state/observability/status.json",
+                f"state/observability/{WEB_STATUS_NAME}",
             )
         ]
         return _saved_identities(paths)
@@ -1852,6 +1853,7 @@ class _PublicViews:
             for name in (
                 "state/observability",
                 "state/observability/status.json",
+                f"state/observability/{WEB_STATUS_NAME}",
                 "state/observability/server-sample.json",
                 "state/observability/dataset-updates.json",
             )
