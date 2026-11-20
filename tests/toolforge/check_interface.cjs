@@ -2463,10 +2463,17 @@ async function checkInterface(assetRoot) {
                     const returned = wait('Page.loadEventFired', sessionId);
                     await evaluate(`document.getElementById(${JSON.stringify(detail)}).querySelector('noscript a').click()`);
                     await returned;
-                    await bounded((async () => {
-                        while (!await evaluate("Boolean(document.querySelector('[data-quality-analysis]'))"))
-                            await new Promise(resolve => setTimeout(resolve, 30));
-                    })(), 'native detail dismissal');
+                    const deadline = Date.now() + 5000;
+                    let articlePage = false;
+                    while (!articlePage && Date.now() < deadline) {
+                        try {
+                            articlePage = await evaluate("Boolean(document.querySelector('[data-quality-analysis]'))");
+                        } catch (error) {
+                            if (!/target navigated|execution context/i.test(error.message)) throw error;
+                        }
+                        if (!articlePage) await new Promise(resolve => setTimeout(resolve, 30));
+                    }
+                    assert.ok(articlePage, 'native detail dismissal must return to the article page');
                 }
                 if (surface === "newsletter") {
                     await checkNewsletterControlHeights();
