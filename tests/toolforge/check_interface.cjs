@@ -1570,7 +1570,7 @@ async function checkInterface(assetRoot) {
                             const host = document.querySelector('[data-quality-analysis]'), form = document.querySelector('[data-quality-matrix]');
                             const original = window.fetch; let requests = 0;
                             window.fetch = (...args) => {
-                                if (new URL(args[0], location.href).pathname !== '/quality-analysis/charts/') requests++;
+                                if (new URL(args[0], location.href).pathname.startsWith('/quality-analysis/resources/')) requests++;
                                 return original(...args);
                             };
                             const ready = async () => {
@@ -1687,6 +1687,7 @@ async function checkInterface(assetRoot) {
                             const defaultGrades = form.qualityMetadata.grades.filter(item => item.checked).map(item => item.value);
                             for (const input of form.querySelectorAll('[data-matrix-cell]')) input.checked = defaultGrades.includes(input.dataset.grade);
                             form.querySelector('[data-matrix-cell]').dispatchEvent(new Event('change'));
+                            await ready();
                             window.fetch = original;
                             return {attribution:Boolean(attribution),expanded,ranged,exact,pagination,rowParity,freshRows,shortHeaders,compactUnits,chartPagination,chartSorting,chartSortReset,roles:exactRoles && secondaryNotMain && secondarySignificant && primaryMatches && boundaryIncluded,totalsOnly,yearSelection,quantileStates,emptySelection,requests};
                         })()`, 60000);
