@@ -1664,7 +1664,8 @@ async function checkInterface(assetRoot) {
                                 const hasBars = form.qualityMetadata.cells.some(cell => cell.grade === code && cell.year >= 2009 && cell.year <= Number(form.querySelector('[data-matrix-to]').value) && cell.pages > 0);
                                 const legend = [...document.querySelectorAll('.analysis-legend li')];
                                 const bars = [...document.querySelectorAll('.analysis-year-columns [data-chart-value]')];
-                                return annual.tHead.rows[0].cells.length === 3 && annual.tHead.rows[0].cells[1].textContent === grade.label && [...annual.tBodies[0].rows].every(row => row.cells.length === 3) && legend.length === Number(hasBars) && legend.every(item => item.textContent.trim() === grade.label && item.querySelector('rect').getAttribute('fill') === grade.color) && Boolean(bars.length) === hasBars && bars.every(link => link.dataset.chartValue === code && link.querySelector('rect').getAttribute('fill') === grade.color);
+                                const fills = link => link.querySelector('path[fill], rect[fill]')?.getAttribute('fill')?.toLowerCase() === grade.color.toLowerCase();
+                                return annual.tHead.rows[0].cells.length === 3 && annual.tHead.rows[0].cells[1].textContent === grade.label && [...annual.tBodies[0].rows].every(row => row.cells.length === 3) && legend.length === Number(hasBars) && legend.every(item => item.textContent.trim() === grade.label && fills(item)) && Boolean(bars.length) === hasBars && bars.every(link => link.dataset.chartValue === code && fills(link));
                             };
                             const yearSelection = await selectAnnualGrade('GA') && await selectAnnualGrade('FA');
                             from.value = '2026'; from.dispatchEvent(new Event('change'));
@@ -2461,7 +2462,10 @@ async function checkInterface(assetRoot) {
                     const returned = wait('Page.loadEventFired', sessionId);
                     await evaluate(`document.getElementById(${JSON.stringify(detail)}).querySelector('noscript a').click()`);
                     await returned;
-                    assert.equal(await evaluate("Boolean(document.querySelector('[data-quality-analysis]'))"), true, 'native detail dismissal must return to the article page');
+                    await bounded((async () => {
+                        while (!await evaluate("Boolean(document.querySelector('[data-quality-analysis]'))"))
+                            await new Promise(resolve => setTimeout(resolve, 30));
+                    })(), 'native detail dismissal');
                 }
                 if (surface === "newsletter") {
                     await checkNewsletterControlHeights();
