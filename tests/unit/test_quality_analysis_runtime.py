@@ -293,6 +293,15 @@ class AuthorWorkerTests(TestCase):
         assert command[command.index("--task") + 1] == "quality-authorship"
         assert command[command.index("--max-pages") + 1] == "120"
         assert command[command.index("--time-budget") + 1] == "360"
+        with patch.object(worker, "_collect") as collect:
+            worker.main(command[command.index("--collect") :])
+        collect.assert_called_once_with(
+            Path.cwd(),
+            worker.get_boot_id(),
+            120,
+            360,
+            "quality-authorship",
+        )
         child.wait.assert_called_once_with(timeout=480)
         execution.assert_called_once_with(
             "quality-authorship",

@@ -17,8 +17,10 @@ collection and storage reads, and corrected stale dashboard observations.
   Toolforge job logs.
 - Reused validated snapshot generations and Pageviews top lists, and separated
   scheduled website refreshes from report dispatch.
-- Refreshed contributor activity across both authorship views and recovered
-  first news-appearance dates from revision history and retained notices.
+- Accepted the scheduled authorship pass's full time budget and refreshed
+  contributor activity across both authorship views.
+- Recovered first news-appearance dates from revision history and retained
+  notices.
 
 ### 0.9.20 (2026-11-20 14:38 UTC)
 

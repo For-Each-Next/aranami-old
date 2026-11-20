@@ -463,9 +463,14 @@ def main(argv: Sequence[str] | None = None) -> None:
     args = parser.parse_args(argv)
     if not args.collect:
         parser.error("--collect is required to run the background worker")
+    maximum_budget = (
+        _AUTHOR_TIME_BUDGET
+        if args.task == _AUTHOR_TASK_ID
+        else _MAX_BOOTSTRAP_SECONDS
+    )
     if (
         not 1 <= args.max_pages <= _MAX_BOOTSTRAP_PAGES
-        or not 0 < args.time_budget <= _MAX_BOOTSTRAP_SECONDS
+        or not 0 < args.time_budget <= maximum_budget
         or (
             args.owner_boot is not None
             and re.fullmatch(r"[0-9a-f]{32}", args.owner_boot) is None
