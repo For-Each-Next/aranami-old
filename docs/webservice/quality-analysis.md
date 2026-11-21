@@ -49,13 +49,11 @@ restores newest-listing-first order. Annual
 segments select both year and grade, independently of directory filters. No
 source requests occur. The annual data table labels and bolds its total column.
 Coverage dialogs list articles whose attribution is still missing, with article
-links so those cases can be inspected.
+links and the newest assessment dates first.
 
-Listing dates link to an explicit retained article oldid when available. Missing
-oldids are resolved from the listing date through Wiki Replica revision
-metadata. A separately retained review link appears beside the date. A date
-without verified revision metadata remains unlinked until acquisition resolves
-it; a talk revision is never substituted as an article oldid.
+Listing dates link to the saved review when available. Other dates appear as
+text. Saved article revision IDs still define attribution and measurement
+boundaries.
 
 ## Prose units and attribution
 
@@ -163,7 +161,9 @@ saved reviewed-grade events, preserving their end-of-listing-day cutoffs.
 
 The authorship pass admits up to eighty history candidates within its overall
 240-second budget, allowing approximately ninety seconds for talk history and
-up to forty article attempts afterward. Existing successful evidence is skipped.
+up to forty article attempts afterward. First attempts start with the most
+recent known assessments. Failed attempts rotate by time since last attempt.
+Existing successful evidence is skipped.
 A completed history batch processes at most fifty selected revision bodies at a
 time. Native Polars pools default to two threads unless explicitly configured.
 Rendered HTML is bounded to eight MiB per entry and cached by saved generation,
@@ -177,10 +177,15 @@ encode only the requested rows. Page sizes are 20, 50 and 100. Chart and
 coverage dialogs request their own pages when opened. The browser retains
 up to three recently requested pages for the current document.
 
-Contributor summaries link to separately prepared detail pages. JavaScript
-opens the selected detail in a dialog and initializes only that table. Native
-links still open a readable detail page without JavaScript. Detail rows follow
-the current matrix selection when opened in the enhanced page.
+Contributor summaries link to separately prepared detail pages. Their article
+tables show grade, importance, listing date, prose count and page size. The
+info icon next to each title opens its significant-contributor details.
+The author directory totals saved prose and size measurements from each
+author's significant contributions in the selected cohort. The prose total
+opens the corresponding articles with the author's counts for each one.
+JavaScript opens the selected detail in a dialog and initializes only that
+table. Native links open a readable detail page without JavaScript. Detail rows
+follow the current matrix selection when opened in the enhanced page.
 
 Metadata, directory and detail URLs include their content digest and preset identity.
 Only matching saved resources receive immutable browser caching and ETags;

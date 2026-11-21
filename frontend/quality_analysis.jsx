@@ -1,9 +1,18 @@
 /** Render saved assessments, charts and contributor directories. */
 import { jsx, iconHref, attribute, display, format, hasContent, OptionalLink } from "./rendering.js";
 import { Fragment } from "@vue/runtime-dom";
-import { popup, table_labels, article_table } from "./shared.jsx";
+import { popup, table_labels } from "./shared.jsx";
 
 const pageSizes = [10, 20, 50, 100];
+
+function PageNumber({ t }) {
+    const [prefix, suffix] = t.quality_analysis.page_number.split("{page}");
+    return (
+        <label class="quality-page-number">
+            {prefix}<input class="cdx-text-input__input" type="number" inputmode="numeric" min="1" max="1" value="1" aria-label={t.quality_analysis.go_to_page} />{suffix}
+        </label>
+    );
+}
 
 export function DistributionPanel(context, rows, dimension, caption) {
     const { quality_analysis, t } = context;
@@ -434,14 +443,17 @@ function QualityOverview(context) {
                                     </select>
                                 </label>
                                 <span
-                                    class="ui-table-pager__center"
+                                    class="ui-table-pager__center visually-hidden" role="status"
                                     data-coverage-page-status={""}
                                     data-template={attribute(t.reports.page_status)}
                                 ></span>
                                 <div class="ui-table-pager__end">
-                                    {[["first", t.backlog.first], ["previous", t.backlog.previous],
-                                      ["next", t.backlog.next], ["last", t.backlog.last]].map(([key, label]) => (
-                                        <button key={key} type="button" class="ui-button" data-coverage-page={key}>{label}</button>
+                                    {[["first", t.reports.first], ["previous", t.backlog.previous],
+                                      ["next", t.backlog.next], ["last", t.reports.last]].map(([key, label]) => (
+                                        <Fragment key={key}>
+                                            <button type="button" class="ui-button" data-coverage-page={key}>{label}</button>
+                                            {key === "previous" ? <PageNumber t={t} /> : null}
+                                        </Fragment>
                                     ))}
                                 </div>
                             </nav>
@@ -628,8 +640,255 @@ function DirectoryFilters({ quality_analysis, t }) {
     );
 }
 
+function ArticleHeaders(context, title, showContributors = true, contribution = false) {
+    const { t } = context;
+    return (
+        <>
+            <caption class="visually-hidden">{display(title)}</caption>
+            <colgroup>
+                <col class="quality-column-ordinal" />
+                <col class="quality-column-title" />
+                <col class="quality-column-grade" />
+                <col class="quality-column-importance" />
+                <col class="quality-column-listed" />
+                {showContributors ? <col class="quality-column-authors" /> : null}
+                <col class="quality-column-prose" />
+                <col class="quality-column-size" />
+            </colgroup>
+            <thead>
+                <tr>
+                    <th scope="col">{"#"}</th>
+                    <th scope="col">{display(t.quality_authorship.article)}</th>
+                    <th scope="col" data-sort-type="number">{display(t.quality_authorship.grade)}</th>
+                    <th scope="col" data-sort-type="number">{display(t.quality_analysis.importance)}</th>
+                    <th scope="col">{display(t.quality_authorship.listed)}</th>
+                    {showContributors ? <th scope="col">{display(t.quality_analysis.contributors)}</th> : null}
+                    <th scope="col" data-sort-type="number">
+                        {display(contribution ? t.quality_authorship.contributed_prose : t.quality_analysis.prose)}
+                    </th>
+                    <th scope="col" data-sort-type="number">
+                        {display(contribution ? t.quality_authorship.contributed_size : t.quality_analysis.source_size)}
+                    </th>
+                </tr>
+            </thead>
+        </>
+    );
+}
+
+function AuthorshipInfo(context, article) {
+    const { authorship_popup_id: id, authorship_popup_title: title } = article;
+    if (!id) return null;
+    return (
+        <>
+            {" "}
+            <a
+                class="analysis-authorship-info"
+                href={"#" + id}
+                aria-controls={id}
+                aria-haspopup="dialog"
+                title={attribute(title)}
+                aria-label={attribute(title)}
+            >
+                <svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                    <use href={iconHref(context, "message-notice")}></use>
+                </svg>
+            </a>
+        </>
+    );
+}
+
+function AssessmentLabel({ color, label }) {
+    return (
+        <span class="analysis-assessment-label">
+            <svg viewBox="0 0 12 12" width="12" height="12" class="analysis-swatch" aria-hidden="true">
+                <rect width="12" height="12" fill={attribute(color)} />
+            </svg>
+            {display(label)}
+        </span>
+    );
+}
+
+function ArticleCells(context, article, number, showContributors = true) {
+    const { quality_analysis, quality_authorship, t } = context;
+    const { authorship, contributors, listed_date, prose_characters, source_bytes } = article;
+    return (
+        <>
+            <td class="analysis-number">{number}</td>
+            <td data-sort={attribute(article.title_label)}>
+                <a href={attribute(article.url)}>{display(article.title_label)}</a>
+                {showContributors ? null : AuthorshipInfo(context, article)}
+                {" "}
+                <span class="analysis-talk">
+                    {display(quality_authorship?.parenthesis_open)}
+                    <a href={attribute(article.talk_url)}>{display(t.quality_authorship.talk)}</a>
+                    {display(quality_authorship?.parenthesis_close)}
+                </span>
+            </td>
+            <td data-sort={attribute(article.grade_order)}>
+                <AssessmentLabel color={article.grade_color} label={article.grade_label} />
+            </td>
+            <td data-sort={attribute(article.importance_order)}>
+                <AssessmentLabel color={article.importance_color} label={article.importance_label} />
+            </td>
+            <td data-sort={attribute(listed_date || "")}>
+                {listed_date ? (
+                    <OptionalLink
+                        href={attribute(article.review_url)}
+                        title={attribute(t.quality_analysis.review)}
+                    >
+                        <time datetime={attribute(listed_date)}>{display(article.date_label)}</time>
+                    </OptionalLink>
+                ) : (
+                    <span class="context">{display(t.quality_analysis.unknown_listing)}</span>
+                )}
+            </td>
+            {showContributors ? (
+                <td data-sort={attribute(contributors.map(author => author.label).join(", "))}>
+                    {contributors.length ? contributors.map((author, index) => (
+                        <Fragment key={index}>
+                            {index ? "、" : null}
+                            {author.url ? (
+                                <a href={attribute(author.url)}>{display(author.label)}</a>
+                            ) : (
+                                <span>{display(author.label)}</span>
+                            )}
+                        </Fragment>
+                    )) : (
+                        <span class="context">
+                            {display(authorship.available ? t.quality_analysis.no_main_contributors : t.quality_analysis.main_unavailable)}
+                        </span>
+                    )}
+                    {AuthorshipInfo(context, article)}
+                </td>
+            ) : null}
+            <td data-sort={attribute(prose_characters ?? "")} class="analysis-number">
+                {display(article.characters_label)}
+                {prose_characters != null ? (
+                    <>
+                        {quality_analysis.locale === "en" ? " " : null}
+                        <small>{display(t.quality_analysis.words)}</small>
+                    </>
+                ) : null}
+            </td>
+            <td data-sort={attribute(source_bytes ?? "")} class="analysis-number">
+                {display(article.source_label)}
+                {source_bytes != null ? <>{" "}<small>{"kB"}</small></> : null}
+            </td>
+        </>
+    );
+}
+
+function ArticleAuthorshipDialog(context, article, returnTo) {
+    const { t } = context;
+    const { authorship, authorship_popup_id: id, authorship_popup_title: title } = article;
+    if (!id) return null;
+    return popup(
+        context,
+        <>
+            <p>{display(t.quality_analysis.authorship_note)}</p>
+            {authorship.available ? (
+                <>
+                    <p class="analysis-authorship-evidence">
+                        {authorship.range_end ? (
+                            <>
+                                {display(t.quality_analysis.until)}
+                                <a href={attribute(authorship.range_end.url)}>
+                                    {display(authorship.range_end.date || t.data.unknown)}
+                                </a>
+                            </>
+                        ) : null}
+                        {authorship.visualization_url ? (
+                            <>
+                                {" · "}
+                                <a href={attribute(authorship.visualization_url)}>
+                                    {display(t.quality_analysis.visualization)}
+                                </a>
+                            </>
+                        ) : null}
+                    </p>
+                    <div class="table-scroll" tabindex="0" role="region" aria-label={attribute(title)}>
+                        <table class="analysis-editor-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col">{"#"}</th>
+                                    <th scope="col">{display(t.quality_authorship.user)}</th>
+                                    <th scope="col" title={attribute(t.quality_analysis.editor_characters_hint)}>
+                                        {display(t.quality_analysis.editor_characters)}
+                                    </th>
+                                    <th scope="col" title={attribute(t.quality_analysis.editor_bytes_hint)}>
+                                        {display(t.quality_analysis.editor_bytes)}
+                                    </th>
+                                    <th scope="col">{display(t.quality_analysis.editor_share)}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {authorship.editors.length ? authorship.editors.map((editor, index) => (
+                                    <tr key={index}>
+                                        <td class="analysis-number">{index + 1}</td>
+                                        <th scope="row">
+                                            <OptionalLink href={attribute(editor.url)}>{display(editor.name)}</OptionalLink>
+                                        </th>
+                                        <td class="analysis-number">{display(editor.characters_label)}</td>
+                                        <td class="analysis-number" title={editor.bytes_title ?? undefined}>{display(editor.bytes_label)}</td>
+                                        <td class="analysis-number">{display(editor.share_label)}</td>
+                                    </tr>
+                                )) : (
+                                    <tr><td colspan="5">{display(t.quality_analysis.no_top_editors)}</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </>
+            ) : (
+                <p class="notice">{display(t.quality_analysis.authorship_unavailable)}</p>
+            )}
+        </>,
+        id,
+        title,
+        returnTo,
+        "analysis-authorship-dialog",
+    );
+}
+
+function AuthorStatistics(context, articles, id, title, contribution = false) {
+    return popup(
+        context,
+        <>
+            <div class="quality-authorship-table" {...table_labels(context)} data-default-sort="column4">
+                <div class="ui-table">
+                    <div class="ui-table__table-wrapper table-scroll" tabindex="0" role="region" aria-label={attribute(title)}>
+                        <table class="ui-table__table quality-data-table quality-article-directory quality-author-article-directory">
+                            {ArticleHeaders(context, title, false, contribution)}
+                            <tbody>
+                                {articles.map((article, index) => (
+                                    <tr
+                                        key={article.page_id}
+                                        data-matrix-page={attribute(article.page_id)}
+                                        data-matrix-grade={attribute(article.grade)}
+                                        data-matrix-importance={attribute(article.importance)}
+                                        data-matrix-year={attribute(article.listed_date?.slice(0, 4) || "")}
+                                        {...(article.default_selected ? {} : { hidden: true, "data-cohort": "0" })}
+                                    >
+                                        {ArticleCells(context, article, article.display_number ?? index + 1, false)}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {articles.map(article => (
+                <Fragment key={article.page_id}>{ArticleAuthorshipDialog(context, article, "#" + id)}</Fragment>
+            ))}
+        </>,
+        id,
+        title,
+        "#quality-authors",
+    );
+}
+
 function ArticleDirectory(context) {
-    const { t, quality_analysis, quality_authorship } = context;
+    const { t, quality_analysis } = context;
     return (
         <section id="analysis-articles" aria-labelledby="analysis-articles-heading">
             <h2 id="analysis-articles-heading">{t.quality_analysis.articles}</h2>
@@ -653,41 +912,7 @@ function ArticleDirectory(context) {
                                 aria-label={attribute(t.quality_analysis.articles)}
                             >
                                 <table class="ui-table__table quality-data-table quality-article-directory">
-                                    <caption class="visually-hidden">
-                                        {display(t.quality_analysis.articles)}
-                                    </caption>
-                                    <colgroup>
-                                        <col class="quality-column-ordinal" />
-                                        <col class="quality-column-title" />
-                                        <col class="quality-column-grade" />
-                                        <col class="quality-column-importance" />
-                                        <col class="quality-column-listed" />
-                                        <col class="quality-column-authors" />
-                                        <col class="quality-column-prose" />
-                                        <col class="quality-column-size" />
-                                    </colgroup>
-                                    <thead>
-                                        <tr>
-                                            <th scope="col">{"#"}</th>
-                                            <th scope="col">{display(t.quality_authorship.article)}</th>
-                                            <th scope="col" data-sort-type="number">
-                                                {display(t.quality_authorship.grade)}
-                                            </th>
-                                            <th scope="col" data-sort-type="number">
-                                                {display(t.quality_analysis.importance)}
-                                            </th>
-                                            <th scope="col">{display(t.quality_authorship.listed)}</th>
-                                            <th scope="col">
-                                                {display(t.quality_analysis.contributors)}
-                                            </th>
-                                            <th scope="col" data-sort-type="number">
-                                                {display(t.quality_analysis.prose)}
-                                            </th>
-                                            <th scope="col" data-sort-type="number">
-                                                {display(t.quality_analysis.source_size)}
-                                            </th>
-                                        </tr>
-                                    </thead>
+                                    {ArticleHeaders(context, t.quality_analysis.articles)}
                                     <tbody>
                                         {(quality_analysis?.articles ?? []).map(
                                             (article, articleIndex) => (
@@ -732,232 +957,7 @@ function ArticleDirectory(context) {
                                                         !(article?.prose_characters == null) ? 1 : 0,
                                                     )}
                                                 >
-                                                    <td class="analysis-number">
-                                                        {display(articleIndex + 1)}
-                                                    </td>
-                                                    <td data-sort={attribute(article?.title_label)}>
-                                                        <a href={attribute(article?.url)}>
-                                                            {display(article?.title_label)}
-                                                        </a>{" "}
-                                                        <span class="analysis-talk">
-                                                            {display(
-                                                                quality_authorship?.parenthesis_open,
-                                                            )}
-                                                            <a href={attribute(article?.talk_url)}>
-                                                                {display(t.quality_authorship.talk)}
-                                                            </a>
-                                                            {display(
-                                                                quality_authorship?.parenthesis_close,
-                                                            )}
-                                                        </span>
-                                                    </td>
-                                                    <td data-sort={attribute(article?.grade_order)}>
-                                                        <span class="analysis-assessment-label">
-                                                            <svg
-                                                                viewBox="0 0 12 12"
-                                                                width="12"
-                                                                height="12"
-                                                                class="analysis-swatch"
-                                                                aria-hidden="true"
-                                                            >
-                                                                <rect
-                                                                    width="12"
-                                                                    height="12"
-                                                                    fill={attribute(
-                                                                        article?.grade_color,
-                                                                    )}
-                                                                />
-                                                            </svg>
-                                                            {display(article?.grade_label)}
-                                                        </span>
-                                                    </td>
-                                                    <td data-sort={attribute(article?.importance_order)}>
-                                                        <span class="analysis-assessment-label">
-                                                            <svg
-                                                                viewBox="0 0 12 12"
-                                                                width="12"
-                                                                height="12"
-                                                                class="analysis-swatch"
-                                                                aria-hidden="true"
-                                                            >
-                                                                <rect
-                                                                    width="12"
-                                                                    height="12"
-                                                                    fill={attribute(
-                                                                        article?.importance_color,
-                                                                    )}
-                                                                />
-                                                            </svg>
-                                                            {display(article?.importance_label)}
-                                                        </span>
-                                                    </td>
-                                                    <td
-                                                        data-sort={attribute(article?.listed_date || "")}
-                                                    >
-                                                        {hasContent(article?.listed_date) ? (
-                                                            <OptionalLink
-                                                                href={attribute(article?.listing_url)}
-                                                                title={attribute(
-                                                                    t.quality_analysis.listing_evidence,
-                                                                )}
-                                                            >
-                                                                <time
-                                                                    datetime={attribute(
-                                                                        article?.listed_date,
-                                                                    )}
-                                                                >
-                                                                    {display(article?.date_label)}
-                                                                </time>
-                                                            </OptionalLink>
-                                                        ) : (
-                                                            <span class="context">
-                                                                {display(
-                                                                    t.quality_analysis.unknown_listing,
-                                                                )}
-                                                            </span>
-                                                        )}
-                                                        {hasContent(article?.review_url) ? (
-                                                            <>
-                                                                {" "}
-                                                                <span class="analysis-review">
-                                                                    {display(
-                                                                        quality_authorship?.parenthesis_open,
-                                                                    )}
-                                                                    <a
-                                                                        href={attribute(
-                                                                            article?.review_url,
-                                                                        )}
-                                                                    >
-                                                                        {display(
-                                                                            t.quality_analysis.review,
-                                                                        )}
-                                                                    </a>
-                                                                    {display(
-                                                                        quality_authorship?.parenthesis_close,
-                                                                    )}
-                                                                </span>
-                                                            </>
-                                                        ) : null}
-                                                    </td>
-                                                    <td
-                                                        data-sort={attribute(
-                                                            (article?.contributors ?? [])
-                                                                .map((item) => item["label"])
-                                                                .join(", "),
-                                                        )}
-                                                    >
-                                                        {(article?.contributors ?? []).length ? (
-                                                            (article?.contributors ?? []).map(
-                                                                (author, authorIndex) => (
-                                                                    <Fragment key={authorIndex}>
-                                                                        {!hasContent(authorIndex === 0)
-                                                                            ? "、"
-                                                                            : null}
-                                                                        {hasContent(author?.url) ? (
-                                                                            <a
-                                                                                href={attribute(
-                                                                                    author?.url,
-                                                                                )}
-                                                                            >
-                                                                                {display(author?.label)}
-                                                                            </a>
-                                                                        ) : (
-                                                                            <span>
-                                                                                {display(author?.label)}
-                                                                            </span>
-                                                                        )}
-                                                                    </Fragment>
-                                                                ),
-                                                            )
-                                                        ) : (
-                                                            <span class="context">
-                                                                {display(
-                                                                    hasContent(
-                                                                        article?.authorship?.available,
-                                                                    )
-                                                                        ? t.quality_analysis
-                                                                              .no_main_contributors
-                                                                        : t.quality_analysis
-                                                                              .main_unavailable,
-                                                                )}
-                                                            </span>
-                                                        )}
-                                                        {hasContent(article?.authorship_popup_id) ? (
-                                                            <>
-                                                                {" "}
-                                                                <a
-                                                                    class="analysis-authorship-info"
-                                                                    href={
-                                                                        "#" +
-                                                                        attribute(
-                                                                            article?.authorship_popup_id,
-                                                                        )
-                                                                    }
-                                                                    aria-controls={attribute(
-                                                                        article?.authorship_popup_id,
-                                                                    )}
-                                                                    aria-haspopup="dialog"
-                                                                    title={attribute(
-                                                                        article?.authorship_popup_title,
-                                                                    )}
-                                                                    aria-label={attribute(
-                                                                        article?.authorship_popup_title,
-                                                                    )}
-                                                                >
-                                                                    <svg
-                                                                        width="16"
-                                                                        height="16"
-                                                                        viewBox="0 0 20 20"
-                                                                        aria-hidden="true"
-                                                                        focusable="false"
-                                                                    >
-                                                                        <use
-                                                                            href={iconHref(
-                                                                                context,
-                                                                                "message-notice",
-                                                                            )}
-                                                                        ></use>
-                                                                    </svg>
-                                                                </a>
-                                                            </>
-                                                        ) : null}
-                                                    </td>
-                                                    <td
-                                                        data-sort={attribute(
-                                                            !(article?.prose_characters == null)
-                                                                ? article?.prose_characters
-                                                                : "",
-                                                        )}
-                                                        class="analysis-number"
-                                                    >
-                                                        {display(article?.characters_label)}
-                                                        {!(article?.prose_characters == null) ? (
-                                                            <>
-                                                                {quality_analysis?.locale === "en"
-                                                                    ? " "
-                                                                    : null}
-                                                                <small>
-                                                                    {display(t.quality_analysis.words)}
-                                                                </small>
-                                                            </>
-                                                        ) : null}
-                                                    </td>
-                                                    <td
-                                                        data-sort={attribute(
-                                                            !(article?.source_bytes == null)
-                                                                ? article?.source_bytes
-                                                                : "",
-                                                        )}
-                                                        class="analysis-number"
-                                                    >
-                                                        {display(article?.source_label)}
-                                                        {!(article?.source_bytes == null) ? (
-                                                            <>
-                                                                {" "}
-                                                                <small>{"kB"}</small>
-                                                            </>
-                                                        ) : null}
-                                                    </td>
+                                                    {ArticleCells(context, article, articleIndex + 1)}
                                                 </tr>
                                             ),
                                         )}
@@ -982,7 +982,7 @@ function ArticleDirectory(context) {
                                     {!quality_analysis.directory_url && <option value="all">{display(t.quality_analysis.all_rows)}</option>}
                                 </select>
                             </label>
-                            <span class="ui-table-pager__center" data-analysis-page-status={""}></span>
+                            <span class="ui-table-pager__center visually-hidden" role="status" data-analysis-page-status={""}></span>
                             <div class="ui-table-pager__end">
                                 <button type="button" class="ui-button" data-analysis-first={""}>
                                     {t.reports.first}
@@ -990,6 +990,7 @@ function ArticleDirectory(context) {
                                 <button type="button" class="ui-button" data-analysis-prev={""}>
                                     {t.backlog.previous}
                                 </button>
+                                    <PageNumber t={t} />
                                 <button type="button" class="ui-button" data-analysis-next={""}>
                                     {t.backlog.next}
                                 </button>
@@ -1013,24 +1014,7 @@ function ArticleDirectory(context) {
                                 aria-label={attribute(t.quality_analysis.articles)}
                             >
                                 <table class="analysis-chart-article-table quality-data-table quality-chart-articles">
-                                    <colgroup>
-                                        <col class="quality-column-ordinal" />
-                                        <col class="quality-column-title" />
-                                        <col class="quality-column-grade" />
-                                        <col class="quality-column-importance" />
-                                        <col class="quality-column-listed" />
-                                        <col class="quality-column-prose" />
-                                    </colgroup>
-                                    <thead>
-                                        <tr>
-                                            <th scope="col">{"#"}</th>
-                                            <th scope="col">{display(t.quality_authorship.article)}</th>
-                                            <th scope="col">{display(t.quality_authorship.grade)}</th>
-                                            <th scope="col">{display(t.quality_analysis.importance)}</th>
-                                            <th scope="col">{display(t.quality_authorship.listed)}</th>
-                                            <th scope="col">{display(t.quality_analysis.prose)}</th>
-                                        </tr>
-                                    </thead>
+                                    {ArticleHeaders(context, t.quality_analysis.articles, false)}
                                     <tbody data-chart-article-rows={""}></tbody>
                                 </table>
                             </div>
@@ -1046,7 +1030,7 @@ function ArticleDirectory(context) {
                                         {pageSizes.map(count => <option key={count} value={count}>{count}</option>)}
                                     </select>
                                 </label>
-                                <span class="ui-table-pager__center" data-chart-page-status={""}></span>
+                                <span class="ui-table-pager__center visually-hidden" role="status" data-chart-page-status={""}></span>
                                 <div class="ui-table-pager__end">
                                     <button type="button" class="ui-button" data-chart-first={""}>
                                         {t.reports.first}
@@ -1054,6 +1038,7 @@ function ArticleDirectory(context) {
                                     <button type="button" class="ui-button" data-chart-prev={""}>
                                         {t.backlog.previous}
                                     </button>
+                                    <PageNumber t={t} />
                                     <button type="button" class="ui-button" data-chart-next={""}>
                                         {t.backlog.next}
                                     </button>
@@ -1067,143 +1052,9 @@ function ArticleDirectory(context) {
                         t.quality_analysis.articles,
                         "#analysis-overview",
                     )}
-                    {(quality_analysis?.articles ?? []).map((article, articleIndex) => (
-                        <Fragment key={articleIndex}>
-                            {hasContent(article?.authorship_popup_id)
-                                ? popup(
-                                      context,
-                                      <>
-                                          <p>{display(t.quality_analysis.authorship_note)}</p>
-                                          {!hasContent(article?.authorship?.available) ? (
-                                              <p class="notice">
-                                                  {display(t.quality_analysis.authorship_unavailable)}
-                                              </p>
-                                          ) : (
-                                              <>
-                                                  <p class="analysis-authorship-evidence">
-                                                      {hasContent(article?.authorship?.range_end) ? (
-                                                          <>
-                                                              {display(t.quality_analysis.until)}
-                                                              <a
-                                                                  href={attribute(
-                                                                      article?.authorship?.range_end
-                                                                          ?.url,
-                                                                  )}
-                                                              >
-                                                                  {display(
-                                                                      article?.authorship?.range_end
-                                                                          ?.date || t.data.unknown,
-                                                                  )}
-                                                              </a>
-                                                          </>
-                                                      ) : null}
-                                                      {hasContent(
-                                                          article?.authorship?.visualization_url,
-                                                      ) ? (
-                                                          <>
-                                                              {" · "}
-                                                              <a
-                                                                  href={attribute(
-                                                                      article?.authorship
-                                                                          ?.visualization_url,
-                                                                  )}
-                                                              >
-                                                                  {display(
-                                                                      t.quality_analysis.visualization,
-                                                                  )}
-                                                              </a>
-                                                          </>
-                                                      ) : null}
-                                                  </p>
-                                                  <div
-                                                      class="table-scroll"
-                                                      tabindex="0"
-                                                      role="region"
-                                                      aria-label={attribute(
-                                                          article?.authorship_popup_title,
-                                                      )}
-                                                  >
-                                                      <table class="analysis-editor-table">
-                                                          <thead>
-                                                              <tr>
-                                                                  <th scope="col">
-                                                                      {display(
-                                                                          t.quality_authorship.user,
-                                                                      )}
-                                                                  </th>
-                                                                  <th scope="col">
-                                                                      {display(
-                                                                          t.quality_analysis
-                                                                              .editor_share,
-                                                                      )}
-                                                                  </th>
-                                                                  <th scope="col" title={t.quality_analysis.editor_characters_hint}>
-                                                                      {t.quality_analysis.editor_characters}
-                                                                  </th>
-                                                                  <th scope="col" title={t.quality_analysis.editor_bytes_hint}>
-                                                                      {t.quality_analysis.editor_bytes}
-                                                                  </th>
-                                                              </tr>
-                                                          </thead>
-                                                          <tbody>
-                                                              {(article?.authorship?.editors ?? [])
-                                                                  .length ? (
-                                                                  (
-                                                                      article?.authorship?.editors ?? []
-                                                                  ).map((author, authorIndex) => (
-                                                                      <tr key={authorIndex}>
-                                                                          <th scope="row">
-                                                                              {hasContent(
-                                                                                  author?.url,
-                                                                              ) ? (
-                                                                                  <a
-                                                                                      href={attribute(
-                                                                                          author?.url,
-                                                                                      )}
-                                                                                  >
-                                                                                      {display(
-                                                                                          author?.name,
-                                                                                      )}
-                                                                                  </a>
-                                                                              ) : (
-                                                                                  display(author?.name)
-                                                                              )}
-                                                                          </th>
-                                                                          <td>
-                                                                              {display(
-                                                                                  author?.share_label,
-                                                                              )}
-                                                                          </td>
-                                                                          <td>{display(author?.characters_label)}</td>
-                                                                          <td title={author?.bytes_title ?? undefined}>
-                                                                              {display(
-                                                                                  author?.bytes_label,
-                                                                              )}
-                                                                          </td>
-                                                                      </tr>
-                                                                  ))
-                                                              ) : (
-                                                                  <tr>
-                                                                      <td colspan="4">
-                                                                          {display(
-                                                                              t.quality_analysis
-                                                                                  .no_top_editors,
-                                                                          )}
-                                                                      </td>
-                                                                  </tr>
-                                                              )}
-                                                          </tbody>
-                                                      </table>
-                                                  </div>
-                                              </>
-                                          )}
-                                      </>,
-                                      article?.authorship_popup_id,
-                                      article?.authorship_popup_title,
-                                      "#analysis-articles",
-                                      "analysis-authorship-dialog",
-                                  )
-                                : null}
+                    {(quality_analysis?.articles ?? []).map(article => (
+                        <Fragment key={article.page_id}>
+                            {ArticleAuthorshipDialog(context, article, "#analysis-articles")}
                         </Fragment>
                     ))}
                 </>
@@ -1266,6 +1117,8 @@ function QualityContributors(context) {
                                     <col class="quality-column-ordinal" />
                                     <col class="quality-column-title" />
                                     <col class="quality-column-count" />
+                                    <col class="quality-column-prose" />
+                                    <col class="quality-column-size" />
                                     <col class="quality-column-active" />
                                 </colgroup>
                                 <thead>
@@ -1275,8 +1128,10 @@ function QualityContributors(context) {
                                         </th>
                                         <th scope="col">{display(t.quality_analysis.contributors)}</th>
                                         <th scope="col" data-sort-type="number">
-                                            {display(t.quality_authorship.article)}
+                                            {display(t.quality_authorship.main_article_count)}
                                         </th>
+                                        <th scope="col" data-sort-type="number">{display(t.quality_authorship.contributed_prose)}</th>
+                                        <th scope="col" data-sort-type="number">{display(t.quality_authorship.contributed_size)}</th>
                                         <th scope="col">
                                             {display(t.quality_authorship.latest_active)}
                                         </th>
@@ -1287,6 +1142,7 @@ function QualityContributors(context) {
                                         <tr
                                             key={authorIndex}
                                             data-matrix-author={attribute(author?.name)}
+                                            data-author-contributions={author.contributions ? JSON.stringify(author.contributions) : undefined}
                                             {...(author?.default_selected !== undefined &&
                                             !hasContent(author?.default_selected)
                                                 ? {
@@ -1315,7 +1171,7 @@ function QualityContributors(context) {
                                                 </a>
                                                 {display(quality_authorship?.parenthesis_close)}
                                             </td>
-                                            <td data-sort={attribute(author?.credit)}>
+                                            <td data-sort={attribute(author?.credit)} class="analysis-number">
                                                 <a
                                                     href={attribute(
                                                         author?.detail_url ||
@@ -1339,6 +1195,26 @@ function QualityContributors(context) {
                                                 >
                                                     {display(author?.summary)}
                                                 </a>
+                                            </td>
+                                            <td data-contributed-prose="" data-sort={attribute(author.contributed_prose ?? "")} class="analysis-number">
+                                                <a
+                                                    href={attribute(author.significant_detail_url || "#" + author.significant_popup_id)}
+                                                    {...(author.significant_detail_url ? {
+                                                        "data-quality-detail": author.significant_popup_id,
+                                                        "data-significant-detail": "",
+                                                        "data-loading": t.quality_analysis.loading_details,
+                                                        "data-load-failed": t.quality_analysis.details_failed,
+                                                    } : {})}
+                                                    aria-controls={attribute(author.significant_popup_id)}
+                                                    aria-label={attribute(author.significant_dialog_title)}
+                                                    aria-haspopup="dialog"
+                                                >
+                                                    <span>{display(author.contributed_prose_label)}</span>
+                                                </a>
+                                            </td>
+                                            <td data-contributed-bytes="" data-sort={attribute(author.contributed_bytes ?? "")} class="analysis-number">
+                                                {display(author.contributed_bytes_label)}
+                                                {author.contributed_bytes != null ? <> {" "}<small>{"kB"}</small></> : null}
                                             </td>
                                             <td
                                                 data-sort={attribute(
@@ -1410,13 +1286,10 @@ export function QualityAnalysis(context) {
                 {(quality_authorship?.authors ?? []).map((author, authorIndex) => (
                     <Fragment key={authorIndex}>
                         {!hasContent(author?.detail_url)
-                            ? popup(
-                                  context,
-                                  article_table(context, author?.articles, author?.dialog_title),
-                                  author?.popup_id,
-                                  author?.dialog_title,
-                                  "#quality-authors",
-                              )
+                            ? <>
+                                  {AuthorStatistics(context, author.articles, author.popup_id, author.dialog_title)}
+                                  {AuthorStatistics(context, author.significant_articles, author.significant_popup_id, author.significant_dialog_title, true)}
+                              </>
                             : null}
                     </Fragment>
                 ))}

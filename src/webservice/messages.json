@@ -64,19 +64,24 @@
   "server.job_temporary": {"en": "On demand", "zh-hans": "按需运行", "zh-hant": "按需執行"},
   "server.job_succeeded": {"en": "Completed", "zh-hans": "已完成", "zh-hant": "已完成"},
   "server.job_hourly": {
-    "en": "Hourly at :{minute} UTC",
-    "zh-hans": "每小时第 {minute} 分（UTC）",
-    "zh-hant": "每小時第 {minute} 分（UTC）"
+    "en": "Hourly at :{minute}",
+    "zh-hans": "每小时第 {minute} 分",
+    "zh-hant": "每小時第 {minute} 分"
   },
   "server.job_daily": {
-    "en": "Daily at {time} UTC",
-    "zh-hans": "每天 {time} UTC",
-    "zh-hant": "每天 {time} UTC"
+    "en": "Daily at {time}",
+    "zh-hans": "每天 {time}",
+    "zh-hant": "每天 {time}"
+  },
+  "server.job_pageviews": {
+    "en": "Daily at {time}, with hourly retries",
+    "zh-hans": "每天 {time}，失败后每小时重试",
+    "zh-hant": "每天 {time}，失敗後每小時重試"
   },
   "server.job_weekly": {
-    "en": "{day}s at {time} UTC",
-    "zh-hans": "每周{day} {time} UTC",
-    "zh-hant": "每週{day} {time} UTC"
+    "en": "{day}s at {time}",
+    "zh-hans": "每周{day} {time}",
+    "zh-hant": "每週{day} {time}"
   },
   "server.weekday.0": {"en": "Sunday", "zh-hans": "日", "zh-hant": "日"},
   "server.weekday.1": {"en": "Monday", "zh-hans": "一", "zh-hant": "一"},
@@ -4305,11 +4310,6 @@
     "zh-hans": "数据每小时在后台收集，本页读取已保存的分析结果。",
     "zh-hant": "資料每小時在背景收集，本頁讀取已儲存的分析結果。"
   },
-  "quality_analysis.listing_evidence": {
-    "en": "Article revision at listing",
-    "zh-hans": "入选时的条目版本",
-    "zh-hant": "入選時的條目版本"
-  },
   "quality_analysis.observed": {
     "en": "Analysis updated:",
     "zh-hans": "分析更新：",
@@ -4611,9 +4611,9 @@
     "zh-hant": "主要貢獻者"
   },
   "quality_analysis.authorship_details": {
-    "en": "Authorship of {title}",
-    "zh-hans": "{title}的作者贡献",
-    "zh-hant": "{title}的作者貢獻"
+    "en": "Significant contributors to {title}",
+    "zh-hans": "{title}的重大贡献者",
+    "zh-hant": "{title}的重大貢獻者"
   },
   "quality_analysis.authorship_note": {
     "en": "This page lists “significant contributors” whose contribution share reaches 10%.",
@@ -4666,6 +4666,16 @@
     "en": "review",
     "zh-hans": "评审",
     "zh-hant": "評審"
+  },
+  "quality_analysis.page_number": {
+    "en": "Page {page}",
+    "zh-hans": "第{page}页",
+    "zh-hant": "第{page}頁"
+  },
+  "quality_analysis.go_to_page": {
+    "en": "Go to page",
+    "zh-hans": "跳转到页码",
+    "zh-hant": "跳轉到頁碼"
   },
   "quality_analysis.unknown_editor": {
     "en": "Unnamed editor {editor}",
@@ -4748,9 +4758,29 @@
     "zh-hant": "未取得日期"
   },
   "quality_authorship.author_all_articles": {
-    "en": "Articles by {name}",
-    "zh-hans": "{name}的条目",
-    "zh-hant": "{name}的條目"
+    "en": "Articles with {name} as a main contributor",
+    "zh-hans": "{name}的主要贡献条目",
+    "zh-hant": "{name}的主要貢獻條目"
+  },
+  "quality_authorship.author_significant_articles": {
+    "en": "Articles with significant contributions from {name}",
+    "zh-hans": "{name}的重大贡献条目",
+    "zh-hant": "{name}的重大貢獻條目"
+  },
+  "quality_authorship.main_article_count": {
+    "en": "Main contributions",
+    "zh-hans": "主要贡献条目数",
+    "zh-hant": "主要貢獻條目數"
+  },
+  "quality_authorship.contributed_prose": {
+    "en": "Contributed prose",
+    "zh-hans": "贡献正文",
+    "zh-hant": "貢獻正文"
+  },
+  "quality_authorship.contributed_size": {
+    "en": "Contribution size",
+    "zh-hans": "贡献大小",
+    "zh-hant": "貢獻大小"
   },
   "quality_analysis.author_filter": {
     "en": "Contributor",

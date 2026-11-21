@@ -11,6 +11,7 @@ export function TablePager({ paging, action, fields, title, css, dataset, t }) {
         ["next", t.backlog.next],
         ["last", t.reports.last],
     ];
+    const [pagePrefix, pageSuffix] = t.quality_analysis.page_number.split("{page}");
     return (
         <nav class={`ui-table-pager ${css}`} aria-label={title}>
             <form class="page-size ui-table-pager__start" action={action} method="get">
@@ -28,13 +29,31 @@ export function TablePager({ paging, action, fields, title, css, dataset, t }) {
             </form>
             <div class="ui-table-pager__center">{display(paging?.label)}</div>
             <div class="ui-table-pager__end">
-                {navigation.map(([key, label]) => paging?.[key] ? (
-                    <a key={key} href={attribute(paging[key])} aria-label={label}
-                       class="ui-button ui-button--fake-button ui-button--fake-button--enabled"
-                       rel={key === "previous" ? "prev" : key === "next" ? "next" : undefined}
-                       data-dataset-page={dataset ? "" : undefined}>{label}</a>
-                ) : (
-                    <button key={key} type="button" class="ui-button" disabled>{label}</button>
+                {navigation.map(([key, label]) => (
+                    <Fragment key={key}>
+                        {paging?.[key] ? (
+                            <a href={attribute(paging[key])} aria-label={label}
+                               class="ui-button ui-button--fake-button ui-button--fake-button--enabled"
+                               rel={key === "previous" ? "prev" : key === "next" ? "next" : undefined}
+                               data-dataset-page={dataset ? "" : undefined}>{label}</a>
+                        ) : (
+                            <button type="button" class="ui-button" disabled>{label}</button>
+                        )}
+                        {dataset && key === "previous" ? (
+                            <form action={action} method="get">
+                                {Object.entries(fields).map(([name, value]) => (
+                                    <input key={name} name={name} value={attribute(value)} type="hidden" />
+                                ))}
+                                <input type="hidden" name="size" value={paging.size} />
+                                <label class="quality-page-number">
+                                    {pagePrefix}<input class="cdx-text-input__input" type="number" name="page" inputmode="numeric"
+                                        min="1" max={paging.page_count} value={paging.page} required aria-label={t.quality_analysis.go_to_page}
+                                        aria-description={format(t.data.page, { page: paging.page, total: paging.page_count })} />{pageSuffix}
+                                </label>
+                                <button type="submit" hidden>{t.backlog.go}</button>
+                            </form>
+                        ) : null}
+                    </Fragment>
                 ))}
             </div>
         </nav>
@@ -133,6 +152,8 @@ export function popup(
 export function table_labels(context) {
     return {
         "data-quality-authorship-table": "",
+        "data-page-number": attribute(context.t?.quality_analysis?.page_number),
+        "data-go-to-page": attribute(context.t?.quality_analysis?.go_to_page),
         "data-first": attribute(context.t?.reports?.first),
         "data-last": attribute(context.t?.reports?.last),
         "data-next": attribute(context.t?.backlog?.next),
@@ -229,7 +250,10 @@ export function article_table(context, articles, title) {
                                     <td data-sort={attribute(article?.date || "")}>
                                         {hasContent(article?.date) ? (
                                             <>
-                                                <OptionalLink href={attribute(article?.listing_url)}>
+                                                <OptionalLink
+                                                    href={attribute(article?.review_url)}
+                                                    title={attribute(t.quality_analysis.review)}
+                                                >
                                                     <time datetime={attribute(article?.date)}>
                                                         {display(article?.date_label)}
                                                     </time>
@@ -245,15 +269,6 @@ export function article_table(context, articles, title) {
                                                 {display(t.quality_analysis.unknown_listing)}
                                             </span>
                                         )}
-                                        {hasContent(article?.review_url) ? (
-                                            <span class="analysis-review">
-                                                {display(quality_authorship?.parenthesis_open)}
-                                                <a href={attribute(article?.review_url)}>
-                                                    {display(t.quality_analysis.review)}
-                                                </a>
-                                                {display(quality_authorship?.parenthesis_close)}
-                                            </span>
-                                        ) : null}
                                     </td>
                                 </tr>
                             ))}

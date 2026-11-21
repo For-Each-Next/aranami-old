@@ -261,8 +261,8 @@ async function checkInterface(assetRoot) {
                     authorDirectory = {width:originalWidth, target:Math.max(scroller.clientWidth, parseFloat(getComputedStyle(table).minInlineSize)),
                         countWidth:widths[columns.findIndex(column => column.classList.contains('quality-column-count'))], countTarget:font * 8,
                         activeWidth:widths[columns.findIndex(column => column.classList.contains('quality-column-active'))], activeTarget:font * 18,
-                        activeSingleLine:[...table.tBodies[0].rows].filter(row => !row.hidden && row.cells[3].querySelector('time')).every(row => {
-                            const range = document.createRange(); range.selectNodeContents(row.cells[3]);
+                        activeSingleLine:[...table.tBodies[0].rows].filter(row => !row.hidden && row.cells[row.cells.length - 1].querySelector('time')).every(row => {
+                            const range = document.createRange(); range.selectNodeContents(row.cells[row.cells.length - 1]);
                             return [...range.getClientRects()].every(rect => Math.abs(rect.top - range.getBoundingClientRect().top) < font);
                         }),
                         nameHeading:headings[title].textContent.trim(),
@@ -310,6 +310,9 @@ async function checkInterface(assetRoot) {
                 record('main next', '[data-analysis-page-status]', 21, 40, 48);
                 host.querySelector('[data-analysis-last]').click();
                 record('main last', '[data-analysis-page-status]', 41, 48, 48);
+                const pageInput = host.querySelector('.quality-page-number input');
+                pageInput.value = '2'; pageInput.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true, cancelable:true}));
+                record('typed page number', '[data-analysis-page-status]', 21, 40, 48);
                 size.value = '50'; size.dispatchEvent(new Event('change'));
                 record('main larger page', '[data-analysis-page-status]', 1, 48, 48);
                 size.value = '20'; size.dispatchEvent(new Event('change'));
@@ -349,7 +352,7 @@ async function checkInterface(assetRoot) {
                 cells.forEach((input, index) => input.checked = checked[index]); cells[0].dispatchEvent(new Event('change')); await apply();
                 return states;
             })()`);
-            assert.ok(states.length === 15 && states.every(state => state.actual === state.expected && state.rows === state.expectedRows), 'localized article ranges must report matching rows across paging, page size, sort and empty states: ' + JSON.stringify(states));
+            assert.ok(states.length === 16 && states.every(state => state.actual === state.expected && state.rows === state.expectedRows), 'localized article ranges must report matching rows across paging, page size, sort and empty states: ' + JSON.stringify(states));
             assert.equal(states.find(state => state.name === 'main empty').footer, true);
             assert.equal(states.find(state => state.name === 'invalid regex').invalid, true);
         };
@@ -1451,7 +1454,7 @@ async function checkInterface(assetRoot) {
                     assert.equal(dataset.previewRows, 3, 'dataset preview must retain the supplied bounded rows');
                     assert.equal(dataset.schemaRows, 13, 'dataset schema must describe every saved column');
                     assert.ok(dataset.source && dataset.scrollRegions, 'dataset tables must retain source identity and keyboard scrolling');
-                    assert.deepEqual(dataset.forms, [[true, 'get']], 'dataset viewing may only submit read-only paging');
+                    assert.deepEqual(dataset.forms, [[true, 'get'], [false, 'get']], 'dataset viewing may only submit read-only paging');
                     if ([390, 1440].includes(width)) {
                         const lazy = await evaluate(`(async () => {
                             const before = location.href;
@@ -1477,8 +1480,13 @@ async function checkInterface(assetRoot) {
                             await settle(() => document.querySelector('#dataset-dialog[open] [data-page="1"]'));
                             const dialog = document.getElementById('dataset-dialog');
                             const firstRows = dialog.querySelectorAll('section:last-of-type tbody tr').length;
-                            dialog.querySelector('[data-dataset-page]').click();
+                            const scroll = dialog.querySelector('.ui-dialog__body');
+                            scroll.scrollTop = 120;
+                            const initialScroll = scroll.scrollTop;
+                            const entry = dialog.querySelector('input[name="page"]');
+                            entry.value = '2'; entry.form.requestSubmit();
                             await settle(() => dialog.querySelector('[data-page="2"]'));
+                            const scrollPreserved = scroll.scrollTop === initialScroll;
                             const secondRows = dialog.querySelectorAll('section:last-of-type tbody tr').length;
                             const constrained = dialog.getBoundingClientRect().width <= innerWidth;
                             let aborted = false;
@@ -1495,9 +1503,9 @@ async function checkInterface(assetRoot) {
                             const released = !document.getElementById('dataset-dialog') && !dialog.isConnected;
                             window.fetch = originalFetch;
                             opener.remove();
-                            return {beforeOpen, requests: requests.length, firstRows, secondRows, constrained, aborted, released, unchangedURL: location.href === before};
+                            return {beforeOpen, requests: requests.length, firstRows, secondRows, scrollPreserved, constrained, aborted, released, unchangedURL: location.href === before};
                         })()`);
-                        assert.deepEqual(lazy, {beforeOpen: 0, requests: 3, firstRows: 3, secondRows: 3, constrained: true, aborted: true, released: true, unchangedURL: true}, 'saved Parquet dialogs fetch only opened pages, release pending requests and DOM on close, preserve navigation and restore focus');
+                        assert.deepEqual(lazy, {beforeOpen: 0, requests: 3, firstRows: 3, secondRows: 3, scrollPreserved: true, constrained: true, aborted: true, released: true, unchangedURL: true}, 'saved Parquet dialogs page in place, release pending requests and DOM on close, preserve navigation and restore focus');
                     }
 
                 }

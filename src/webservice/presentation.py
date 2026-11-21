@@ -27,6 +27,8 @@ from markupsafe import Markup, escape
 from opencc import OpenCC
 
 from shared.assessment_profiles import assessment_profile
+from shared.config import PAGEVIEWS_START_HOUR
+from shared.toolforge.jobs import PAGEVIEWS, PAGEVIEWS_CHECK_CRON, job_name
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
@@ -438,6 +440,13 @@ def job_schedule(interface: Interface, schedule: Mapping) -> str:
     cron = schedule.get("cron")
     if cron is None:
         return interface.text("server.job_temporary")
+    if cron == PAGEVIEWS_CHECK_CRON and schedule.get("job_name") == job_name(
+        PAGEVIEWS,
+    ):
+        return interface.text(
+            "server.job_pageviews",
+            time=f"{PAGEVIEWS_START_HOUR:02d}:00",
+        )
     fields = cron.split()
     if (
         len(fields) == 5  # ruff: ignore[magic-value-comparison] - Standard cron fields.

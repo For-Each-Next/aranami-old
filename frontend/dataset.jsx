@@ -1,5 +1,5 @@
 /** Show metadata, schema and preview rows for a selected dataset. */
-import { jsx, attribute, defaultContents, display, format, hasContent } from "./rendering.js";
+import { jsx, attribute, defaultContents, display, hasContent } from "./rendering.js";
 import { Fragment } from "@vue/runtime-dom";
 import { TablePager } from "./shared.jsx";
 
@@ -42,7 +42,7 @@ export function Dataset(context) {
                             role="region"
                             aria-label={t.data.metadata}
                         >
-                            <table class="ui-table__table">
+                            <table class="ui-table__table" data-no-pagination="">
                                 <caption class="visually-hidden">{display(dataset?.name)}</caption>
                                 <tbody>
                                     {(dataset?.facts ?? []).map((fact, factIndex) => (
@@ -69,7 +69,7 @@ export function Dataset(context) {
                             role="region"
                             aria-label={t.data.schema}
                         >
-                            <table class="ui-table__table">
+                            <table class="ui-table__table" data-no-pagination="">
                                 <caption class="visually-hidden">{t.data.schema}</caption>
                                 <thead>
                                     <tr>
@@ -136,24 +136,6 @@ export function Dataset(context) {
                     <TablePager paging={dataset} action="/data/" css="dataset-pagination"
                                 fields={{ file: dataset.file, lang: language_tag }}
                                 title={t.data.preview} dataset={true} t={t} />
-                    {dataset.page_count > 1 ? (
-                        <nav class="dataset-page-numbers ui-table-pager__center" aria-label={format(t.data.page, {
-                            page: dataset.page, total: dataset.page_count,
-                        })}>
-                            {dataset.page_links.map(link => link.number === dataset.page ? (
-                                <span key={link.number} class="ui-button ui-button--fake-button" aria-current="page">
-                                    {link.number}
-                                </span>
-                            ) : (
-                                <a key={link.number} class="ui-button ui-button--fake-button ui-button--fake-button--enabled"
-                                   data-dataset-page={""} href={attribute(link.url)} aria-label={format(t.data.page, {
-                                       page: link.number, total: dataset.page_count,
-                                   })}>
-                                    {link.number}
-                                </a>
-                            ))}
-                        </nav>
-                    ) : null}
                 </section>
             </div>
         </>

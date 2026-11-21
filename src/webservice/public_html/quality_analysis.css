@@ -55,14 +55,22 @@
 .analysis-directory .quality-article-directory .quality-column-title { inline-size: 320px; }
 .analysis-directory .quality-article-directory th:nth-child(2), .analysis-directory .quality-article-directory td:nth-child(2) { max-inline-size: 320px; overflow-wrap: anywhere; }
 .analysis-directory td.analysis-number:not(:first-child) { white-space: normal; overflow-wrap: normal; }
-.analysis-talk, .analysis-review { white-space: nowrap; font-size: .9em; }
+.analysis-talk { white-space: nowrap; font-size: .9em; }
+table.quality-author-article-directory { inline-size: calc(38.5em + 320px); min-inline-size: calc(38.5em + 320px); }
+table.quality-author-directory:has(.quality-column-prose) { min-inline-size: 58em; }
+.quality-author-directory .quality-column-prose { inline-size: 8em; }
+.quality-author-directory .quality-column-size { inline-size: 7em; }
+.ui-dialog :is(.quality-data-table, .analysis-editor-table) { font-size: .875rem; }
 .analysis-authorship-info { display: inline-flex; align-items: center; justify-content: center; min-width: 1.5rem; min-height: 1.5rem; vertical-align: middle; border-radius: 50%; }
 .analysis-authorship-evidence { margin-block: 1rem 1.5rem; }
 .analysis-authorship-evidence dd { margin: .4rem 0 0; overflow-wrap: anywhere; }
 .analysis-editor-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .page-updates .analysis-editor-table { min-inline-size: 0; table-layout: auto; }
 .analysis-editor-table th, .analysis-editor-table td { padding: .5rem .4rem; border-bottom: 1px solid var(--border-color-subtle); text-align: left; }
-.analysis-editor-table td { white-space: nowrap; text-align: center; }
+.analysis-editor-table :is(th, td) { text-align: center; }
+.analysis-editor-table :is(th, td):nth-child(2) { text-align: start; }
+.analysis-editor-table td.analysis-number { white-space: nowrap; text-align: end; }
+.analysis-editor-table th:first-child { min-inline-size: 3em; }
 .analysis-editor-table th { overflow-wrap: anywhere; }
 #quality-authors { margin-top: 2.5rem; }
 #analysis-distribution, #analysis-years, #analysis-articles { margin-top: 2.5rem; }

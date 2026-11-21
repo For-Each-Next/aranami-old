@@ -1,5 +1,6 @@
 /** Show evidence coverage and bounded lists for the selected article cohort. */
 import { groupedNumber } from "./number_format.js";
+import { initializeQualityPageInput, updateQualityPageInput } from "./quality_authorship.js";
 import { qualityMetadata, requestQualityPage } from "./quality_matrix.js";
 
 let cohortListenerInstalled = false;
@@ -68,6 +69,8 @@ export function initializeQualityCoverage() {
         if (remote) return;
         selected = kind === "total" ? comparisonSelection(comparison(), grades()) : records().filter(record =>
             record.dataset.cohort !== "0" && !articleCoverage(record)[kind]);
+        if (kind === "authorship") selected.sort((left, right) =>
+            (right.cells[4].dataset.sort || "").localeCompare(left.cells[4].dataset.sort || ""));
         total = selected.length;
     }
 
@@ -83,7 +86,9 @@ export function initializeQualityCoverage() {
             const link = node("a", label);
             link.href = `https://zh.wikipedia.org/wiki/${encodeURIComponent(title.replaceAll(" ", "_"))}`;
             titleCell.append(link);
-            row.append(node("td", groupedNumber(start + index + 1)), titleCell);
+            const ordinal = node("td", groupedNumber(start + index + 1));
+            ordinal.className = "analysis-number";
+            row.append(ordinal, titleCell);
             if (kind === "total") row.append(
                 node("td", record.category_grades.map(gradeLabel).join(" / ") || "—"),
                 node("td", gradeLabel(record.pageassessments_grade)),
@@ -96,6 +101,7 @@ export function initializeQualityCoverage() {
         table.hidden = total === 0;
         status.textContent = status.dataset.template.replace("{start}", groupedNumber(total ? start + 1 : 0))
             .replace("{end}", groupedNumber(start + visible.length)).replace("{total}", groupedNumber(total));
+        updateQualityPageInput(pager, page, pages);
         for (const button of dialog.querySelectorAll("[data-coverage-page]")) button.disabled =
             ["first", "previous"].includes(button.dataset.coveragePage) ? page === 1 : page === pages;
     }
@@ -125,6 +131,7 @@ export function initializeQualityCoverage() {
     }
 
     size?.addEventListener("change", () => { page = 1; render(); });
+    initializeQualityPageInput(pager, target => { page = target; render(); });
     host.coverageRefresh = () => {
         const counts = remote ? form.qualityCoverage : coverageSummary(records());
         if (counts) {

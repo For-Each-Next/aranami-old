@@ -16,6 +16,7 @@ from shared.toolforge.state import (
     SCHEDULES_PATH,
     completed,
     hour,
+    pageviews_cycle,
 )
 
 if TYPE_CHECKING:
@@ -27,6 +28,7 @@ PROJECT_HOURLY = "project-hourly"
 DATA_FETCH = "data-fetch"
 REPORT_UPDATE = "report-update"
 PAGEVIEWS = "pageviews"
+PAGEVIEWS_CHECK_CRON = "0 * * * *"
 ARTICLE_STATISTICS = "article-statistics"
 MAINTENANCE = "data-maintenance"
 WEBSITE_FETCH = "website-fetch"
@@ -96,7 +98,7 @@ SERVICES = {
     PROJECT_SNAPSHOT: JobAllocation(0, 8, 1280, 500, hour="0"),
     DATA_FETCH: JobAllocation(2, 33, 1280, 1000),
     REPORT_UPDATE: JobAllocation(10, 48, 1536, 1000),
-    PAGEVIEWS: JobAllocation(37, None, 2048, 2000),
+    PAGEVIEWS: JobAllocation(0, None, 2048, 2000),
 }
 ON_DEMAND = {
     ARTICLE_STATISTICS: {"mem": "1280Mi", "cpu": 0.75, "retry": 2},
@@ -188,7 +190,7 @@ def job_definitions(
                     if allocation.minutes is not None
                     else {}
                 ),
-                "retry": 1,
+                "retry": 0 if name == PAGEVIEWS else 1,
                 "mem": f"{allocation.memory}Mi",
                 "cpu": allocation.cpu / 1000,
             }
@@ -288,6 +290,29 @@ def save_installed_schedules(runtime: Path, cronjobs: dict) -> None:
     )
 
 
+def _job_launch(
+    runtime: Path,
+    now: dt.datetime,
+    job: dict,
+    *,
+    pageviews: bool,
+) -> dt.datetime | None:
+    """Read the next eligible launch of an installed UTC job.
+
+    Returns:
+        A useful UTC launch, or none when the job is suspended or its
+        schedule is unsupported.
+    """
+    if job["suspended"] or job["zone"] not in {"UTC", "Etc/UTC"}:
+        return None
+    cron = job["cron"]
+    if pageviews and cron == PAGEVIEWS_CHECK_CRON:
+        start = pageviews_cycle(now)
+        if completed(runtime, PAGEVIEWS, start, through=hour(now)):
+            return start + dt.timedelta(days=1)
+    return _next_launch(cron, now)
+
+
 def installed_schedules(runtime: Path, now: dt.datetime) -> dict[str, object]:
     """Read the last observed Toolforge schedule from shared storage.
 
@@ -335,10 +360,11 @@ def installed_schedules(runtime: Path, now: dt.datetime) -> dict[str, object]:
                 continue
             cron = job["cron"]
             suspended = job["suspended"]
-            launch = (
-                _next_launch(cron, now)
-                if not suspended and job["zone"] in {"UTC", "Etc/UTC"}
-                else None
+            launch = _job_launch(
+                runtime,
+                now,
+                job,
+                pageviews=grouped and owner == PAGEVIEWS,
             )
             if (
                 grouped

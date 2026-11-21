@@ -36,6 +36,7 @@ from shared.toolforge.state import (
     fetch_outcome,
     hour,
     midnight,
+    pageviews_cycle,
     record_completion,
     record_fetch,
 )
@@ -306,7 +307,11 @@ def _refresh_articles(
             _attempt(runtime, "fetch", "quality-authorship", cycle, deadline)
 
 
-def _pageviews(runtime: Path, cycle: dt.datetime) -> None:
+def _pageviews(
+    runtime: Path,
+    cycle: dt.datetime,
+    checkpoint: dt.datetime,
+) -> None:
     """Fetch and publish traffic using frozen daily project snapshots.
 
     Raises:
@@ -314,7 +319,14 @@ def _pageviews(runtime: Path, cycle: dt.datetime) -> None:
     """
     if not (
         _attempt(runtime, "fetch", PAGEVIEWS, cycle, None)
-        and _attempt(runtime, "analyze", PAGEVIEWS, cycle, None)
+        and _attempt(
+            runtime,
+            "analyze",
+            PAGEVIEWS,
+            cycle,
+            None,
+            checkpoint=checkpoint,
+        )
     ):
         message = "The pageview report still needs a retry."
         raise RuntimeError(message)
@@ -334,7 +346,14 @@ def run_service(name: str) -> None:
         started = dt.datetime.now(dt.UTC)
         cycle = hour(started)
         checkpoint = midnight(cycle) if name == PROJECT_SNAPSHOT else cycle
-        finished = completed(runtime, name, checkpoint) and (
+        if name == PAGEVIEWS:
+            checkpoint = pageviews_cycle(cycle)
+        finished = completed(
+            runtime,
+            name,
+            checkpoint,
+            through=cycle if name == PAGEVIEWS else None,
+        ) and (
             name != DATA_FETCH
             or completed(runtime, f"fetch-{PROJECT_HOURLY}", cycle)
         )
@@ -344,7 +363,7 @@ def run_service(name: str) -> None:
             recover_interrupted_runs(before=started)
             minutes = SERVICES[name].minutes
             if minutes is None:
-                _pageviews(runtime, cycle)
+                _pageviews(runtime, cycle, checkpoint)
                 return
             deadline = min(
                 started + dt.timedelta(minutes=minutes, seconds=-20),

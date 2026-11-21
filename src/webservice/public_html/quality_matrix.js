@@ -103,6 +103,28 @@ export function yearSelected(year, from, to, unknown) {
     return year === null || year === "" ? unknown : Number(year) >= Math.max(2009, from) && Number(year) <= to;
 }
 
+/** Sum observed contribution counts for the selected articles. */
+export function selectedAuthorTotals(contributions, ids) {
+    let prose = null, bytes = null;
+    for (const [id, characters, size] of contributions) {
+        if (!ids.has(String(id))) continue;
+        if (characters !== null) prose = (prose ?? 0) + characters;
+        if (size !== null) bytes = (bytes ?? 0) + size;
+    }
+    return {prose, bytes};
+}
+
+function renderAuthorTotals(row, {prose, bytes}) {
+    const proseCell = row.querySelector("[data-contributed-prose]");
+    const sizeCell = row.querySelector("[data-contributed-bytes]");
+    if (!proseCell || !sizeCell) return;
+    proseCell.dataset.sort = prose ?? "";
+    proseCell.querySelector("a span").textContent = prose === null ? "—" : groupedNumber(prose);
+    sizeCell.dataset.sort = bytes ?? "";
+    sizeCell.textContent = bytes === null ? "—" : groupedNumber(bytes / 1000, true);
+    if (bytes !== null) sizeCell.append(document.createTextNode(" "), node("small", "kB"));
+}
+
 /** Use the same confirmed grade, importance and year in every browse view. */
 export function matchesQualitySelection(selection, grade, importance, year) {
     return selection.chosen.has(grade + ":" + importance)
@@ -586,20 +608,14 @@ export function articleElement(record) {
     if (article.listed_date) {
         const time = node("time", article.date_label);
         time.dateTime = article.listed_date;
-        if (article.listed_oldid) {
+        if (article.review_url) {
             const link = node("a");
-            link.href = `https://zh.wikipedia.org/w/index.php?oldid=${article.listed_oldid}`;
-            link.title = labels.listing_evidence || "";
+            link.href = article.review_url;
+            link.title = labels.review || "";
             link.append(time);
             row.cells[4].append(link);
         } else row.cells[4].append(time);
     } else row.cells[4].append(node("span", labels.unknown_listing, "context"));
-    if (article.review_url) {
-        const review = node("span", undefined, "analysis-review"), link = node("a", labels.review || "review");
-        link.href = article.review_url;
-        review.append(document.createTextNode(parenthesis[0]), link, document.createTextNode(parenthesis[1]));
-        row.cells[4].append(document.createTextNode(" "), review);
-    }
     renderMainContributors(row.cells[5], article, labels);
     if (article.authorship?.available === true) {
         const popupId = `quality-article-${article.page_id}-authorship`;
@@ -673,30 +689,35 @@ export function renderAuthorshipDetails(body, proof, labels) {
     const table = node("table", undefined, "analysis-editor-table");
     const head = node("thead"), headRow = node("tr"), tbody = node("tbody");
     for (const [label, hint] of [
-        [labels.contributors], [labels.editor_share],
+        ["#"], [labels.user || labels.contributors],
         [labels.editor_characters, labels.editor_characters_hint],
         [labels.editor_bytes, labels.editor_bytes_hint],
+        [labels.editor_share],
     ]) {
         const heading = node("th", label);
+        heading.scope = "col";
         if (hint) heading.title = hint;
         headRow.append(heading);
     }
     head.append(headRow);
-    for (const editor of proof.editors) {
+    for (const [index, editor] of proof.editors.entries()) {
         const line = node("tr"), name = node("th");
+        name.scope = "row";
         if (editor.url) {
             const link = node("a", editor.name);
             link.href = editor.url;
             name.append(link);
         } else name.textContent = editor.name;
-        const source = node("td", editor.bytes_label);
+        const source = node("td", editor.bytes_label, "analysis-number");
         if (editor.bytes_title) source.title = editor.bytes_title;
-        line.append(name, node("td", editor.share_label), node("td", editor.characters_label), source);
+        line.append(node("td", index + 1, "analysis-number"), name,
+            node("td", editor.characters_label, "analysis-number"), source,
+            node("td", editor.share_label, "analysis-number"));
         tbody.append(line);
     }
     if (!proof.editors.length) {
         const row = node("tr"), message = node("td", labels.no_top_editors);
-        message.colSpan = 4;
+        message.colSpan = 5;
         row.append(message);
         tbody.append(row);
     }
@@ -782,6 +803,7 @@ export function initializeQualityMatrix() {
             row, link,
             label: link.textContent.replace(/\d+(?:[,\u2009\u202f]\d{3})*/, "{count}"),
             pages: row.dataset.pageIds ? JSON.parse(row.dataset.pageIds).map(String) : null,
+            contributions: row.dataset.authorContributions ? JSON.parse(row.dataset.authorContributions) : [],
         };
     });
 
@@ -900,15 +922,20 @@ export function initializeQualityMatrix() {
                 row.dataset.cohort = ids.has(row.dataset.matrixPage) ? "1" : "0";
             }
         }
-        for (const {row, link, label, pages} of authorRows) {
+        for (const {row, link, label, pages, contributions} of authorRows) {
             const dialog = pages ? null : document.getElementById(link.getAttribute("aria-controls"));
+            const name = row.dataset.matrixAuthor;
             const count = summary
-                ? (Object.hasOwn(summary.author_counts, row.dataset.matrixAuthor) ? summary.author_counts[row.dataset.matrixAuthor] : 0)
+                ? (Object.hasOwn(summary.author_counts, name) ? summary.author_counts[name] : 0)
                 : (pages ? pages.filter(id => ids.has(id)).length :
                     dialog?.querySelectorAll('[data-matrix-page][data-cohort="1"]').length ?? 0);
             row.dataset.cohort = count ? "1" : "0";
             row.cells[2].dataset.sort = String(count);
             link.textContent = label.replace("{count}", groupedNumber(count));
+            const totals = summary
+                ? (Object.hasOwn(summary.author_totals || {}, name) ? summary.author_totals[name] : null)
+                : selectedAuthorTotals(contributions, ids);
+            if (totals) renderAuthorTotals(row, totals);
         }
         const totalNode = document.querySelector("[data-matrix-total]");
         if (totalNode) totalNode.textContent = format(total);

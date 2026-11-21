@@ -20,6 +20,7 @@ import polars as pl
 from data.articles import (
     authorship_store,
     current_authorship as store,
+    quality_analysis,
     rating_history as assessment_inference,
 )
 from shared.assessment_profiles import assessment_profile
@@ -241,6 +242,7 @@ def _refresh(  # ruff: ignore[too-many-arguments]
         on=store.KEY,
         how="anti",
         nulls_equal=True,
+        maintain_order="left",
     )
     selections = {
         row["revision_id"]: row["page_id"]
@@ -343,17 +345,28 @@ def _resolve_cutoffs(
     for member in missing.iter_rows(named=True):
         cutoff = selected.get(member["page_id"])
         if cutoff is not None:
-            resolved.append({
-                **member,
-                "revision_id": cutoff[0],
-                "article_timestamp": cutoff[1],
-            })
+            resolved.append((member["page_id"], cutoff[0], cutoff[1]))
     if resolved:
-        updates = pl.DataFrame(resolved, schema=store.MEMBER_SCHEMA)
-        return pl.concat([
-            pending.join(updates.select("page_id"), on="page_id", how="anti"),
-            updates,
-        ])
+        updates = pl.DataFrame(
+            resolved,
+            schema={
+                "page_id": pl.Int64,
+                "_revision": pl.Int64,
+                "_timestamp": pl.Datetime("us", "UTC"),
+            },
+            orient="row",
+        )
+        return (
+            pending
+            .join(updates, on="page_id", how="left", maintain_order="left")
+            .with_columns(
+                pl.coalesce("_revision", "revision_id").alias("revision_id"),
+                pl.coalesce("_timestamp", "article_timestamp").alias(
+                    "article_timestamp",
+                ),
+            )
+            .drop("_revision", "_timestamp")
+        )
     return pending
 
 
@@ -400,10 +413,11 @@ def refresh_current_versions(  # ruff: ignore[too-many-arguments]
     """Collect only missing exact current revisions for the hourly view.
 
     Successful listing and current revision evidence share the same key.
+    First attempts start with the most recent saved assessments.
     Failed requests keep a fair retry position across process restarts.
     """
     profile = assessment_profile("zhwiki", "电子游戏")
-    targets = (
+    members = (
         membership
         .with_columns(
             profile.expression(
@@ -425,12 +439,34 @@ def refresh_current_versions(  # ruff: ignore[too-many-arguments]
             pl.col("full_title").alias("title"),
             "grade",
             pl.lit(dt.datetime.now(dt.UTC)).alias("observed_at"),
+            *(
+                (pl.col(name) if name in membership.columns else pl.lit(None))
+                .cast(pl.Int64)
+                .alias(name)
+                for name in ("talk_page_id", "talk_revision")
+            ),
         )
         .cast(store.TARGET_SCHEMA)
     )
+    targets = members.select(list(store.TARGET_SCHEMA))
+    if (
+        max_requests <= 0
+        or time_budget <= 0
+        or (should_yield is not None and should_yield())
+    ):
+        store.checkpoint(runtime, targets=targets)
+        return
     tables = store.load(runtime)
+    identity = ["page_id", "grade", "talk_page_id", "talk_revision"]
+    dates = quality_analysis.load_articles(runtime).select(
+        "page_id",
+        "grade",
+        "talk_page_id",
+        pl.col("talk_revision_id").alias("talk_revision"),
+        pl.col("listed_date").cast(pl.Datetime("us", "UTC")),
+    )
     pending = (
-        targets
+        members
         .join(
             authorship_store.complete_contributor_evidence(
                 tables["evidence"],
@@ -439,8 +475,16 @@ def refresh_current_versions(  # ruff: ignore[too-many-arguments]
             how="anti",
         )
         .join(tables["attempts"], on=store.KEY, how="left", validate="1:1")
+        .join(dates, on=identity, how="left", validate="1:1")
+        .join(
+            tables["members"].select(*identity, "listing_timestamp"),
+            on=identity,
+            how="left",
+            validate="1:1",
+        )
         .sort(
             "attempted_at",
+            pl.coalesce("listing_timestamp", "listed_date"),
             profile.expression(
                 "grade",
                 "class",
@@ -448,9 +492,11 @@ def refresh_current_versions(  # ruff: ignore[too-many-arguments]
                 preserve_unknown=False,
             ),
             "page_id",
-            nulls_last=False,
+            descending=[False, True, False, False],
+            nulls_last=[False, True, False, False],
         )
         .head(max_requests)
+        .select(list(store.TARGET_SCHEMA))
     )
     if (
         not pending.height

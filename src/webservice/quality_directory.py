@@ -19,6 +19,7 @@ from webservice.presentation import Interface, display_title
 from webservice.quality_analysis import (
     ARTICLE_PAGE_SIZE,
     ARTICLE_PAGE_SIZES,
+    author_contribution_totals,
     catalog_article,
     contributor_names,
 )
@@ -435,7 +436,13 @@ def _coverage(
     if acquired is None:
         message = "Unknown quality coverage category."
         raise ValueError(message)
-    result = _page([row for row in cohort if not acquired(row)], query)
+    missing = [row for row in cohort if not acquired(row)]
+    if kind == "authorship":
+        missing.sort(
+            key=lambda row: row.get("listed_date") or "",
+            reverse=True,
+        )
+    result = _page(missing, query)
     result["rows"] = [{"title": row["title"]} for row in result["rows"]]
     return result
 
@@ -503,6 +510,10 @@ def _summary(
         "author_counts": {
             name: len(ids.intersection(pages))
             for name, pages in saved["authors"].items()
+        },
+        "author_totals": {
+            name: author_contribution_totals(contributions, ids)
+            for name, contributions in saved.get("contributions", {}).items()
         },
         "coverage": {
             "total": len(cohort),

@@ -5,6 +5,24 @@ function datasetURL(value) {
         ? url
         : void 0;
 }
+
+/** Replace the page while preserving both the viewport and table scroll. */
+function replaceDatasetViewer(previous, viewer, scroll, control) {
+    const table = ".dataset-preview-table .table-scroll";
+    const top = scroll.scrollTop;
+    const left = previous.querySelector(table).scrollLeft;
+    const label = control.getAttribute("aria-label");
+    previous.replaceWith(viewer);
+    window.aranamiComponents?.enhance(viewer);
+    const next = [...viewer.querySelectorAll("a[data-dataset-page]")].find(
+        link => link.getAttribute("aria-label") === label,
+    );
+    const focus = next || viewer.querySelector(control.matches(".page-size")
+        ? ".page-size select" : "input[name=page]");
+    focus?.focus({preventScroll: true});
+    viewer.querySelector(table).scrollLeft = left;
+    scroll.scrollTop = top;
+}
 /** Load one selected page at a time and release it when the dialog closes. */
 function initializeDatasets() {
     let dialog;
@@ -12,7 +30,7 @@ function initializeDatasets() {
     let controller;
     let requestNumber = 0;
     /** Replace the current page, aborting superseded requests without caching rows. */
-    async function load(url, control, opening) {
+    async function load(url, control, opening, updateHistory = true) {
         const request = ++requestNumber;
         controller?.abort();
         controller = new AbortController();
@@ -48,6 +66,12 @@ function initializeDatasets() {
                 viewer.querySelector("script, iframe, object, embed")
             )
                 throw new Error("Invalid saved-data response");
+            const standalone = !opening && control.closest("#dataset-viewer");
+            if (standalone) {
+                replaceDatasetViewer(standalone, viewer, document.scrollingElement, control);
+                if (updateHistory && url.href !== location.href) history.pushState(null, "", url);
+                return;
+            }
             if (opening) {
                 const previous = dialog;
                 dialog = void 0;
@@ -91,13 +115,13 @@ function initializeDatasets() {
                     identities.get(label) || label,
                 );
             }
-            body.replaceChildren(viewer);
-            window.aranamiComponents?.enhance(body);
-            if (opening) dialog.showModal();
-            else {
-                viewer.tabIndex = -1;
-                viewer.focus({ preventScroll: true });
-                dialog.querySelector(".ui-dialog__body")?.scrollTo(0, 0);
+            if (opening) {
+                body.replaceChildren(viewer);
+                window.aranamiComponents?.enhance(body);
+                dialog.showModal();
+            } else {
+                replaceDatasetViewer(body.firstElementChild, viewer,
+                    dialog.querySelector(".ui-dialog__body"), control);
             }
         } catch {
             if (request === requestNumber) location.assign(url.href);
@@ -111,7 +135,7 @@ function initializeDatasets() {
     }
     document.addEventListener("click", (event) => {
         const control = event.target.closest(
-            "a[data-dataset-link],#dataset-dialog a[data-dataset-page]",
+            "a[data-dataset-link],#dataset-dialog a[data-dataset-page],#dataset-viewer a[data-dataset-page]",
         );
         if (
             !control ||
@@ -135,12 +159,21 @@ function initializeDatasets() {
     });
     document.addEventListener("submit", event => {
         const form = event.target;
-        if (!form.matches("#dataset-dialog .dataset-pagination form")) return;
+        if (!form.matches("#dataset-dialog .dataset-pagination form,#dataset-viewer .dataset-pagination form")) return;
         const url = datasetURL(form.action);
         if (!url) return;
         event.preventDefault();
-        url.search = new URLSearchParams(new FormData(form)).toString();
+        const fields = new URLSearchParams(new FormData(form));
+        const entry = form.querySelector("input[name=page]");
+        if (entry) fields.set("page", String(entry.valueAsNumber));
+        url.search = fields.toString();
         void load(url, form, false);
+    });
+    window.addEventListener("popstate", () => {
+        const viewer = document.getElementById("dataset-viewer");
+        const url = datasetURL(location.href);
+        if (viewer && url?.searchParams.get("file") === viewer.dataset.file)
+            void load(url, viewer, false, false);
     });
 }
 export { initializeDatasets };

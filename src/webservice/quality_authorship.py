@@ -149,13 +149,6 @@ def quality_authorship_context(
                 "date_label": interface.date(article["date"])
                 if date
                 else None,
-                "listing_url": (
-                    "https://zh.wikipedia.org/w/index.php?oldid="
-                    + str(article["revision_id"])
-                    if type(article.get("revision_id")) is int
-                    and article["revision_id"] > 0
-                    else None
-                ),
                 "review_url": review_url(article),
                 "grade_order": _GRADES.index(article["grade"]),
                 "grade_label": grade_label(article["grade"], interface),
@@ -228,6 +221,7 @@ def quality_authorship_context(
                 else None
             ),
             "articles": articles,
+            "contributions": source.get("contributions", []),
             "quality_articles": [
                 article
                 for article in articles

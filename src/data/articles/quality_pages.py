@@ -19,10 +19,15 @@ from data.prepared import read_values, values_path
 from shared.support.files import atomic_json, encode_json, file_identity
 
 MAX_BYTES = 16 * 1024 * 1024
-AUTHOR_DETAIL_NAME = re.compile(r"author-[1-9][0-9]{0,9}\.html")
+AUTHOR_DETAIL_NAME = re.compile(
+    r"author-[1-9][0-9]{0,9}(?:-significant)?\.html",
+)
+HASHED_AUTHOR_DETAIL_NAME = re.compile(
+    r"author-quality-author-[1-9][0-9]*(?:-significant)?-[0-9a-f]{64}\.html",
+)
 _RESOURCE_NAME = re.compile(
     r"(?:(?:catalog|directory)-[0-9a-f]{64}\.json|"
-    r"author-quality-author-[1-9][0-9]*-[0-9a-f]{64}\.html|"
+    rf"{HASHED_AUTHOR_DETAIL_NAME.pattern}|"
     rf"{AUTHOR_DETAIL_NAME.pattern})",
 )
 

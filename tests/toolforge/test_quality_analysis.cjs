@@ -465,7 +465,7 @@ test("acquired attribution with no qualifying editor has an explicit empty row w
     assert.doesNotMatch(view.body.textContent, /Data not acquired/);
     const table = view.body.childNodes.find(node => node.tagName === "table");
     const row = table.childNodes.find(node => node.tagName === "tbody").childNodes[0];
-    assert.equal(row.childNodes[0].colSpan, 4);
+    assert.equal(row.childNodes[0].colSpan, 5);
 });
 
 test("saved qualifying contributors retain their exact labels and optional evidence links", () => {
@@ -474,7 +474,7 @@ test("saved qualifying contributors retain their exact labels and optional evide
         available: true, range_end: null, visualization_url: "https://example.org/evidence",
         editors: [{name: "Qualifying editor", url: "https://example.org/user", share_label: "10.1%", bytes_label: "101"}],
     }, view.labels);
-    assert.match(view.body.textContent, /Qualifying editor10.1%101/);
+    assert.match(view.body.textContent, /Qualifying editor10110.1%/);
     assert.doesNotMatch(view.body.textContent, /Data not acquired|no editor contributed/);
     assert.equal(view.body.childNodes[0].childNodes[0].href, "https://example.org/evidence");
 });
@@ -513,17 +513,20 @@ test("catalog rows rebuild the prepared table's chips, talk links, evidence and 
     assert.equal(row.cells[2].childNodes[0].childNodes[0].childNodes[0].getAttribute("fill"), "#abcdef");
     assert.equal(row.cells[2].textContent, "Good article");
     assert.equal(row.cells[3].childNodes[0].childNodes[0].childNodes[0].getAttribute("fill"), "#fedcba");
-    assert.equal(row.cells[4].childNodes[0].title, "Listing revision");
+    assert.equal(row.cells[4].childNodes[0].href, article.review_url);
+    assert.equal(row.cells[4].childNodes[0].title, "review");
     assert.equal(row.cells[4].childNodes[0].childNodes[0].tagName, "time");
     assert.equal(row.cells[4].childNodes[0].childNodes[0].dateTime, "2026-01-02");
-    assert.equal(row.cells[4].childNodes[2].className, "analysis-review");
+    assert.equal(row.cells[4].childNodes.length, 1);
     assert.equal(row.cells[5].childNodes.at(-1).className, "analysis-authorship-info");
     assert.equal(row.cells[5].childNodes.at(-1).handlers.click.length, 1);
     assert.equal(again.cells[5].childNodes.at(-1).handlers.click.length, 1);
     assert.equal(row.cells[6].className, "analysis-number");
     assert.equal(row.cells[6].textContent, "1\u2009234 characters");
     assert.equal(row.cells[7].textContent, "12.5 kB");
-    article.listed_date = article.date_label = article.listed_oldid = article.review_url = null;
+    article.review_url = null;
+    assert.equal(view.context.articleElement(record).cells[4].childNodes[0].tagName, "time");
+    article.listed_date = article.date_label = article.listed_oldid = null;
     record.cells[4].dataset.sort = "";
     metadata.labels.unknown_listing = "未取得日期";
     const missingDate = view.context.articleElement(record).cells[4];
@@ -759,14 +762,14 @@ function chartPaginationFixture(locale, total) {
     const {context, Element} = attributionFixture();
     const body = new Element("tbody"), count = new Element("p"), heading = new Element("h3");
     const status = new Element("span"), size = new Element("select"), pager = new Element("nav");
-    const dialog = new Element("dialog"), headings = Array.from({length: 6}, () => new Element("th"));
+    const dialog = new Element("dialog"), headings = Array.from({length: 7}, () => new Element("th"));
     const controls = Object.fromEntries(["first", "prev", "next", "last"].map(name => [name, new Element("button")]));
     const listeners = {};
     size.value = "20";
     pager.dataset.pageStatus = interfaceMessages["reports.page_status"][locale];
     count.dataset.label = interfaceMessages["quality_analysis.chart_article_count"][locale];
     pager.querySelector = selector => selector === "[data-chart-size]" ? size :
-        selector === "[data-chart-page-status]" ? status : controls[selector.match(/data-chart-(.+)\]/)[1]];
+        selector === "[data-chart-page-status]" ? status : controls[selector.match(/data-chart-(.+)\]/)?.[1]] || null;
     dialog.querySelector = selector => ({"[data-chart-article-rows]": body, "[data-chart-article-count]": count, "[data-chart-pager]": pager})[selector];
     dialog.querySelectorAll = () => headings;
     dialog.isConnected = true;

@@ -1,6 +1,6 @@
 /** Filter and sort the complete saved article list without source requests. */
 import { groupedNumber } from "./number_format.js";
-import { compareValues, initializeQualityAuthorship } from "./quality_authorship.js";
+import { compareValues, initializeQualityAuthorship, initializeQualityPageInput, updateQualityPageInput } from "./quality_authorship.js";
 import { initializeQualityCoverage } from "./quality_coverage.js";
 import { initializeQualityChartControls } from "./quality_chart_controls.js";
 import { traditional } from "./quality_search_characters.js";
@@ -187,6 +187,7 @@ export function initializeQualityAnalysis(previous = {}) {
             .replace("{total}", groupedNumber(count));
         empty.hidden = count !== 0;
         pager.hidden = false;
+        updateQualityPageInput(pager, page, pages);
         actions[0].disabled = actions[1].disabled = page <= 1;
         actions[2].disabled = actions[3].disabled = page >= pages;
         headings.forEach((heading, index) => {
@@ -214,6 +215,7 @@ export function initializeQualityAnalysis(previous = {}) {
         } catch {
             if (!request.signal.aborted && host.isConnected) {
                 page = visiblePage;
+                updateQualityPageInput(pager, page, pages);
                 result.textContent = form.dataset.pageFailed;
             }
         } finally {
@@ -267,6 +269,7 @@ export function initializeQualityAnalysis(previous = {}) {
             render(control === search || control === author);
         });
     });
+    initializeQualityPageInput(pager, target => { page = target; render(); });
     headings.forEach((heading, index) => {
         if (!index) return;
         const button = document.createElement("button");
@@ -321,9 +324,11 @@ export function chartArticleMatches(row, selection) {
         (!selection.chartMeasured || row.dataset.measured === "1");
 }
 
+const chartArticleColumns = [0, 1, 2, 3, 4, 6, 7];
+
 /** Sort chart-dialog columns against their original article observations. */
 export function orderChartArticles(rows, column, descending, locale) {
-    const sourceColumn = [0, 1, 2, 3, 4, 6][column];
+    const sourceColumn = chartArticleColumns[column];
     return [...rows].sort((left, right) => compareAnalysisRows(left, right, sourceColumn, descending, locale));
 }
 
@@ -351,7 +356,7 @@ function initializeChartArticles(rows, form) {
             const row = document.createElement("tr");
             row.dataset.chartArticle = source.dataset.title;
             const original = articleElement(source);
-            for (const column of [0, 1, 2, 3, 4, 6]) {
+            for (const column of chartArticleColumns) {
                 const cell = original.cells[column].cloneNode(true);
                 if (!column) cell.textContent = String(start + index + 1);
                 row.append(cell);
@@ -362,6 +367,7 @@ function initializeChartArticles(rows, form) {
             .replace("{start}", groupedNumber(total ? start + 1 : 0))
             .replace("{end}", groupedNumber(start + ordered.length))
             .replace("{total}", groupedNumber(total));
+        updateQualityPageInput(pager, page, pages);
         for (const key of Object.keys(actions)) pager.querySelector(`[data-chart-${key}]`).disabled = ["first", "prev"].includes(key) ? page === 1 : page === pages;
         headings.forEach((heading, index) => {
             if (index) heading.setAttribute("aria-sort", index === column ? (descending ? "descending" : "ascending") : "none");
@@ -383,7 +389,7 @@ function initializeChartArticles(rows, form) {
         count.textContent = form.dataset.loadingPage;
         try {
             const response = await requestQualityPage(form, form.qualitySelection, {
-                view: "chart", page, size, column: [0, 1, 2, 3, 4, 6][column], descending,
+                view: "chart", page, size, column: chartArticleColumns[column], descending,
                 group: chart.chartGroup, value: chart.chartValue,
                 ...(chart.chartYear ? {year: Number(chart.chartYear)} : {}),
                 measured: !!chart.chartMeasured,
@@ -412,6 +418,7 @@ function initializeChartArticles(rows, form) {
         heading.replaceChildren(button);
     });
     for (const [key, destination] of Object.entries(actions)) pager.querySelector(`[data-chart-${key}]`).addEventListener("click", () => {page = destination(); render();});
+    initializeQualityPageInput(pager, target => { page = target; render(); });
     sizeControl.addEventListener("change", () => {page = 1; render();});
     const openChart = event => {
         if (!dialog.isConnected) {

@@ -373,19 +373,30 @@ class CurrentAuthorshipStoreTests(TestCase):
             membership = _membership(((1, 10, "乙"), (2, 20, "乙级列表")))
             store.checkpoint(
                 runtime,
-                members=_members(membership, _NOW),
-            )
-            store.checkpoint(
-                runtime,
-                attempted={"page_id": 1, "revision_id": 10},
+                members=_members(membership, _NOW).with_columns(
+                    (
+                        pl.col("listing_timestamp")
+                        - pl.duration(
+                            days=(pl.col("page_id") == 1).cast(pl.Int64),
+                        )
+                    ).alias("listing_timestamp"),
+                ),
             )
             assert store.pending(store.load(runtime))["page_id"].to_list() == [
                 2,
                 1,
             ]
-            store.checkpoint(runtime, evidence=_evidence(2, 20))
+            store.checkpoint(
+                runtime,
+                attempted={"page_id": 2, "revision_id": 20},
+            )
             assert store.pending(store.load(runtime))["page_id"].to_list() == [
                 1,
+                2,
+            ]
+            store.checkpoint(runtime, evidence=_evidence(1, 10))
+            assert store.pending(store.load(runtime))["page_id"].to_list() == [
+                2,
             ]
 
     @staticmethod

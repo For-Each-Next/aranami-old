@@ -78,6 +78,7 @@ def _catalog_fixture() -> dict:
                     "share": 0.6,
                     "bytes": 720,
                     "characters": 600,
+                    "prose_characters": 550,
                     "raw_bytes": 800,
                 },
             ],
@@ -357,7 +358,18 @@ class QualityResourcePresentationTests(unittest.TestCase):
             assert f"{prefix}author-1.html#quality-author-user-1" in output
             assert '<dialog id="quality-author-user-1"' in detail
             assert 'aria-labelledby="quality-author-user-1-heading"' in detail
-            assert "Game &lt;script&gt; &amp; title" in detail
+            assert "Catalog-only article 1 " in detail
+            significant = resources["author-1-significant.html"]
+            assert 'id="quality-author-user-1-significant"' in significant
+            assert (
+                'data-quality-detail="quality-author-user-1-significant"'
+                in output
+            )
+            assert 'data-sort="1100"' in output
+            assert 'data-sort="1600"' in output
+            assert (
+                "quality-author-user-1-quality-article-1-authorship" in detail
+            )
             assert 'href="/quality-analysis/?lang=' in detail
             assert '#quality-authors"' in detail
             assert '<script src="/live.js?' in detail
@@ -384,12 +396,14 @@ class QualityResourcePresentationTests(unittest.TestCase):
         )
         assert "data-selected-page-ids='[1]'" in output
         assert "data-page-ids='[1, 2]'" in output
-        assert 'data-sort="1"><a href="/quality-analysis/resources/' in output
+        assert 'data-sort="1" class="analysis-number"><a href=' in output
         assert ">1 article</a>" in output
         assert 'data-matrix-author="Unknown activity"' not in output
         detail = resources["author-1.html"]
-        assert 'data-matrix-page="2" hidden data-cohort="0"' in detail
-        assert 'data-matrix-page="1"><td' in detail
+        assert 'data-matrix-page="2" data-matrix-grade=' in detail
+        assert 'data-matrix-year="2026" hidden data-cohort="0"' in detail
+        assert 'data-sort="550"' in output
+        assert 'data-sort="800"' in output
 
     @staticmethod
     def test_missing_authorship_differs_from_observed_empty_and_boundary() -> (
@@ -1271,6 +1285,14 @@ class QualityResourceHTTPTests(unittest.TestCase):
                 summary = client.get(query(view="summary")).json()
                 assert "rows" not in summary
                 assert "histogram" not in summary["cells"][0]
+                assert summary["author_totals"][author] == {
+                    "prose": 1100,
+                    "bytes": 1600,
+                }
+                detail = client.get(f"{_PREFIX}author-1-significant.html")
+                assert detail.status_code == HTTPStatus.OK
+                assert 'id="quality-author-user-1-significant"' in detail.text
+                assert 'data-sort="550"' in detail.text
                 assert summary["coverage"] == {
                     "total": 100,
                     "authorship": 2,

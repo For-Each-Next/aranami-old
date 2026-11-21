@@ -1097,6 +1097,7 @@ summary:hover {
 
 .dataset-preview-table .ui-table__table {
     inline-size: max-content;
+    min-inline-size: 100%;
     font-size: .8125rem;
     font-variant-numeric: tabular-nums;
 }
@@ -1478,7 +1479,7 @@ ul.consistency-cards {
 }
 
 @media (scripting: none) {
-    .page-updates.ui-dialog:target {
+    .page-updates.ui-dialog:is(:target, :has(.analysis-authorship-dialog:target)) {
         display: flex;
         position: relative;
         inline-size: 100%;
@@ -2247,7 +2248,10 @@ footer nav {
 .ui-table-pager__end { flex-wrap: wrap; }
 .ui-table-pager select { min-block-size: 2.25rem; font: inherit; }
 .ui-table-pager .ui-button { min-block-size: 2.25rem; }
-.dataset-page-numbers { margin-block-end: 1rem; }
+.ui-table-pager__end:has(.quality-page-number) { margin-inline-start: auto; }
+.quality-page-number { display: inline-flex; align-items: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.quality-page-number input { inline-size: 3.75em; min-inline-size: 0; padding-inline: .3em; text-align: center; appearance: textfield; }
+.quality-page-number input::-webkit-inner-spin-button { appearance: none; }
 @media (max-width: 600px) {
     .ui-table-pager__center { min-width: 9rem; }
     .ui-table-pager__end { justify-content: flex-end; margin-inline-start: auto; }

@@ -519,9 +519,9 @@ class TestDatasetViewer(TestCase):
     ) -> None:
         """Keep large-file navigation bounded."""
         for current, expected in (
-            (1, {2, 3, 4, 5, 20_000}),
-            (10_000, {1, 9998, 9999, 10_001, 10_002, 20_000}),
-            (20_000, {1, 19_996, 19_997, 19_998, 19_999}),
+            (1, {2, 20_000}),
+            (10_000, {1, 9999, 10_001, 20_000}),
+            (20_000, {1, 19_999}),
         ):
             for locale in ("en", "zh-hans", "zh-hant"):
                 with self.subTest(page=current, locale=locale):
@@ -541,14 +541,19 @@ class TestDatasetViewer(TestCase):
                             output,
                         )
                     ]
-                    assert len(links) <= 8
+                    assert len(links) <= 4
                     assert {int(link["page"][0]) for link in links} == expected
                     assert all(link["lang"] == [locale] for link in links)
                     assert all(
                         link["file"] == [dataset_fixture()["file"]]
                         for link in links
                     )
-                    assert f'aria-current="page">{current}</span>' in output
+                    assert (
+                        f'name="page" min="1" max="20000" value="{current}"'
+                        in output
+                    )
+                    assert "dataset-page-numbers" not in output
+                    assert output.count("data-no-pagination") == 2
 
     def test_legacy_report_preview_keeps_write_metadata_unknown(self) -> None:
         """Inspect legacy rows without inventing write facts."""

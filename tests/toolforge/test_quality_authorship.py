@@ -121,9 +121,9 @@ class BClassAuthorshipPresentationTests(unittest.TestCase):
             "credit": 1,
         })
         for locale, developed, high_quality in (
-            ("en", "Articles by", "2 high-quality"),
-            ("zh-hans", "的条目", "2高品质"),
-            ("zh-hant", "的條目", "2高品質"),
+            ("en", "as a main contributor", "2 high-quality"),
+            ("zh-hans", "的主要贡献条目", "2高品质"),
+            ("zh-hant", "的主要貢獻條目", "2高品質"),
         ):
             context = quality_authorship_context(
                 source,
@@ -336,7 +336,7 @@ class QualityAuthorshipPresentationTests(unittest.TestCase):
         for locale, title, opening, closing, talk, age in (
             (
                 "en",
-                "Articles by Basedora",
+                "Articles with Basedora as a main contributor",
                 " (",
                 ")",
                 "talk",
@@ -344,7 +344,7 @@ class QualityAuthorshipPresentationTests(unittest.TestCase):
             ),
             (
                 "zh-hans",
-                "Basedora的条目",
+                "Basedora的主要贡献条目",
                 "\uff08",
                 "\uff09",
                 "讨论",
@@ -352,7 +352,7 @@ class QualityAuthorshipPresentationTests(unittest.TestCase):
             ),
             (
                 "zh-hant",
-                "Basedora的條目",
+                "Basedora的主要貢獻條目",
                 "\uff08",
                 "\uff09",
                 "討論",

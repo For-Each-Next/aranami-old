@@ -611,8 +611,8 @@ def pending(tables: dict[str, pl.DataFrame]) -> pl.DataFrame:
         tables: Validated state from the durable current store.
 
     Returns:
-        Unattempted members first, then least recently attempted
-        members.
+        Unattempted members in newest listing order, followed by the
+        least recently attempted members.
     """
     return (
         tables["members"]
@@ -630,6 +630,12 @@ def pending(tables: dict[str, pl.DataFrame]) -> pl.DataFrame:
             validate="1:1",
             nulls_equal=True,
         )
-        .sort(["attempted_at", "page_id"], nulls_last=False)
+        .sort(
+            "attempted_at",
+            "listing_timestamp",
+            "page_id",
+            descending=[False, True, False],
+            nulls_last=False,
+        )
         .drop("attempted_at")
     )

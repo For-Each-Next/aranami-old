@@ -12,7 +12,7 @@ from data.collection_leases import collection_lease
 from data.runtime.status import read_status
 from runtime.reporting import website
 from runtime.services import hourly, workloads
-from shared.config import TASK_DEFINITIONS
+from shared.config import PAGEVIEWS_START_HOUR, TASK_DEFINITIONS
 from shared.toolforge.jobs import (
     ARTICLE_STATISTICS,
     DATA_FETCH,
@@ -37,6 +37,7 @@ from shared.toolforge.state import (
     fetch_outcome,
     hour,
     midnight,
+    pageviews_cycle,
     record_completion,
     record_fetch,
 )
@@ -60,11 +61,12 @@ class TestJobDefinitions(TestCase):
             row for row in definitions if row["name"] == job_name(PAGEVIEWS)
         )
         assert (pageviews["schedule"], pageviews["mem"], pageviews["cpu"]) == (
-            "37 * * * *",
+            "0 * * * *",
             "2048Mi",
             2,
         )
         assert "timeout" not in pageviews
+        assert pageviews["retry"] == 0
         assert JOB_DEFINITIONS.keys() <= WORKLOAD_SERVICES.keys()
         extended = job_definitions(
             root,
@@ -152,6 +154,44 @@ class TestHandoff(TestCase):
         assert phases[-2:] == [("fetch", PAGEVIEWS), ("analyze", PAGEVIEWS)]
         assert self.worker.call_args.args[-1] is None
         assert completed(self.runtime, REPORT_UPDATE, self.cycle)
+
+    def test_pageviews_retries_until_the_daily_cycle_succeeds(self) -> None:
+        """Start at 19:00 and retry across midnight if needed."""
+        self.enable()
+        start = self.cycle.replace(hour=PAGEVIEWS_START_HOUR)
+        record_completion(
+            self.runtime,
+            PAGEVIEWS,
+            start - dt.timedelta(hours=7),
+        )
+        hourly.dt.datetime.now.return_value = start - dt.timedelta(hours=1)
+        hourly.run_service(PAGEVIEWS)
+        self.worker.assert_not_called()
+
+        for elapsed in (0, 1):
+            hourly.dt.datetime.now.return_value = start + dt.timedelta(
+                hours=elapsed,
+            )
+            self.worker.side_effect = OSError("Pageviews unavailable")
+            with self.assertRaisesRegex(RuntimeError, "needs a retry"):
+                hourly.run_service(PAGEVIEWS)
+        assert not completed(self.runtime, PAGEVIEWS, start)
+
+        retry = midnight(start + dt.timedelta(days=1))
+        hourly.dt.datetime.now.return_value = retry
+        self.worker.side_effect = None
+        hourly.run_service(PAGEVIEWS)
+        assert self.worker.call_args.args == (
+            "analyze",
+            PAGEVIEWS,
+            retry,
+            None,
+        )
+        assert completed(self.runtime, PAGEVIEWS, start)
+        self.worker.reset_mock()
+        hourly.dt.datetime.now.return_value = retry + dt.timedelta(hours=1)
+        hourly.run_service(PAGEVIEWS)
+        self.worker.assert_not_called()
 
     def test_hourly_fetch_recovers_a_missing_daily_snapshot(self) -> None:
         """Recover the day's capture after a missed launch."""
@@ -252,3 +292,8 @@ class TestHandoff(TestCase):
         assert plan["collections"]["newsletter-history"][
             "job_name"
         ] == job_name(DATA_FETCH)
+        record_completion(self.runtime, PAGEVIEWS, pageviews_cycle(self.now))
+        plan = read_status(self.runtime, as_of=self.now)["toolforge_schedules"]
+        assert plan["services"][PAGEVIEWS]["next_run_at"] == (
+            self.cycle.replace(hour=PAGEVIEWS_START_HOUR).isoformat()
+        )

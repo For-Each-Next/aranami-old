@@ -5,11 +5,11 @@ v0.8.8 was consolidated into the v0.9.2 release.
 
 ## Until 0.11
 
-### 0.10.0.dev9 (2026-11-21 08:25 UTC)
+### 0.10.0.dev10 (2026-11-21 09:37 UTC)
 
 Overview: Separated source acquisition from analysis and publication while
 consolidating Toolforge services, standardizing saved tables, and refining
-Article Statistics.
+Article Statistics and Parquet previews.
 
 - Scheduled the daily project snapshot at midnight and recover missing captures
   in the hourly fetch while preserving newer hourly membership.
@@ -29,16 +29,24 @@ Article Statistics.
 - Matched browser violin shapes to Matplotlib's default density settings.
 - Displayed Toolforge job names, types, status durations, RAM, and CPU in the
   server status table.
+- Shortened Toolforge schedule labels by omitting the time zone.
 - Refreshed the running-job elapsed display every 110 ms in the browser.
 - Gave the destructive filter reset its own row and set table pages to ten.
 - Linked registered contributors by their saved Wikipedia IDs and retried
   incomplete significant-contributor measurements.
-- Scheduled Pageviews at minute 37 UTC with 2 GiB, two cores, and no deadline.
+- Scheduled Pageviews at 19:00 UTC with hourly retries and a daily checkpoint.
 - Stored repeated Parquet values in keyed scalar child tables and published
   historical listing authorship under one atomic selector.
 - Batched rating-history updates and skipped redundant writes.
 - Shared the home-page card grid with report status and worklist results.
 - Kept authenticated Redis page caching and compact authorship generations.
+- Prioritized contributor collection and coverage lists by assessment date.
+- Linked assessment dates to reviews and expanded author dialogs with article
+  statistics and significant-contributor details.
+- Summed saved prose and size measurements for significant contributions.
+- Harmonized article tables and added editable page numbers between pager buttons.
+- Filled the available Parquet preview width and retained scroll position while
+  paging. Displayed file metadata and schema without pagination.
 
 ## Until 0.10
 

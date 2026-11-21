@@ -61,6 +61,7 @@ from webservice.presentation import (
 )
 from webservice.quality_analysis import (
     main_author_directory,
+    prepare_author_articles,
     quality_analysis_context,
 )
 from webservice.quality_authorship import quality_authorship_context
@@ -1639,6 +1640,11 @@ def _quality_analysis_view(  # ruff: ignore[too-many-arguments]
     context.update(
         quality_authorship_context(authorship, page.interface, now),
     )
+    prepare_author_articles(
+        context["quality_authorship"]["authors"],
+        analysis,
+        page.interface,
+    )
     return context
 
 
@@ -1654,7 +1660,7 @@ def _quality_resources(
     matrix = analysis["matrix"]
     selected_ids = analysis.get("selected_page_ids")
     if directory is not None:
-        membership = _quality_author_resources(
+        author_data = _quality_author_resources(
             context,
             resources,
             prefix,
@@ -1671,7 +1677,7 @@ def _quality_resources(
                 }
                 for article in directory
             ],
-            "authors": membership,
+            **author_data,
             "last_year": matrix["last_year"],
             "grades": [grade["value"] for grade in matrix["grades"]],
             "importance": [level["value"] for level in matrix["importance"]],
@@ -1736,15 +1742,10 @@ def _quality_author_resources(
     """Prepare standalone contributor pages using their own membership.
 
     Returns:
-        Private contributor memberships for matrix-wide author counts.
+        Private contributor memberships and measurements for the matrix.
     """
     analysis = context["quality_analysis"]
     defaults = set(selected_ids) if selected_ids is not None else None
-    articles = (
-        {article["page_id"]: article for article in directory}
-        if directory is not None
-        else None
-    )
     return_url = local_url(
         "/quality-analysis/",
         lang=analysis["locale"],
@@ -1753,25 +1754,18 @@ def _quality_author_resources(
     )
     number = 0
     membership = {}
+    contributions = {}
     for author in context["quality_authorship"]["authors"]:
         page_ids = [
             article["page_id"]
             for article in author["articles"]
             if article.get("page_id") is not None
         ]
-        if articles is None:
+        if directory is None:
             author["page_ids"] = page_ids
         else:
             membership[author["name"]] = page_ids
-            for article in author["articles"]:
-                source = articles.get(article.get("page_id"))
-                if source is not None:
-                    article["matrix_importance"] = (
-                        source.get("importance") or "Unknown"
-                    )
-                    article["matrix_year"] = (source.get("listed_date") or "")[
-                        :4
-                    ]
+            contributions[author["name"]] = author.pop("contributions")
         if defaults is not None:
             visible = 0
             for article in author["articles"]:
@@ -1793,22 +1787,56 @@ def _quality_author_resources(
         user_id = author["user_id"]
         if user_id:
             author["popup_id"] = f"quality-author-user-{user_id}"
-        content = _render(
-            "quality_detail.html",
-            {**context, "author": author, "return_url": return_url},
-        )
-        name = (
-            f"author-{user_id}.html"
-            if user_id
-            else f"author-{author['popup_id']}-"
-            f"{sha256(content.encode()).hexdigest()}.html"
-        )
-        resources[name] = content
-        author["detail_url"] = prefix + name + "#" + author["popup_id"]
+        for significant in (False, True):
+            kind = "significant_" if significant else ""
+            filename, content = _quality_author_detail(
+                context,
+                author,
+                return_url,
+                significant=significant,
+            )
+            resources[filename] = content
+            author[f"{kind}detail_url"] = (
+                prefix + filename + "#" + author[f"{kind}popup_id"]
+            )
         author.pop("articles")
         author.pop("quality_articles")
         author.pop("featured_articles")
-    return membership
+        author.pop("significant_articles")
+    return {"authors": membership, "contributions": contributions}
+
+
+def _quality_author_detail(
+    context: dict,
+    author: dict,
+    return_url: str,
+    *,
+    significant: bool,
+) -> tuple[str, str]:
+    """Render the chosen article list as a standalone detail page.
+
+    Returns:
+        The resource filename and its complete native HTML.
+    """
+    kind = "significant_" if significant else ""
+    dialog_id = author[f"{kind}popup_id"]
+    content = _render(
+        "quality_detail.html",
+        {
+            **context,
+            "articles": author[f"{kind}articles"],
+            "dialog_id": dialog_id,
+            "dialog_title": author[f"{kind}dialog_title"],
+            "significant": significant,
+            "return_url": return_url,
+        },
+    )
+    user_id = author["user_id"]
+    if user_id:
+        suffix = "-significant" if significant else ""
+        return f"author-{user_id}{suffix}.html", content
+    digest = sha256(content.encode()).hexdigest()
+    return f"author-{dialog_id}-{digest}.html", content
 
 
 def render_quality_authorship(  # ruff: ignore[too-many-arguments]
@@ -2567,20 +2595,6 @@ def render_dataset(
             )
             if current < page_count
             else None,
-            "page_links": [
-                {
-                    "number": number,
-                    "url": local_url(
-                        "/data/",
-                        page=number,
-                        **filters,
-                    ),
-                }
-                for number in range(
-                    max(1, min(current - 2, page_count - 4)),
-                    min(page_count, max(current + 2, 5)) + 1,
-                )
-            ],
             "previous": local_url(
                 "/data/",
                 page=current - 1,

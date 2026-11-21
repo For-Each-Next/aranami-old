@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
+import datetime as dt
 from pathlib import Path
-from typing import TYPE_CHECKING
 
+from shared.config import PAGEVIEWS_START_HOUR
 from shared.support.files import atomic_json, read_json_object
-
-if TYPE_CHECKING:
-    import datetime as dt
 
 STATE_DIRECTORY = Path("state/toolforge-jobs")
 ACTIVE_PATH = STATE_DIRECTORY / "active"
@@ -27,8 +25,32 @@ def midnight(instant: dt.datetime) -> dt.datetime:
     return hour(instant).replace(hour=0)
 
 
-def completed(runtime: Path, name: str, cycle: dt.datetime) -> bool:
+def pageviews_cycle(instant: dt.datetime) -> dt.datetime:
+    """Return the most recent daily Pageviews launch boundary.
+
+    Returns:
+        The UTC cycle shared by the initial launch and hourly retries.
+    """
+    current = hour(instant.astimezone(dt.UTC))
+    start = current.replace(hour=PAGEVIEWS_START_HOUR)
+    return start if current >= start else start - dt.timedelta(days=1)
+
+
+def completed(
+    runtime: Path,
+    name: str,
+    cycle: dt.datetime,
+    *,
+    through: dt.datetime | None = None,
+) -> bool:
     """Check for a successful workload receipt.
+
+    Args:
+        runtime: Root containing the saved workload receipts.
+        name: Workload receipt name.
+        cycle: Expected checkpoint or earliest acceptable success.
+        through: Allow a saved success through this UTC hour. Used by
+            Pageviews to accept its previous per-hour receipts.
 
     Returns:
         Whether the workload completed this UTC cycle.
@@ -40,7 +62,15 @@ def completed(runtime: Path, name: str, cycle: dt.datetime) -> bool:
         )
     except OSError, ValueError:
         return False
-    return receipt == {"cycle": cycle.isoformat()}
+    if through is None:
+        return receipt == {"cycle": cycle.isoformat()}
+    if set(receipt) != {"cycle"}:
+        return False
+    try:
+        observed = dt.datetime.fromisoformat(receipt["cycle"])
+    except TypeError, ValueError:
+        return False
+    return observed.utcoffset() is not None and cycle <= observed <= through
 
 
 def record_completion(runtime: Path, name: str, cycle: dt.datetime) -> None:

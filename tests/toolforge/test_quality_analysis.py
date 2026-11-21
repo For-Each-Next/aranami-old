@@ -189,7 +189,7 @@ class QualityAnalysisPresentationTests(unittest.TestCase):
         ]["articles"][0]
         assert row["title_label"] == "PlayStation 5"
         assert "PlayStation_5" in row["url"]
-        assert row["listing_url"].endswith("oldid=456")
+        assert row["listed_oldid"] == 456
         assert row["review_url"].endswith("#Review")
         proof = row["authorship"]
         assert proof["range_start"]["url"].endswith("oldid=11")
@@ -229,18 +229,18 @@ class QualityAnalysisPresentationTests(unittest.TestCase):
         assert context["articles"][1]["characters_label"] == "—"
         assert context["articles"][2]["characters_label"] == "0"
         assert context["articles"][1]["date_label"] is None
-        assert context["articles"][0]["listing_url"].endswith("oldid=456")
+        assert context["articles"][0]["review_url"] is None
         assert context["articles"][0]["source_url"].endswith("oldid=124")
         source["articles"][0]["listed_oldid"] = 999999
         evidence = quality_analysis_context(source, Interface("en"))[
             "quality_analysis"
         ]["articles"][0]
-        assert evidence["listing_url"].endswith("oldid=999999")
+        assert evidence["review_url"] is None
         source["articles"][0]["listed_oldid"] = None
         assert (
             quality_analysis_context(source, Interface("en"))[
                 "quality_analysis"
-            ]["articles"][0]["listing_url"]
+            ]["articles"][0]["review_url"]
             is None
         )
         assert context["years"][0]["segments"][0]["grade"] == "Bplus"
@@ -274,6 +274,8 @@ class QualityAnalysisPresentationTests(unittest.TestCase):
             assert "sandbox analysis" not in output
             assert output.count('data-analysis-pie="') == 2
             assert "data-analysis-filter-note" not in output
+            assert "oldid=456" not in output
+            assert "analysis-review" not in output
 
     @staticmethod
     def test_distribution_groups_articles_before_lists_and_unassessed() -> (

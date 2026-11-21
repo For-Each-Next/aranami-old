@@ -450,7 +450,6 @@ def _articles(data: dict, interface: Interface) -> list[dict]:
             if importance in _IMPORTANCE
             else len(_IMPORTANCE),
             "date_label": interface.date(date) if date else None,
-            "listing_url": _revision_url(row.get("listed_oldid")),
             "review_url": review_url({
                 "nomination_link": row.get("listed_review_link"),
                 "title": row["title"],
@@ -582,6 +581,8 @@ def _editor(source: dict, interface: Interface) -> dict:
         else None,
         "share": source["share"],
         "character_floor": character_floor,
+        "prose_characters": source.get("prose_characters"),
+        "raw_bytes": raw_bytes,
         "share_label": f"{source['share'] * 100:.1f}%",
         "characters_label": _number(source.get("prose_characters")),
         "bytes_label": f"{_kilobytes(raw_bytes)} kB"
@@ -696,10 +697,20 @@ def main_author_directory(
     qualified = {}
     identities = defaultdict(set)
     names = defaultdict(set)
+    contributions = defaultdict(list)
     for row in articles:
+        proof = _authorship(row, interface)
+        if proof["available"]:
+            for editor in proof["editors"]:
+                if editor["url"] and not editor["anonymous"]:
+                    contributions[editor["name"]].append((
+                        row["page_id"],
+                        editor["prose_characters"],
+                        editor["raw_bytes"],
+                    ))
         editors = [
             author
-            for author in _main_editors(_authorship(row, interface))
+            for author in _main_editors(proof)
             if author["url"] is not None and not author["anonymous"]
         ]
         qualified[row["page_id"]] = {author["name"] for author in editors}
@@ -728,6 +739,7 @@ def main_author_directory(
                 **author,
                 "user_id": user_id if len(names[user_id]) == 1 else None,
                 "articles": selected,
+                "contributions": contributions[author["name"]],
                 "credit": len(selected),
                 "grades": {
                     grade: sum(
@@ -737,6 +749,119 @@ def main_author_directory(
                 },
             })
     return output
+
+
+def author_contribution_totals(
+    contributions: list[tuple[int, int | None, int | None]],
+    page_ids: set[int] | None,
+) -> dict[str, int | None]:
+    """Sum the saved prose and byte counts within the selected cohort.
+
+    Returns:
+        Totals with null for a metric lacking any measured contribution.
+    """
+    prose = size = None
+    for page_id, characters, raw_bytes in contributions:
+        if page_ids is not None and page_id not in page_ids:
+            continue
+        if characters is not None:
+            prose = (prose or 0) + characters
+        if raw_bytes is not None:
+            size = (size or 0) + raw_bytes
+    return {"prose": prose, "bytes": size}
+
+
+def _author_article(article: dict, prefix: str) -> dict:
+    """Give each contributor dialog a unique attribution popup.
+
+    Returns:
+        An article row with a dialog-specific popup identifier.
+    """
+    return {
+        **article,
+        "authorship_popup_id": f"{prefix}-{article['authorship_popup_id']}",
+    }
+
+
+def prepare_author_articles(
+    authors: list[dict],
+    analysis: dict,
+    interface: Interface,
+) -> None:
+    """Attach localized article rows and contribution totals."""
+    page_ids = {
+        page_id
+        for author in authors
+        for page_id, _, _ in author["contributions"]
+    }
+    if not page_ids:
+        return
+    selection = analysis.get("selection")
+    selected_ids = (
+        {
+            row["page_id"]
+            for row in selection["defaults"][
+                int(bool(analysis.get("all_grades")))
+            ]["articles"]
+        }
+        if selection
+        else None
+    )
+    rows = _articles(
+        {
+            **analysis,
+            "articles": [
+                row
+                for row in analysis["articles"]
+                if row["page_id"] in page_ids
+            ],
+        },
+        interface,
+    )
+    catalog = {
+        row["page_id"]: {
+            **row,
+            "default_selected": selected_ids is None
+            or row["page_id"] in selected_ids,
+        }
+        for row in rows
+    }
+    for author in authors:
+        prefix = (
+            f"quality-author-user-{author['user_id']}"
+            if author["user_id"]
+            else author["popup_id"]
+        )
+        author["articles"] = [
+            _author_article(catalog[record["page_id"]], prefix)
+            for record in author["articles"]
+        ]
+        significant_id = f"{prefix}-significant"
+        author["significant_popup_id"] = significant_id
+        author["significant_dialog_title"] = interface.text(
+            "quality_authorship.author_significant_articles",
+            name=author["name"],
+        )
+        author["significant_articles"] = [
+            {
+                **_author_article(catalog[page_id], significant_id),
+                "prose_characters": prose,
+                "characters_label": _number(prose),
+                "source_bytes": size,
+                "source_label": _kilobytes(size),
+            }
+            for page_id, prose, size in author["contributions"]
+        ]
+        totals = author_contribution_totals(
+            author["contributions"],
+            selected_ids,
+        )
+        author.update(
+            contributed_prose=totals["prose"],
+            contributed_prose_label=_number(totals["prose"]),
+            contributed_bytes=totals["bytes"],
+            contributed_bytes_label=_kilobytes(totals["bytes"]),
+        )
 
 
 def _coverage_cards(data: dict, interface: Interface) -> list[dict]:
@@ -916,7 +1041,6 @@ def quality_analysis_context(
                         "words",
                         "authorship_details",
                         "review",
-                        "listing_evidence",
                         "violin_summary",
                         "violin_range",
                         "violin_single",
@@ -932,6 +1056,7 @@ def quality_analysis_context(
                     )
                 },
                 "talk": interface.text("quality_authorship.talk"),
+                "user": interface.text("quality_authorship.user"),
                 "unknown": interface.text("data.unknown"),
                 "parenthesis_open": interface.text(
                     "quality_authorship.parenthesis_open",

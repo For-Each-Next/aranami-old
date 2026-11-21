@@ -11,6 +11,15 @@
   <div class="ui-table-pager__end">
   {% for key, label in [('first', t.reports.first), ('previous', t.backlog.previous), ('next', t.backlog.next), ('last', t.reports.last)] %}
     {% if paging[key] %}<a class="ui-button ui-button--fake-button ui-button--fake-button--enabled" aria-label="{{ label }}"{% if key in ['previous', 'next'] %} rel="{{ 'prev' if key == 'previous' else 'next' }}"{% endif %}{% if dataset %} data-dataset-page{% endif %} href="{{ paging[key] }}">{{ label }}</a>{% else %}<button class="ui-button" type="button" disabled>{{ label }}</button>{% endif %}
+    {% if dataset and key == 'previous' %}
+      <form action="{{ action }}" method="get">
+        {% for name, value in size_fields.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+        <input type="hidden" name="size" value="{{ paging.size }}">
+        {% set parts = t.quality_analysis.page_number.split('{page}') %}
+        <label class="quality-page-number">{{ parts[0] }}<input class="cdx-text-input__input" type="number" inputmode="numeric" name="page" min="1" max="{{ paging.page_count }}" value="{{ paging.page }}" required aria-label="{{ t.quality_analysis.go_to_page }}" aria-description="{{ t.data.page.format(page=paging.page, total=paging.page_count) }}">{{ parts[1] }}</label>
+        <button type="submit" hidden>{{ t.backlog.go }}</button>
+      </form>
+    {% endif %}
   {% endfor %}
   </div>
 </nav>

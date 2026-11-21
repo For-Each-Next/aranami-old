@@ -1538,7 +1538,7 @@ class _PublicViews:
             r"/quality-analysis/resources/(en|zh-hans|zh-hant)/"
             r"(0|all)/(current|listed)/"
             r"((?:catalog-[0-9a-f]{64}\.json|"
-            r"author-quality-author-[1-9][0-9]*-[0-9a-f]{64}\.html|"
+            rf"{quality_pages.HASHED_AUTHOR_DETAIL_NAME.pattern}|"
             rf"{quality_pages.AUTHOR_DETAIL_NAME.pattern}))",
             request.path,
         )

@@ -10,6 +10,8 @@ from shared.assessment_profiles import assessment_profile_configuration
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+PAGEVIEWS_START_HOUR = 19
+
 
 @dataclass(frozen=True, slots=True)
 class TaskDefinition:

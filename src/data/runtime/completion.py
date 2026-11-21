@@ -13,7 +13,7 @@ import tempfile
 from pathlib import Path
 from threading import RLock
 
-from shared.config import TASK_DEFINITIONS
+from shared.config import PAGEVIEWS_START_HOUR, TASK_DEFINITIONS
 from shared.support.files import read_json_object
 
 _LOGGER = logging.getLogger(__name__)
@@ -66,9 +66,14 @@ def next_daily_run(routine: str, now: dt.datetime) -> dt.datetime:
     if routine != "pageviews":
         message = "Only New pages and Pageviews have daily checkpoints."
         raise ValueError(message)
-    trigger = instant.replace(hour=19, minute=0, second=0, microsecond=0)
+    trigger = instant.replace(
+        hour=PAGEVIEWS_START_HOUR,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
     # A completed day after readiness waits for tomorrow's boundary.
-    return trigger if instant.hour < 19 else trigger + dt.timedelta(days=1)  # ruff: ignore[magic-value-comparison]
+    return trigger if instant < trigger else trigger + dt.timedelta(days=1)
 
 
 def latest_required_date(routine: str, instant: dt.datetime) -> dt.date:
@@ -88,7 +93,9 @@ def latest_required_date(routine: str, instant: dt.datetime) -> dt.date:
         message = "Only New pages and Pageviews have daily checkpoints."
         raise ValueError(message)
     utc = instant.astimezone(dt.UTC)
-    days = 2 if routine == "pageviews" and utc.hour < 19 else 1  # ruff: ignore[magic-value-comparison]
+    days = (
+        2 if routine == "pageviews" and utc.hour < PAGEVIEWS_START_HOUR else 1
+    )
     return utc.date() - dt.timedelta(days=days)
 
 

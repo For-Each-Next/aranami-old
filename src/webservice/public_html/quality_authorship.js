@@ -77,7 +77,8 @@ async function refreshQualityDetail(link, expiredUrl) {
     const page = new DOMParser().parseFromString(await response.text(), "text/html");
     const row = [...page.querySelectorAll("[data-matrix-author]")]
         .find(candidate => candidate.dataset.matrixAuthor === author);
-    const fresh = row?.querySelector("a[data-quality-detail]");
+    const fresh = row?.querySelector(link.hasAttribute("data-significant-detail")
+        ? "a[data-significant-detail]" : "a[data-quality-detail]:not([data-significant-detail])");
     if (!fresh) return null;
     const href = new URL(fresh.getAttribute("href"), reportUrl);
     if (href.href === expiredUrl) return null;
@@ -197,6 +198,38 @@ export function compareValues(left, right, descending, locale) {
     return descending ? -comparison : comparison;
 }
 
+/** Commit a typed page number on Enter or when the field loses focus. */
+export function initializeQualityPageInput(pager, goToPage) {
+    const input = pager.querySelector(".quality-page-number input");
+    if (!input) return;
+    const jump = () => {
+        const current = Number(input.dataset.currentPage || 1);
+        const requested = input.valueAsNumber;
+        const page = Number.isFinite(requested)
+            ? Math.max(1, Math.min(Number(input.max), Math.trunc(requested))) : current;
+        input.value = String(page);
+        if (page !== current) {
+            input.dataset.currentPage = input.value;
+            goToPage(page);
+        }
+    };
+    input.addEventListener("change", jump);
+    input.addEventListener("keydown", event => {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            jump();
+        }
+    });
+}
+
+/** Reflect the current page and the valid range after filtering or paging. */
+export function updateQualityPageInput(pager, page, pages) {
+    const input = pager.querySelector(".quality-page-number input");
+    if (!input) return;
+    input.max = String(pages);
+    input.value = input.dataset.currentPage = String(page);
+}
+
 /** Add accessible sorting and pagination to each server-rendered directory. */
 export function initializeQualityAuthorship(root = document) {
     initializeQualityDetails();
@@ -240,7 +273,8 @@ export function initializeQualityAuthorship(root = document) {
         }
         label.append(select);
         const status = document.createElement("span");
-        status.className = "ui-table-pager__center";
+        status.className = host.dataset.pageNumber
+            ? "ui-table-pager__center visually-hidden" : "ui-table-pager__center";
         status.setAttribute("role", "status");
         pager.append(label, status);
         const navigation = document.createElement("div");
@@ -264,6 +298,19 @@ export function initializeQualityAuthorship(root = document) {
             });
             actions.push(button);
             navigation.append(button);
+            if (key === "prev" && host.dataset.pageNumber) {
+                const [prefix, suffix] = host.dataset.pageNumber.split("{page}");
+                const current = document.createElement("label");
+                current.className = "quality-page-number";
+                const input = document.createElement("input");
+                input.className = "cdx-text-input__input";
+                input.type = "number";
+                input.inputMode = "numeric";
+                input.min = "1";
+                input.setAttribute("aria-label", host.dataset.goToPage);
+                current.append(prefix, input, suffix);
+                navigation.append(current);
+            }
         }
         select.addEventListener("change", () => {
             size = Number(select.value);
@@ -271,6 +318,7 @@ export function initializeQualityAuthorship(root = document) {
             render();
         });
         host.append(pager);
+        initializeQualityPageInput(pager, target => { page = target; render(); });
 
         /** Reorder existing escaped cells and show only the selected page. */
         function render() {
@@ -320,6 +368,7 @@ export function initializeQualityAuthorship(root = document) {
             actions[0].disabled = actions[1].disabled = page <= 1;
             actions[2].disabled = actions[3].disabled =
                 start + size >= rows.length;
+            updateQualityPageInput(pager, page, Math.max(1, Math.ceil(rows.length / size)));
         }
         for (const [position, heading] of headings.entries()) {
             if (!position) continue;
