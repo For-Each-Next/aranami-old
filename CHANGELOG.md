@@ -5,7 +5,7 @@ v0.8.8 was consolidated into the v0.9.2 release.
 
 ## Until 0.11
 
-### 0.10.0.dev19 (2026-11-21 13:06 UTC)
+### 0.10.0.dev20 (2026-11-21 13:25 UTC)
 
 Overview: Separated source acquisition from analysis and publication while
 consolidating Toolforge services, standardizing saved tables, and expanding
@@ -19,7 +19,7 @@ the Article List and Parquet previews.
 - Sorted the author directory by descending attributed prose by default.
 - Compacted table columns, aligned smaller units with their values, and
   improved annual legends and violin labels.
-- Compressed prepared Article List pages within the saved-file limit.
+- Compressed the prepared Article List and sized its storage for all presets.
 - Recalculated contributor shares without whitespace and bolded the full
   total row, including the editor count.
 - Fixed the newsletter's annual chart captions and deferred offscreen previews.

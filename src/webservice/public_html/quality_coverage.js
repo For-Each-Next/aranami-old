@@ -123,7 +123,12 @@ export function initializeQualityCoverage() {
         for (const heading of dialog.querySelectorAll("[data-coverage-comparison-column]")) heading.hidden = kind !== "total";
         if (lookupColumn) lookupColumn.hidden = kind === "total";
         empty.hidden = total > 0;
-        empty.textContent = kind === "total" && !source?.available ? labels.comparison_unavailable : labels.no_missing;
+        empty.textContent = labels.no_missing;
+        if (kind === "total") {
+            empty.textContent = source?.available
+                ? labels.no_differences || labels.no_missing
+                : labels.comparison_unavailable;
+        }
         table.hidden = total === 0;
         status.textContent = status.dataset.template.replace("{start}", groupedNumber(total ? start + 1 : 0))
             .replace("{end}", groupedNumber(start + visible.length)).replace("{total}", groupedNumber(total));

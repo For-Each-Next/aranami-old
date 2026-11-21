@@ -1,6 +1,7 @@
 """Retain prepared article-statistics pages for direct HTTP delivery.
 
 Background presentation writes one bounded JSON document per preset.
+The total budget accommodates many resources, each with its own limit.
 Readers never calculate statistics or invoke a renderer.
 """
 
@@ -21,7 +22,8 @@ if TYPE_CHECKING:
 from data.prepared import read_values, values_path
 from shared.support.files import atomic_json, encode_json, file_identity
 
-MAX_BYTES = 16 * 1024 * 1024
+MAX_BYTES = 32 * 1024 * 1024
+_MAX_RESOURCE_BYTES = 16 * 1024 * 1024
 AUTHOR_DETAIL_NAME = re.compile(
     r"author-[1-9][0-9]{0,9}(?:-significant)?\.html",
 )
@@ -173,8 +175,12 @@ def _unpack_resource(content: str) -> str:
             validate=True,
         )
         stream = zlib.decompressobj()
-        raw = stream.decompress(encoded, MAX_BYTES + 1)
-        if len(raw) > MAX_BYTES or not stream.eof or stream.unused_data:
+        raw = stream.decompress(encoded, _MAX_RESOURCE_BYTES + 1)
+        if (
+            len(raw) > _MAX_RESOURCE_BYTES
+            or not stream.eof
+            or stream.unused_data
+        ):
             raise ValueError(message)
         return raw.decode()
     except (Base64Error, zlib.error, UnicodeDecodeError) as error:
@@ -191,7 +197,7 @@ def _pack_resource(content: str) -> str:
         ValueError: The resource exceeds the bounded storage size.
     """
     raw = content.encode()
-    if len(raw) > MAX_BYTES:
+    if len(raw) > _MAX_RESOURCE_BYTES:
         message = "The quality resource exceeds its size limit."
         raise ValueError(message)
     packed = _PACKED_RESOURCE_PREFIX + b64encode(

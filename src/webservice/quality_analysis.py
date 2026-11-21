@@ -1329,6 +1329,7 @@ def quality_analysis_context(
                     "authorship_no_date",
                     "authorship_revision_retry",
                     "no_missing",
+                    "no_differences",
                     "comparison_unavailable",
                     "category",
                     "pageassessments",

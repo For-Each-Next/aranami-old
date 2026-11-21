@@ -3418,6 +3418,7 @@
   "quality_coverage.missing_length": {"en": "Pages without prose lengths", "zh-hans": "尚未获取页面字数的页面", "zh-hant": "尚未取得頁面字數的頁面"},
   "quality_coverage.length_needs_measurement": {"en": "Saved measurement needs a prose count", "zh-hans": "已有测量记录，待补正文字数", "zh-hant": "已有測量紀錄，待補正文字數"},
   "quality_coverage.no_missing": {"en": "No matching pages.", "zh-hans": "没有符合条件的页面。", "zh-hant": "沒有符合條件的頁面。"},
+  "quality_coverage.no_differences": {"en": "No differences for the selected grades.", "zh-hans": "所选评级没有差异。", "zh-hant": "所選評級沒有差異。"},
   "quality_coverage.comparison_unavailable": {"en": "The comparison has not been collected yet.", "zh-hans": "尚未取得分类与PageAssessments的对照数据。", "zh-hant": "尚未取得分類與PageAssessments的對照資料。"},
   "quality_coverage.category": {"en": "Category grades", "zh-hans": "分类评级", "zh-hant": "分類評級"},
   "quality_coverage.pageassessments": {"en": "PageAssessments grade", "zh-hans": "PageAssessments评级", "zh-hant": "PageAssessments評級"},

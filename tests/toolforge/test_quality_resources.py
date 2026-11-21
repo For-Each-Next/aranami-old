@@ -1472,3 +1472,30 @@ class QualityResourceHTTPTests(unittest.TestCase):
             assert (
                 quality_pages.read_resource(path, directory_name) == directory
             )
+
+    def test_preset_budget_keeps_the_individual_resource_bound(self) -> None:
+        """Admit many small resources and reject an oversized one."""
+        resources = {
+            f"author-{index}.html": sha256(str(index).encode()).hexdigest()
+            for index in range(1, 8)
+        }
+        with (
+            TemporaryDirectory() as temporary,
+            patch.object(quality_pages, "MAX_BYTES", 1500),
+            patch.object(quality_pages, "_MAX_RESOURCE_BYTES", 128),
+        ):
+            path = Path(temporary) / "report.json"
+            quality_pages.save(
+                path,
+                "<main>Article List</main>",
+                (),
+                resources=resources,
+            )
+            assert path.stat().st_size > 128
+            assert all(
+                quality_pages.read_resource(path, name) == content
+                for name, content in resources.items()
+            )
+            with self.assertRaisesRegex(ValueError, "resource exceeds"):  # ruff: ignore[pytest-unittest-raises-assertion] - Run with the standard-library suite.
+                quality_pages.save(path, "a" * 129, ())
+            assert quality_pages.read(path) == "<main>Article List</main>"
