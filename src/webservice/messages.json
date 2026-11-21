@@ -3403,6 +3403,15 @@
   "quality_coverage.comparison": {"en": "Category and PageAssessments differences", "zh-hans": "分类与PageAssessments评级差异", "zh-hant": "分類與PageAssessments評級差異"},
   "quality_coverage.missing_authorship": {"en": "Pages without contributor information", "zh-hans": "尚未获取贡献者信息的页面", "zh-hant": "尚未取得貢獻者資訊的頁面"},
   "quality_coverage.missing_dates": {"en": "Pages without assessment dates", "zh-hans": "尚未获取评级时间的页面", "zh-hant": "尚未取得評級時間的頁面"},
+  "quality_coverage.date_status": {"en": "Lookup status", "zh-hans": "查询状态", "zh-hant": "查詢狀態"},
+  "quality_coverage.date_unassessed": {"en": "Unassessed", "zh-hans": "未评级", "zh-hant": "未評級"},
+  "quality_coverage.date_no_talk": {"en": "Talk-page information unavailable", "zh-hans": "缺少讨论页资料", "zh-hant": "缺少討論頁資料"},
+  "quality_coverage.date_pending": {"en": "No lookup recorded yet", "zh-hans": "暂无查询记录", "zh-hant": "尚無查詢紀錄"},
+  "quality_coverage.date_awaiting_update": {"en": "Date found, awaiting update", "zh-hans": "已查到日期，待更新", "zh-hant": "已查到日期，待更新"},
+  "quality_coverage.date_interrupted": {"en": "Lookup interrupted, awaiting retry", "zh-hans": "查询中断，待重试", "zh-hant": "查詢中斷，待重試"},
+  "quality_coverage.date_in_progress": {"en": "Lookup incomplete", "zh-hans": "查询未完成，待续查", "zh-hant": "查詢未完成，待續查"},
+  "quality_coverage.date_no_date": {"en": "Checked, no date confirmed", "zh-hans": "已查询，日期未确认", "zh-hant": "已查詢，日期未確認"},
+  "quality_coverage.date_unrecorded": {"en": "Status unavailable", "zh-hans": "状态未记录", "zh-hant": "狀態未記錄"},
   "quality_coverage.missing_length": {"en": "Pages without prose lengths", "zh-hans": "尚未获取页面字数的页面", "zh-hant": "尚未取得頁面字數的頁面"},
   "quality_coverage.no_missing": {"en": "No matching pages.", "zh-hans": "没有符合条件的页面。", "zh-hant": "沒有符合條件的頁面。"},
   "quality_coverage.comparison_unavailable": {"en": "The comparison has not been collected yet.", "zh-hans": "尚未取得分类与PageAssessments的对照数据。", "zh-hant": "尚未取得分類與PageAssessments的對照資料。"},
@@ -4314,14 +4323,14 @@
     "zh-hant": "貢獻者"
   },
   "quality_analysis.guide_main": {
-    "en": "each contributed over 33% of attributable source and at least 500 characters.",
-    "zh-hans": "的归属源代码占比超过 33%，且归属长度至少为 500 字。",
-    "zh-hant": "的歸屬原始碼占比超過 33%，且歸屬長度至少為 500 字。"
+    "en": "each account for over 33% of eligible source bytes and at least 500 non-whitespace source characters, excluding references.",
+    "zh-hans": "的归属字节占比超过 33%，且至少归属 500 个非空白源代码字符（不计参考文献）。",
+    "zh-hant": "的歸屬位元組占比超過 33%，且至少歸屬 500 個非空白原始碼字元（不計參考文獻）。"
   },
   "quality_analysis.guide_significant": {
-    "en": "each contributed at least 10% of attributable source, as measured by WikiWho.",
-    "zh-hans": "的归属源代码占比至少为 10%，以 WikiWho 的归属结果为准。",
-    "zh-hant": "的歸屬原始碼占比至少為 10%，以 WikiWho 的歸屬結果為準。"
+    "en": "each account for at least 10% of eligible source bytes, using WikiWho attribution.",
+    "zh-hans": "的归属字节占比至少为 10%，以 WikiWho 的归属结果为准。",
+    "zh-hant": "的歸屬位元組占比至少為 10%，以 WikiWho 的歸屬結果為準。"
   },
   "quality_analysis.background": {
     "en": "Collected hourly in the background. This page reads saved results.",
@@ -4628,11 +4637,6 @@
     "zh-hans": "英语维基百科",
     "zh-hant": "英語維基百科"
   },
-  "quality_analysis.editors_unattributed": {
-    "en": "Unattributed share",
-    "zh-hans": "未归属",
-    "zh-hant": "未歸屬"
-  },
   "quality_analysis.authorship_details": {
     "en": "Significant contributors to {title}",
     "zh-hans": "{title}的重大贡献者",
@@ -4663,15 +4667,20 @@
     "zh-hans": "其他{count}编者",
     "zh-hant": "其他{count}編者"
   },
+  "quality_analysis.editor_total": {
+    "en": "Total",
+    "zh-hans": "合计",
+    "zh-hant": "合計"
+  },
   "quality_analysis.editors_total": {
-    "en": "{count} editors total",
-    "zh-hans": "合计{count}编者",
-    "zh-hant": "合計{count}編者"
+    "en": "{count} editors",
+    "zh-hans": "{count}编者",
+    "zh-hant": "{count}編者"
   },
   "quality_analysis.editors_total_one": {
-    "en": "{count} editor total",
-    "zh-hans": "合计{count}编者",
-    "zh-hant": "合計{count}編者"
+    "en": "{count} editor",
+    "zh-hans": "{count}编者",
+    "zh-hant": "{count}編者"
   },
   "quality_analysis.editor_bytes": {
     "en": "Attributed source",

@@ -507,9 +507,10 @@ class CurrentQualityTests(TestCase):
                 '>0.4<small class="analysis-unit" data-unit="k chars">'
                 in popup
             )
-            assert '<td class="analysis-number">*</td>' in popup
+            assert '<td class="analysis-number">-</td>' in popup
+            assert '<td class="analysis-number">Total</td>' in popup
             assert '<th scope="row">1 other editor</th>' in popup
-            assert '<th scope="row">4 editors total</th>' in popup
+            assert '<th scope="row">4 editors</th>' in popup
             assert "<tfoot" not in popup
             assert ">Minor</a>" not in popup
 
@@ -948,3 +949,93 @@ class CurrentQualityTests(TestCase):
                 for path in runtime.rglob("*")
                 if path.is_file()
             } == before
+
+    @staticmethod
+    def test_missing_date_status_uses_exact_talk_identity() -> None:
+        """Keep pending, interrupted and completed checks distinct."""
+        articles = pl.DataFrame(
+            {
+                "page_id": range(1, 9),
+                "grade": ["B", "B", "B", "B", "GA", "FL", "B", "Unassessed"],
+                "talk_page_id": [11, 12, 13, 14, 15, 16, None, 18],
+                "talk_revision_id": [21, 22, 23, 24, 25, 26, None, 28],
+                "listed_date": [None] * 8,
+            },
+            schema_overrides={"listed_date": pl.Date},
+        )
+        history = pl.DataFrame(
+            [
+                {"page_id": 5, "talk_page_id": 15, "revision_id": 25},
+                {"page_id": 6, "talk_page_id": 16, "revision_id": 19},
+            ],
+            schema=history_store.SCHEMA,
+        )
+        inference = pl.DataFrame(
+            [
+                {
+                    "page_id": page_id,
+                    "talk_page_id": page_id + 10,
+                    "scanned_talk_rev_id": page_id + 20,
+                    "class": "乙",
+                    "attempted_at": _NOW,
+                    "banner_transition_status": status,
+                    "reason": reason,
+                    "banner_entry_timestamp": timestamp,
+                }
+                for page_id, status, reason, timestamp in (
+                    (2, "partial", "history_gap", None),
+                    (3, "partial", "bounded_prefix", _NOW),
+                    (4, "proven", "contiguous_transition", _NOW),
+                )
+            ],
+            schema=rating_history.INFERENCE_SCHEMA,
+        )
+        assert store._missing_date_statuses(articles, history, inference) == {
+            "1": "pending",
+            "2": "interrupted",
+            "3": "in_progress",
+            "4": "awaiting_update",
+            "5": "no_date",
+            "6": "pending",
+            "7": "no_talk",
+            "8": "unassessed",
+        }
+
+    @staticmethod
+    def test_projection_normalizes_saved_scores_without_rewriting_proof() -> (
+        None
+    ):
+        """Recalculate shares using the saved assigned bytes."""
+        evidence = (
+            _evidence()
+            .filter(
+                (pl.col("page_id") == 1) & (pl.col("grade") == "GA"),
+            )
+            .with_columns(
+                pl.lit(11_000, dtype=pl.UInt32).alias("eligible_bytes"),
+                pl.col("contributors").list.eval(
+                    pl.element().struct.with_fields(
+                        (pl.element().struct.field("bytes") / 11_000).alias(
+                            "share",
+                        ),
+                    ),
+                ),
+            )
+        )
+        saved = evidence.to_dicts()
+        report = store.prepare_current_quality(
+            _articles(),
+            evidence,
+            _b_tables(),
+            _activity(),
+            observed_at=_NOW,
+        )
+        row = next(row for row in report["articles"] if row["page_id"] == 1)
+        assert row["authorship_eligible_bytes"] == 10_000
+        assert row["authorship_summary"]["total"]["bytes"] == 10_000
+        assert [editor["share"] for editor in row["authorship_editors"]] == [
+            0.6,
+            0.3,
+            0.1,
+        ]
+        assert evidence.to_dicts() == saved

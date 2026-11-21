@@ -1620,7 +1620,8 @@ table.quality-author-articles {
 .quality-data-table th:first-child,
 .quality-data-table td:first-child {
     white-space: nowrap;
-    text-align: end;
+    text-align: center;
+    font-weight: 700;
 }
 
 .quality-data-table th,

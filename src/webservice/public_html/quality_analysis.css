@@ -16,7 +16,9 @@
 .analysis-coverage-updated { display: block; margin-block-start: .4rem; color: var(--color-subtle); font-size: .8rem; overflow-wrap: anywhere; }
 #analysis-coverage-dialog table { table-layout: fixed; }
 #analysis-coverage-dialog th:first-child, #analysis-coverage-dialog td:first-child { width: 5em; box-sizing: border-box; white-space: nowrap; }
-#analysis-coverage-dialog td:first-child { text-align: right; }
+#analysis-coverage-dialog td:first-child { text-align: center; font-weight: 700; }
+#analysis-coverage-dialog th[data-coverage-date-column] { width: min(40%, 15rem); }
+#analysis-coverage-dialog td:nth-child(2) { overflow-wrap: anywhere; }
 @media (max-width: 1000px) { .analysis-summary.analysis-coverage { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 480px) { .analysis-summary.analysis-coverage { grid-template-columns: 1fr; } }
 .analysis-number { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -58,14 +60,14 @@
 .analysis-directory .quality-article-directory .quality-column-title { inline-size: 320px; }
 .analysis-directory .quality-article-directory th:nth-child(2), .analysis-directory .quality-article-directory td:nth-child(2) { max-inline-size: 320px; overflow-wrap: anywhere; }
 :is(.quality-article-directory, .quality-chart-articles) :is(th, td):nth-child(5) { padding-inline: .4rem; white-space: nowrap; overflow-wrap: normal; }
-.quality-data-table td.analysis-number { text-align: end; white-space: nowrap; }
-.quality-data-table .quality-column-prose { inline-size: 8em; }
+.quality-data-table td.analysis-number:not(:first-child) { text-align: end; white-space: nowrap; }
+.quality-data-table .quality-column-prose { inline-size: 7.25em; }
+:lang(zh) .quality-data-table .quality-column-prose { inline-size: 6.5em; }
 table.quality-author-article-directory { inline-size: 100%; min-inline-size: 53em; }
 .quality-author-article-directory .quality-column-grade { inline-size: 7em; }
 .quality-author-article-directory :is(th, td):is(:nth-child(3), :nth-child(4)) { white-space: nowrap; overflow-wrap: normal; }
 .quality-author-article-directory th:is(:nth-child(3), :nth-child(4)) button { white-space: inherit; }
 table.quality-author-directory:has(.quality-column-prose) { min-inline-size: 58em; }
-.quality-author-directory .quality-column-prose { inline-size: 8em; }
 .quality-author-directory .quality-column-size { inline-size: 7em; }
 .ui-dialog :is(.quality-data-table, .analysis-editor-table) { font-size: .875rem; }
 .analysis-authorship-info { display: inline-flex; align-items: center; justify-content: center; min-width: 1.5rem; min-height: 1.5rem; vertical-align: middle; border-radius: 50%; }
@@ -93,9 +95,10 @@ table.quality-author-directory:has(.quality-column-prose) { min-inline-size: 58e
 .analysis-editor-table :is(th, td) { text-align: center; }
 .analysis-editor-table :is(th, td):nth-child(2) { text-align: start; }
 .analysis-editor-table td.analysis-number { white-space: nowrap; text-align: end; }
+.analysis-editor-table td:first-child { text-align: center; font-weight: 700; }
 .analysis-editor-table th:first-child { inline-size: 6ch; }
 .analysis-editor-table th { overflow-wrap: anywhere; }
-.analysis-editor-table .analysis-editor-total > * { border-top: 2px solid var(--border-color-base); font-weight: 600; }
+.analysis-editor-table .analysis-editor-total > :is(th[scope="row"], td) { border-top: 2px solid var(--border-color-base); font-weight: 700; }
 #quality-authors { margin-top: 2.5rem; }
 #analysis-distribution, #analysis-years, #analysis-articles { margin-top: 2.5rem; }
 @media (max-width: 943px) { .analysis-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }  }
@@ -132,7 +135,7 @@ table.quality-author-directory:has(.quality-column-prose) { min-inline-size: 58e
 [data-chart-group]:focus-visible { outline: 2px solid var(--border-color-progressive--focus); outline-offset: 3px; }
 .analysis-chart-article-table { border-collapse: collapse; width: 100%; min-width: 38rem; font-variant-numeric: tabular-nums; }
 .analysis-chart-article-table th, .analysis-chart-article-table td { padding: .5rem .65rem; border-bottom: 1px solid var(--border-color-subtle); text-align: left; }
-.analysis-chart-article-table td:first-child, .analysis-chart-article-table td:last-child { text-align: right; }
+.analysis-chart-article-table td:last-child { text-align: right; }
 .analysis-missing-authorship { margin-block: .5rem 1.25rem; }
 
 .analysis-matrix { width: 100%; border-collapse: collapse; white-space: nowrap; }

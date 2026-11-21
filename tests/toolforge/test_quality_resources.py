@@ -114,11 +114,11 @@ class QualityResourcePresentationTests(unittest.TestCase):
     def test_article_metadata_is_separate_from_directory_contributors() -> (
         None
     ):
-        """Keep both launchers and display any unattributed share."""
+        """Keep both launchers and display the normalized totals."""
         data = _catalog_fixture()
         analysis = data["analysis"]
         row = analysis["selection"]["articles"][0]
-        row["authorship_eligible_bytes"] = 1000
+        row["authorship_eligible_bytes"] = 983
         row["authorship_summary"] = {
             "other": {
                 "editors": 94,
@@ -170,12 +170,23 @@ class QualityResourcePresentationTests(unittest.TestCase):
         proof = output.split('<dialog id="quality-article-1-authorship"', 1)[
             1
         ].split("</dialog>", 1)[0]
-        assert "合计95编者" in proof
-        assert "98.3%" in proof
-        assert "未归属" in proof
-        assert "1.7%" in proof
+        assert '<td class="analysis-number">-</td>' in proof
+        assert '<td class="analysis-number">合计</td>' in proof
+        assert '<th scope="row">95编者</th>' in proof
+        assert "100.0%" in proof
+        assert "未归属" not in proof
         author = resources["author-1.html"]
         assert 'class="analysis-article-contributors"' in author
+
+        row["authorship_summary"]["other"] = dict.fromkeys(
+            ("editors", "bytes", "raw_bytes", "prose_characters"),
+            0,
+        )
+        rows = quality_analysis_context(
+            {**analysis, "articles": [row]},
+            Interface("zh-hans"),
+        )["quality_analysis"]["articles"][0]["authorship"]["summary_rows"]
+        assert [entry["label"] for entry in rows] == ["95编者"]
 
     @staticmethod
     def test_length_scale_anchors_and_endpoints() -> None:

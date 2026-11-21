@@ -553,6 +553,7 @@ def _article_details(row: dict, saved: dict, interface: Interface) -> dict:
         "class",
     )
     return {
+        "date_status": saved.get("date_status"),
         "created": {"value": created, "label": utc_time(created)}
         if created
         else None,
@@ -656,13 +657,17 @@ def _authorship_summary(source: dict, interface: Interface) -> list[dict]:
     eligible = source.get("eligible_bytes")
     for role in ("other", "total"):
         data = summary[role]
+        if role == "other" and data["editors"] == 0:
+            continue
         share = (
             data["bytes"] / eligible
             if eligible and data["bytes"] is not None
             else None
         )
         output.append({
-            "index": "*" if role == "other" else "",
+            "index": "-"
+            if role == "other"
+            else interface.text("quality_analysis.editor_total"),
             "total": role == "total",
             "label": interface.text(
                 f"quality_analysis.editors_{role}",
@@ -673,17 +678,6 @@ def _authorship_summary(source: dict, interface: Interface) -> list[dict]:
             "raw_bytes": data["raw_bytes"],
             "bytes_label": _thousands(data["raw_bytes"]),
             "share_label": f"{share * 100:.1f}%" if share is not None else "—",
-        })
-    attributed = summary["total"]["bytes"]
-    if eligible and attributed is not None and attributed < eligible:
-        output.append({
-            "index": "",
-            "label": interface.text("quality_analysis.editors_unattributed"),
-            "prose_characters": None,
-            "characters_label": "—",
-            "raw_bytes": None,
-            "bytes_label": "—",
-            "share_label": f"{(eligible - attributed) / eligible:.1%}",
         })
     return output
 
@@ -1283,6 +1277,15 @@ def quality_analysis_context(
                     "comparison",
                     "missing_authorship",
                     "missing_dates",
+                    "date_status",
+                    "date_unassessed",
+                    "date_no_talk",
+                    "date_pending",
+                    "date_awaiting_update",
+                    "date_interrupted",
+                    "date_in_progress",
+                    "date_no_date",
+                    "date_unrecorded",
                     "missing_length",
                     "no_missing",
                     "comparison_unavailable",

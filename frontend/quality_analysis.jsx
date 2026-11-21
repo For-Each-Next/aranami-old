@@ -416,6 +416,7 @@ function QualityOverview(context) {
                                         <tr>
                                             <th scope="col">{"#"}</th>
                                             <th scope="col">{display(t.quality_authorship.article)}</th>
+                                            <th scope="col" data-coverage-date-column="" hidden>{t.quality_coverage.date_status}</th>
                                             <th scope="col" data-coverage-comparison-column={""}>
                                                 {display(t.quality_coverage.category)}
                                             </th>
@@ -997,6 +998,7 @@ function ArticleDirectory(context) {
                                                     data-grade={attribute(article?.grade)}
                                                     data-importance={attribute(article?.importance)}
                                                     data-title={attribute(article?.title)}
+                                                    data-assessment-date-status={article?.details?.date_status || undefined}
                                                     data-year={attribute(
                                                         hasContent(article?.listed_date)
                                                             ? article?.listed_date?.slice(0, 4)

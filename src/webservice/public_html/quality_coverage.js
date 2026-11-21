@@ -89,6 +89,10 @@ export function initializeQualityCoverage() {
             const ordinal = node("td", groupedNumber(start + index + 1));
             ordinal.className = "analysis-number";
             row.append(ordinal, titleCell);
+            if (kind === "dates") {
+                const state = record.date_status ?? record.article?.details?.date_status ?? record.dataset?.assessmentDateStatus;
+                row.append(node("td", labels[`date_${state}`] || labels.date_unrecorded || "—"));
+            }
             if (kind === "total") row.append(
                 node("td", record.category_grades.map(gradeLabel).join(" / ") || "—"),
                 node("td", gradeLabel(record.pageassessments_grade)),
@@ -96,6 +100,8 @@ export function initializeQualityCoverage() {
             return row;
         }));
         for (const heading of dialog.querySelectorAll("[data-coverage-comparison-column]")) heading.hidden = kind !== "total";
+        const dateHeading = dialog.querySelector("[data-coverage-date-column]");
+        if (dateHeading) dateHeading.hidden = kind !== "dates";
         empty.hidden = total > 0;
         empty.textContent = kind === "total" && !available ? labels.comparison_unavailable : labels.no_missing;
         table.hidden = total === 0;

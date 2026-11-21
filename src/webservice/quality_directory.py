@@ -466,7 +466,22 @@ def _coverage(
             reverse=True,
         )
     result = _page(missing, query)
-    result["rows"] = [{"title": row["title"]} for row in result["rows"]]
+    metadata = saved.get("article_metadata", {})
+    result["rows"] = [
+        {
+            "title": row["title"],
+            **(
+                {
+                    "date_status": metadata.get(str(row["page_id"]), {}).get(
+                        "date_status",
+                    ),
+                }
+                if kind == "dates"
+                else {}
+            ),
+        }
+        for row in result["rows"]
+    ]
     return result
 
 

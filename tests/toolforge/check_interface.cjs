@@ -232,11 +232,12 @@ async function checkInterface(assetRoot) {
                     const text = range.getBoundingClientRect(), box = cell.getBoundingClientRect();
                     const fits = text.left >= box.left && text.right <= box.right && getComputedStyle(cell).whiteSpace === 'nowrap';
                     cell.textContent = original;
-                    return {width, max, fits, aligned: getComputedStyle(heading).textAlign === 'center' && ['right', 'end'].includes(getComputedStyle(cell).textAlign)};
+                    const style = getComputedStyle(cell);
+                    return {width, max, fits, aligned: getComputedStyle(heading).textAlign === 'center' && style.textAlign === 'center' && Number(style.fontWeight) >= 700};
                 });
             })()`);
             assert.ok(columns.length > 0 && columns.every(column => column.width <= column.max && column.fits && column.aligned !== false),
-                'quality ordinal columns must stay compact with centered headings and right-aligned six-digit values: ' + JSON.stringify(columns));
+                'quality ordinal columns must fit six-digit values and use centered, bold numbers: ' + JSON.stringify(columns));
         };
         const checkQualityTableLayout = async locale => {
             const tables = await evaluate(`(() => [...document.querySelectorAll('.quality-data-table')].filter(table => table.getBoundingClientRect().width > 0).map(table => {
@@ -1574,12 +1575,15 @@ async function checkInterface(assetRoot) {
                             const font = parseFloat(getComputedStyle(heading).fontSize);
                             const result = {kind:opener.dataset.coverageOpen, open:dialog.open, empty:table.hidden,
                                 ordinal:heading.getBoundingClientRect().width, target:font * 5,
+                                dateStatus: !table.querySelector('[data-coverage-date-column]').hidden,
+                                populated: [...table.tBodies[0].rows].every(row => row.cells.length === 3 && row.cells[2].textContent.trim()),
                                 fits:dialog.scrollWidth <= dialog.clientWidth + 1};
                             dialog.close();
                             return result;
                         });
                     })()`);
                     assert.ok(coverage.length === 4 && coverage.every(state => state.open && state.fits && (state.empty || Math.abs(state.ordinal - state.target) <= 1)), 'coverage and missing-page dialogs must keep five-em ordinal columns: ' + JSON.stringify(coverage));
+                    assert.ok(coverage.every(state => state.dateStatus === (state.kind === 'dates') && (!state.dateStatus || state.populated)), 'only missing assessment dates show lookup status');
                     await checkQualityDistributions('initial');
                     const chartControls = await evaluate(`(() => [...document.querySelectorAll('[data-quality-chart]')].map(host => {
                         const svg = host.querySelector('svg'), original = svg.getAttribute('viewBox');
@@ -1655,7 +1659,9 @@ async function checkInterface(assetRoot) {
                             proofLink.click();
                             const proofDialog = document.getElementById(proofLink.getAttribute('aria-controls'));
                             const anonymous = [...proofDialog.querySelectorAll('tbody th')].find(cell => cell.textContent.trim() === '192.0.2.1');
-                            const attribution = hasPlusIcon && proofDialog.open && anonymous?.querySelector('a')?.href.includes('Contributions') && proofDialog.textContent.includes('Boundary_Editor') && proofDialog.textContent.includes(form.qualityMetadata.labels.authorship_note);
+                            const totals = [...proofDialog.querySelector('.analysis-editor-total').cells];
+                            const boldTotal = totals.every(cell => Number(getComputedStyle(cell).fontWeight) >= 700);
+                            const attribution = hasPlusIcon && boldTotal && proofDialog.open && anonymous?.querySelector('a')?.href.includes('Contributions') && proofDialog.textContent.includes('Boundary_Editor') && proofDialog.textContent.includes(form.qualityMetadata.labels.authorship_note);
                             proofDialog.close();
                             const total = () => Number(document.querySelector('[data-matrix-total]').textContent.replaceAll(',', ''));
                             const initial = total();

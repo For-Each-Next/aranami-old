@@ -50,6 +50,8 @@ segments select both year and grade, independently of directory filters. No
 source requests occur. The annual data table labels and bolds its total column.
 Coverage dialogs list articles whose attribution is still missing, with article
 links and the newest assessment dates first.
+The missing assessment dates list shows whether an exact discussion-page
+lookup is pending, incomplete, interrupted or finished without a verified date.
 
 Listing dates link to the saved review when available. Other dates appear as
 text. Saved article revision IDs still define attribution and measurement
@@ -86,7 +88,8 @@ current count is zero. Central 68% and 95% intervals use empirical
 length while prose is pending.
 
 Main contributors must have a saved attributable byte share strictly greater
-than 33%. The article table, main-contributor filter and author directory use
+than 33% and at least 500 non-whitespace source characters outside references.
+The article table, main-contributor filter and author directory use
 the same threshold; being the largest contributor alone does not qualify.
 IP main contributors appear as unlinked anonymous-user labels in the article
 table. Acquired evidence with no qualifying main contributor displays None;
@@ -95,8 +98,10 @@ In the complete article directory, the circled plus beside the authors opens
 the saved attribution revision endpoint and the contributors with an
 attributable byte share of at least 10%. The information control beside the
 title opens article metadata. Chart and contributor article lists include
-significant contributors with those details. The contributor table shows
-the unattributed share below its measured total when applicable.
+significant contributors with those details. The report divides each saved
+editor byte count by the total assigned bytes. Exact source scores exclude
+references and whitespace. The raw attribution evidence retains its original
+measurements and denominator.
 Anonymous contributors link to their public contribution history. The endpoint date links to the exact revision and an XTools WikiWho
 visualization; the first revision is not displayed. Missing endpoints remain
 unknown. Missing attribution explicitly says that data has not been acquired.

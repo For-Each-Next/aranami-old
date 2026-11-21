@@ -141,6 +141,7 @@ _ROOT = DEFAULT_ROOT
 _PATH = DEFAULT_ROOT / "current-quality.json"
 _MAX_ROWS = 100_000
 _MAX_BYTES = 64 * 1024 * 1024
+_TALK_IDENTITY = ["page_id", "talk_page_id", "talk_revision_id"]
 
 
 def _proofs(
@@ -246,8 +247,18 @@ def _article_rows(
     """Attach main authors and inclusive ten-percent dialog evidence.
 
     Returns:
-        Complete current articles with explicit absent provenance.
+        Complete articles with shares based on the saved editor bytes.
+        These scores already exclude whitespace in exact source proofs.
     """
+    proofs = proofs.with_columns(
+        pl
+        .col("contributors")
+        .list.eval(pl.element().struct.field("bytes").cast(pl.UInt64))
+        .list.sum()
+        .cast(pl.UInt32)
+        .alias("authorship_eligible_bytes"),
+    )
+    eligible = pl.col("authorship_eligible_bytes")
     contributors = (
         proofs
         .select("page_id", "authorship_eligible_bytes", "contributors")
@@ -256,13 +267,18 @@ def _article_rows(
         .with_columns(
             (
                 pl.col("bytes").cast(pl.UInt64) * 10
-                >= pl.col("authorship_eligible_bytes").cast(pl.UInt64)
+                >= eligible.cast(pl.UInt64)
             ).alias("_significant"),
+            pl
+            .when(eligible > 0)
+            .then(pl.col("bytes") / eligible)
+            .otherwise(0.0)
+            .alias("share"),
         )
     )
     editors = (
         contributors
-        .filter(pl.col("_significant"))
+        .filter(pl.col("_significant") & (eligible > 0))
         .sort("page_id", "bytes", "editor", descending=[False, True, False])
         .group_by("page_id", maintain_order=True)
         .agg(
@@ -899,6 +915,9 @@ def refresh_saved_quality(runtime: Path = Path()) -> bool:
 def _listing_date_clock(
     articles: pl.DataFrame,
     runtime: Path,
+    *,
+    history: pl.DataFrame | None = None,
+    inference: pl.DataFrame | None = None,
 ) -> dt.datetime | None:
     """Find actual acquisition clocks behind currently displayed dates.
 
@@ -920,10 +939,12 @@ def _listing_date_clock(
     )
     if selected.is_empty():
         return None
-    identity = ["page_id", "talk_page_id", "talk_revision_id"]
-    history = (
-        history_store
-        .load(runtime / HISTORY_PATH)
+    if history is None:
+        history = history_store.load(runtime / HISTORY_PATH)
+    if inference is None:
+        inference = rating_history.load(runtime)["inference"]
+    historical = (
+        history
         .select(
             "page_id",
             "talk_page_id",
@@ -931,7 +952,7 @@ def _listing_date_clock(
             "observed_at",
             "events",
         )
-        .join(selected, on=identity, how="inner", validate="1:1")
+        .join(selected, on=_TALK_IDENTITY, how="inner", validate="1:1")
         .explode("events", empty_as_null=False)
         .unnest("events")
         .filter(
@@ -944,8 +965,7 @@ def _listing_date_clock(
     )
     profile = assessment_profile("zhwiki", "电子游戏")
     inferred = (
-        rating_history
-        .load(runtime)["inference"]
+        inference
         .filter(
             (pl.col("banner_transition_status") == "proven")
             | (pl.col("reason") == "earliest_visible"),
@@ -962,14 +982,112 @@ def _listing_date_clock(
             pl.col("banner_entry_timestamp").dt.date().alias("_date"),
             "attempted_at",
         )
-        .join(selected, on=[*identity, "_grade", "_date"], how="semi")[
+        .join(selected, on=[*_TALK_IDENTITY, "_grade", "_date"], how="semi")[
             "attempted_at"
         ]
         .max()
     )
     return max(
-        (value for value in (history, inferred) if value is not None),
+        (value for value in (historical, inferred) if value is not None),
         default=None,
+    )
+
+
+def _missing_date_statuses(
+    articles: pl.DataFrame,
+    history: pl.DataFrame,
+    inference: pl.DataFrame,
+) -> dict[str, str]:
+    """Describe missing dates using matching talk revisions and grades.
+
+    Returns:
+        Coverage status codes keyed by article page ID.
+    """
+    profile = assessment_profile("zhwiki", "电子游戏")
+    histories = history.select(
+        "page_id",
+        "talk_page_id",
+        pl.col("revision_id").alias("talk_revision_id"),
+        pl.col("revision_id").is_not_null().alias("_history_checked"),
+    )
+    rating = inference.select(
+        "page_id",
+        "talk_page_id",
+        pl.col("scanned_talk_rev_id").alias("talk_revision_id"),
+        profile.expression("class", "class", preserve_unknown=False).alias(
+            "grade",
+        ),
+        "attempted_at",
+        "banner_transition_status",
+        "banner_entry_timestamp",
+        "reason",
+    )
+    grade = pl.col("grade")
+    reviewed = grade.is_in(_QUALITY)
+    transition = pl.col("banner_transition_status")
+    reason = pl.col("reason")
+    interrupted = (
+        reason.is_in(["history_gap", "unknown_interval"])
+        | transition.is_null()
+    )
+    status = (
+        pl
+        .when(grade == "Unassessed")
+        .then(pl.lit("unassessed"))
+        .when(pl.any_horizontal(pl.col(*_TALK_IDENTITY[1:]).is_null()))
+        .then(pl.lit("no_talk"))
+        .when(reviewed & pl.col("_history_checked"))
+        .then(pl.lit("no_date"))
+        .when(reviewed)
+        .then(pl.lit("pending"))
+        .when(
+            ((transition == "proven") | (reason == "earliest_visible"))
+            & pl.col("banner_entry_timestamp").is_not_null(),
+        )
+        .then(pl.lit("awaiting_update"))
+        .when(pl.col("attempted_at").is_null())
+        .then(pl.lit("pending"))
+        .when(interrupted)
+        .then(pl.lit("interrupted"))
+        .when(transition == "partial")
+        .then(pl.lit("in_progress"))
+        .otherwise(pl.lit("no_date"))
+    )
+    return dict(
+        articles
+        .filter(pl.col("listed_date").is_null())
+        .select(*_TALK_IDENTITY, "grade")
+        .join(histories, on=_TALK_IDENTITY, how="left", validate="1:1")
+        .join(
+            rating,
+            on=[*_TALK_IDENTITY, "grade"],
+            how="left",
+            validate="1:1",
+        )
+        .select(pl.col("page_id").cast(pl.String), status.alias("date_status"))
+        .iter_rows(),
+    )
+
+
+def _assessment_date_coverage(
+    articles: pl.DataFrame,
+    runtime: Path,
+) -> tuple[dt.datetime | None, dict[str, str]]:
+    """Read shared history once for the coverage clock and missing rows.
+
+    Returns:
+        The saved coverage clock and per-article missing date states.
+    """
+    history = history_store.load(runtime / HISTORY_PATH)
+    inference = rating_history.load(runtime)["inference"]
+    return (
+        _listing_date_clock(
+            articles,
+            runtime,
+            history=history,
+            inference=inference,
+        ),
+        _missing_date_statuses(articles, history, inference),
     )
 
 
@@ -1140,9 +1258,13 @@ def _refresh_locked(runtime: Path) -> bool:
         observed_at=clock,
     )
     _validate(selection)
+    dates, date_statuses = _assessment_date_coverage(articles, runtime)
+    details = quality_details.presentation(runtime, articles["page_id"])
+    for page_id, state in date_statuses.items():
+        details["articles"].setdefault(page_id, {})["date_status"] = state
     document = {
         "schema": 1,
-        "details": quality_details.presentation(runtime, articles["page_id"]),
+        "details": details,
         "observed_at": clock.isoformat(),
         "prepared_at": dt.datetime.now(dt.UTC).isoformat(),
         "coverage_updated_at": _coverage_clocks(
@@ -1150,7 +1272,7 @@ def _refresh_locked(runtime: Path) -> bool:
             high,
             b_tables,
             clock,
-            dates=_listing_date_clock(articles, runtime),
+            dates=dates,
         ),
         "selection": selection,
     }
