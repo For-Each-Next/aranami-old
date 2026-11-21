@@ -451,3 +451,29 @@ def prepare_dyk_series(
                 "count": baseline + current["count"],
             })
     return rows
+
+
+def with_canonical_dyk_series(
+    runtime: Path,
+    review: dict,
+    year: int,
+) -> dict:
+    """Reuse prepared points or fill an older review from saved history.
+
+    Returns:
+        The original annual facts or a copy with a covered DYK series.
+    """
+    if review.get("dyk_series") is not None:
+        return review
+    bundle = read_historical_data(runtime)
+    if bundle is None:
+        return review
+    series = prepare_dyk_series(
+        review,
+        year,
+        source=FrameFigureSource(
+            "canonical-historical",
+            bundle.tables["figures"],
+        ),
+    )
+    return {**review, "dyk_series": series} if series else review

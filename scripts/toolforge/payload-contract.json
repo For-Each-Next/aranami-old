@@ -15,7 +15,9 @@
     ".js",
     ".json",
     ".svg",
-    ".png"
+    ".png",
+    ".otf",
+    ".LICENSE"
   ],
   "scripts": [
     "setup-env.sh",

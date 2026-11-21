@@ -191,10 +191,15 @@ def _homepage_row(
         day = dt.date.fromisoformat(row["date"])
     except KeyError, TypeError, ValueError:
         return False
+    revision = row.get("source_revision")
     return (
         issue.start <= day < through
         and row["date"] == day.isoformat()
         and _source({"label": row["title"], "url": row.get("url")})
+        and (
+            revision is None
+            or (section == "news" and type(revision) is int and revision > 0)
+        )
         and (
             isinstance(row.get("kind"), str) and row["kind"] in {"fa", "fl"}
             if section == "featured"

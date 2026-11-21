@@ -1,6 +1,6 @@
 [project]
 name = "aranami"
-version = "0.9.22"
+version = "0.9.23"
 description = "Wikipedia reports and a read-only Vue dashboard."
 readme = "README.md"
 authors = [

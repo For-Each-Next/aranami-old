@@ -1,4 +1,4 @@
-"""Describe newsletter grade series and stable annual chart identities.
+"""Describe newsletter grade series and annual distributions.
 
 Use shared assessment metadata for labels and normalization. These
 inventories select grades and colors for persisted newsletter charts.
@@ -6,11 +6,9 @@ inventories select grades and colors for persisted newsletter charts.
 
 from __future__ import annotations
 
-from hashlib import sha256
 from typing import TYPE_CHECKING
 
 from shared.assessment_profiles import assessment_profile
-from shared.support.files import encode_json
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -47,37 +45,16 @@ QUALITY_GRADES = {
     )
     for code in _QUALITY_SERIES
 }
-CHART_VARIANTS = {
-    "zh-hans": "简体中文",
-    "zh-tw": "臺灣正體",
-    "zh-hk": "香港繁體",
-}
 
 
 def annual_quality_rows(review: Mapping, year: int) -> list[dict]:
     """Select two annual distributions with positive totals.
 
     Returns:
-        The saved distributions eligible for both forms of chart output.
+        Saved distributions eligible for the annual comparison.
     """
     return [
         row
         for row in review.get("quality_statistics") or []
         if row["year"] in {year - 1, year} and any(row["counts"].values())
     ]
-
-
-def quality_chart_filename(row: Mapping, variant: str) -> str:
-    """Name one annual chart from its saved counts and drawing contract.
-
-    Returns:
-        An immutable name for the draft and download route.
-    """
-    digest = sha256(
-        encode_json({
-            "revision": 1,
-            "counts": row["counts"],
-            "grades": QUALITY_GRADES,
-        }),
-    ).hexdigest()[:16]
-    return f"Aranami-quality-{row['year']}-{variant}-{digest}.svg"

@@ -465,7 +465,7 @@ def _homepage_date_target(
     section: str,
     sources: list[dict],
 ) -> str | None:
-    """Select the homepage call page or a retained anniversary revision.
+    """Select the homepage call page or a retained display revision.
 
     Args:
         row: Saved article appearance and its display date.
@@ -473,7 +473,7 @@ def _homepage_date_target(
         sources: Retained anniversary titles and exact revision URLs.
 
     Returns:
-        A local wiki target, or none when the date or exact anniversary
+        A local wiki target, or none when the display date or its exact
         evidence is unavailable or conflicts with another saved source.
     """
     if row.get("date_kind") == "window_start":
@@ -491,7 +491,12 @@ def _homepage_date_target(
             f"Wikipedia:新条目推荐/供稿/{day.year}年{day.month}月{day.day}日"
         )
     if section == "news":
-        return "Template:Itn"
+        revision = row.get("source_revision")
+        return (
+            f"Special:PermanentLink/{revision}"
+            if type(revision) is int and revision > 0
+            else None
+        )
     label = f"{day.month}月{day.day}日"
     titles = {
         "Wikipedia:历史上的今天/" + label,
@@ -561,7 +566,7 @@ def _source_homepage_rows(  # ruff: ignore[too-many-arguments]
             if row.get("_forecast")
             else _homepage_date_target(row, section, sources or [])
         )
-        if target and (section not in {"dyk", "news"} or target not in linked):
+        if target and (section != "dyk" or target not in linked):
             date = _link(target, date)
             linked.add(target)
         lines.append(

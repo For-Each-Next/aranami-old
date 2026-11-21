@@ -47,6 +47,11 @@ old archive, without modifying its observations.
 
 ## Interpreting the annual feature
 
+From issue 2027-01, the annual figures have PNG downloads in Mainland, Hong
+Kong and Taiwan Chinese. The filenames match the draft's File2 calls. The
+comparison pairs the current distribution with the previous January issue's
+published picture.
+
 The four data sections remain `內容評審`, `新章推薦`, `条目报告` and
 `榮譽表彰`, in that order. Quality lists follow actual recorded promotions and
 removals, with source-linked dates and hidden MMDD editorial markers. Each

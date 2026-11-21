@@ -1,4 +1,4 @@
-"""Verify annual promotion cohorts and native chart parameters."""
+"""Verify annual promotion cohorts and annual chart inputs."""
 
 from __future__ import annotations
 
@@ -8,7 +8,10 @@ from unittest import TestCase
 
 import mwparserfromhell
 import polars as pl
+from matplotlib.figure import Figure
+from opencc import OpenCC
 
+from data.newsletter.figures import annual_figures
 from data.newsletter.grades import QUALITY_HISTORY_GRADES
 from data.newsletter.schema import valid_newsletter
 from newsletter.test_newsletter_data import Reader
@@ -16,6 +19,7 @@ from shared.newsletter import Issue
 from tasks.zhwiki.newsletter.annual import prepare_quality_year_ends
 from tasks.zhwiki.newsletter.collection import collect_source_facts
 from updater.services.newsletter_editorial import render_annual_feature
+from webservice import newsletter_charts
 
 
 def _events() -> pl.DataFrame:
@@ -181,8 +185,8 @@ class NewsletterQualityYearTests(TestCase):
         )
 
     @staticmethod
-    def test_native_chart_preserves_stack_order_without_expansion() -> None:
-        """Keep grade order, plain years, and spaced numeric series."""
+    def test_figure_preserves_stack_order_and_issue_names() -> None:
+        """Keep data series ordered and link each localized image."""
         review = {
             "quality_year_ends": [
                 {
@@ -205,89 +209,63 @@ class NewsletterQualityYearTests(TestCase):
                 },
             ],
         }
-        text = render_annual_feature(Issue(2027, 1), review)
-        chart = next(
-            template
-            for template in mwparserfromhell.parse(text).filter_templates()
-            if template.name.matches("Graph:Chart")
-            and template.get("type").value.strip() == "stackedrect"
+        chart = annual_figures(review, 2026)[1]
+        assert chart.axis == (2025, 2026)
+        assert tuple(series.counts for series in chart.series) == (
+            (0, 3),
+            (0, 7),
+            (0, 6),
+            (0, 5),
         )
-        assert not chart.has("1")
-        params = {
-            str(p.name).strip(): str(p.value).strip() for p in chart.params
-        }
-        assert params["x"] == "2025, 2026"
-        assert "| xType = string | x = 2025, 2026" in str(chart)
-        assert params["xAxisTitle"] == "年份"
-        assert [params[f"y{index}"] for index in range(1, 5)] == [
-            "0, 3",
-            "0, 7",
-            "0, 6",
-            "0, 5",
-        ]
-        assert [params[f"y{index}Title"] for index in range(1, 5)] == [
+        assert tuple(series.label for series in chart.series) == (
             "典范级",
             "甲级",
             "优良级",
             "乙上级",
+        )
+        assert tuple(series.color for series in chart.series) == (
+            "#9CBDFF",
+            "#66FFFF",
+            "#66FF66",
+            "#8CFF66",
+        )
+        text = render_annual_feature(Issue(2027, 1), review)
+        (picture,) = [
+            template
+            for template in mwparserfromhell.parse(text).filter_templates()
+            if template.name.matches("File2")
         ]
-        assert params["colors"] == "#9CBDFF, #66FFFF, #66FF66, #8CFF66"
-        assert params["interactive"] == "true"
-        assert params["animate"] == "true"
-        assert params["title"] == "歷年新入選、晉級高品質條目"
-        assert params["legend"] == "true"
-        assert params["yAxisMin"] == "0"
-        assert params["yAxisMax"] == "50"
-        assert params["xType"] == "string"
-        assert params["xAxisAngle"] == "-30"
-        assert (
-            'class="center" style="max-width:100%;overflow-x:auto;'
-            'text-align:center"' in text
-        )
-        container = next(
-            tag
-            for tag in mwparserfromhell.parse(text).filter_tags(
-                recursive=False,
+        for variant in ("zh-cn", "zh-hk", "zh-tw"):
+            assert picture.get(variant).value == (
+                f"WPVG Newsletter 202701 Feature Graph 1 ({variant}).png"
             )
-            if tag.tag == "div" and chart in tag.contents.filter_templates()
-        )
-        assert chart in container.contents.filter_templates(recursive=False)
-        assert not container.contents.filter_tags(recursive=False)
-        for expanded in (
-            "<svg",
-            "<templatestyles",
-            "gr-hbar",
-            "gr-tip",
-            "gr-ov",
-        ):
-            assert expanded not in text
-        assert "annual-quality-legend" not in text
+        assert picture.get("1").value == "600px"
+        assert picture.get("2").value == "center"
+        assert picture.get("class").value == "skin-invert-image"
 
     @staticmethod
     def test_stack_axis_expands_instead_of_clipping_large_cohorts() -> None:
         """Keep ten-unit bounds above an observed stack over fifty."""
-        text = render_annual_feature(
-            Issue(2027, 1),
-            {
-                "quality_year_ends": [
-                    {
-                        "year": 2026,
-                        "grades": {
-                            **dict.fromkeys(QUALITY_HISTORY_GRADES, 0),
-                            "GA": 64,
-                        },
+        review = {
+            "quality_year_ends": [
+                {
+                    "year": 2026,
+                    "grades": {
+                        **dict.fromkeys(QUALITY_HISTORY_GRADES, 0),
+                        "GA": 64,
                     },
-                ],
-            },
+                },
+            ],
+        }
+        chart = annual_figures(review, 2026)[1]
+        figure = Figure()
+        newsletter_charts._quality_history(  # ruff: ignore[private-member-access]
+            figure,
+            chart,
+            OpenCC("t2s"),
         )
-        chart = next(
-            template
-            for template in mwparserfromhell.parse(text).filter_templates()
-            if template.name.matches("Graph:Chart")
-            and template.get("type").value.strip() == "stackedrect"
-        )
-        assert str(chart.get("yAxisMax").value).strip() == "70"
-        assert str(chart.get("y2").value).strip() == "64"
+        assert figure.axes[0].get_ylim() == (0, 70)
+        assert chart.series[1].counts == (64,)
 
     @staticmethod
     def test_all_zero_a_group_is_absent_and_missing_history_stays_blank() -> (
@@ -309,18 +287,13 @@ class NewsletterQualityYearTests(TestCase):
                 },
             ],
         }
-        text = render_annual_feature(Issue(2027, 1), review)
-        chart = next(
-            template
-            for template in mwparserfromhell.parse(text).filter_templates()
-            if template.name.matches("Graph:Chart")
-            and template.get("type").value.strip() == "stackedrect"
+        chart = annual_figures(review, 2026)[1]
+        assert chart.axis == (2025,)
+        assert tuple(series.counts for series in chart.series) == (
+            (3,),
+            (6,),
+            (5,),
         )
-        assert str(chart.get("x").value).strip() == "2025"
-        assert str(chart.get("y2").value).strip() == "6"
-        assert str(chart.get("y3").value).strip() == "5"
-        assert not chart.has("y4")
-        assert "#66FFFF" not in str(chart)
-        assert "甲级" not in str(chart)
+        assert all(series.label != "甲级" for series in chart.series)
         missing = render_annual_feature(Issue(2027, 1), {})
-        assert "| type = stackedrect" not in missing
+        assert "Feature Graph 1" not in missing

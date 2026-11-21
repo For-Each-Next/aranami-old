@@ -12,24 +12,26 @@ Statistics use supplied annual facts and full missing-data sentences.
 from __future__ import annotations
 
 import datetime as dt
-import math
 import re
+from operator import itemgetter
 from typing import TYPE_CHECKING
 
 import polars as pl
 
-from data.newsletter.grades import (
+from data.newsletter.figures import (
     CHART_VARIANTS,
-    QUALITY_GRADES,
-    QUALITY_HISTORY_GRADES,
-    annual_quality_rows,
-    quality_chart_filename,
+    annual_data_through,
+    annual_figures,
+    distribution_title,
+    figure_filename,
 )
+from data.newsletter.grades import QUALITY_HISTORY_GRADES, annual_quality_rows
 from shared.newsletter import DYK_PROJECT_DATABASE_TITLES, DYK_PROJECTS, ROOT
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
+    from data.newsletter.figures import AnnualFigure
     from shared.newsletter import Issue
 
 _GRADES = {
@@ -60,9 +62,6 @@ LITERAL_ESCAPES = str.maketrans({
     ">": "&gt;",
 })
 _MONTHS = 12
-_PIE_TOTAL_WIDTH = 400
-_PIE_HEIGHT = 250
-_PIE_FRAME_PADDING = 34
 _FIRST_BAND_END = 2009
 _SECOND_BAND_END = 2019
 _ICON_GRADES = frozenset({"Bplus", "GA", "A", "FA", "FL"})
@@ -77,8 +76,6 @@ _CREDIT_GRADES = {
     "GT": "優良話題",
 }
 _AWARD_THRESHOLD = 10
-_QUALITY_AXIS_STEP = 10
-_QUALITY_AXIS_MINIMUM_MAX = 50
 
 
 def _literal(value: object) -> str:
@@ -141,31 +138,6 @@ def _count(value: object) -> str:
     return f"{value:,}" if type(value) is int else ""
 
 
-def _annual_data_through(
-    review: Mapping,
-    *,
-    data_through: str | None = None,
-) -> dt.date | None:
-    """Resolve the inclusive date covered by annual statistics.
-
-    Args:
-        review: Saved annual facts with an exclusive observation cutoff.
-        data_through: Inclusive date for independently dated data.
-
-    Returns:
-        Inclusive data date, or none when no valid date was retained.
-    """
-    try:
-        return (
-            dt.date.fromisoformat(data_through)
-            if data_through is not None
-            else dt.date.fromisoformat(review["observation_end"])
-            - dt.timedelta(days=1)
-        )
-    except KeyError, TypeError, ValueError:
-        return None
-
-
 def _annual_as_of(
     review: Mapping,
     *,
@@ -180,7 +152,7 @@ def _annual_as_of(
     Returns:
         An inline Memo date marker, or a missing-date sentence.
     """
-    day = _annual_data_through(review, data_through=data_through)
+    day = annual_data_through(review, data_through=data_through)
     if day is None:
         return "{{Memo|統計截至日期待補。|inline:info}}"
     return f"{{{{Memo|截至{day.year}年{day.month}月{day.day}日|inline:info}}}}"
@@ -594,52 +566,55 @@ def _dyk(review: Mapping, year: int) -> str:
     return "\n".join(lines)
 
 
+def _figure_file(issue_year: int, number: int, options: str) -> str:
+    """Place the localized filenames in File2.
+
+    Returns:
+        One wikitext image with the supplied caption and layout options.
+    """
+    files = "|".join(
+        f"{variant}={figure_filename(issue_year, number, variant)}"
+        for variant in CHART_VARIANTS
+    )
+    return f"{{{{File2|{files}|{options}|class=skin-invert-image}}}}"
+
+
 def _quality_charts(review: Mapping, year: int) -> str:
-    """Render native annual pies with filenames for the matching images.
+    """Pair the current quality pie with the previous issue's chart.
 
     Returns:
         Wikitext charts and their coverage introduction.
     """
-    records = annual_quality_rows(review, year)
-    charts = []
-    for row in records:
-        counts = row["counts"]
-        observed = [
-            (counts[code], label, color)
-            for code, (label, color) in QUALITY_GRADES.items()
-            if counts.get(code)
-        ]
-        labels = [f"{label}：{count}" for count, label, _ in observed]
-        legend_width = min(220, max(80, max(map(len, labels)) * 7.5 + 32))
-        plot_width = _PIE_TOTAL_WIDTH - legend_width - _PIE_FRAME_PADDING
-        files = " ".join(
-            f"[[File:{quality_chart_filename(row, variant)}]]"
-            for variant in CHART_VARIANTS
-        )
-        charts.append(
-            f"<!-- {files} -->\n"
-            "{{Graph:Chart\n"
-            f"| type = pie | width = {plot_width:g} "
-            f"| height = {_PIE_HEIGHT}\n"
-            f"| title = {row['year']}年條目品質概況\n"
-            "| x = "
-            + ", ".join(labels)
-            + "\n| y1 = "
-            + ", ".join(str(count) for count, _, _ in observed)
-            + "\n| colors = "
-            + ", ".join(color for _, _, color in observed)
-            + "\n| legend = true | showValues = false\n}}",
-        )
-    if not charts:
+    records = sorted(
+        annual_quality_rows(review, year),
+        key=itemgetter("year"),
+        reverse=True,
+    )
+    if not records:
         return ""
+    charts = [
+        "  <div>"
+        + _figure_file(
+            row["year"] + 1,
+            3,
+            f"350px|center|{distribution_title(row['year'])}",
+        )
+        + "</div>"
+        for row in records
+    ]
     return (
         _annual_intro(
             review,
             "各年度條目品質分布如下：",
             partial=any(row["provisional"] for row in records),
         )
-        + "\n"
+        + '\n<div style="display: grid; '
+        "grid-template-columns: "
+        "repeat(auto-fill, minmax(min(100%, 380px), 380px)); "
+        "column-gap: 0.2em; margin-left: auto; margin-right: auto; "
+        'justify-content: center; max-width: calc(760px + 0.3em);">\n'
         + "\n".join(charts)
+        + "\n</div>"
     )
 
 
@@ -737,7 +712,7 @@ def _article_growth_prose(
         if review.get("overview_observed_at")
         else None
     )
-    boundary = _annual_data_through(review, data_through=data_through)
+    boundary = annual_data_through(review, data_through=data_through)
     elapsed_days = (
         min(year_days, max(0, (boundary - start).days + 1))
         if boundary is not None
@@ -999,108 +974,40 @@ def _awards(review: Mapping) -> str:
     return "\n".join(lines)
 
 
-def _quality_history_chart(review: Mapping) -> str:
-    """Render annual cohorts using native chart parameters.
+def _milestone_charts(
+    review: Mapping,
+    issue_year: int,
+    figures: Mapping[int, AnnualFigure],
+) -> tuple[str, str]:
+    """Place both annual milestone images.
 
     Returns:
-        Centered native parameters with year-only labels and ordered
-        grade groups, without expanded SVG or custom overlays.
+        Wikitext for both milestone figures and their coverage notices.
     """
-    rows = review.get("quality_year_ends")
-    if not rows:
-        return ""
-    frame = (
-        pl
-        .DataFrame(rows)
-        .unnest("grades")
-        .with_columns(
-            (pl.col("FA") + pl.col("FL")).alias("featured"),
-            (pl.col("A") + pl.col("AL")).alias("a"),
+    quality = ""
+    if chart := figures.get(1):
+        quality = (
+            _annual_intro(review, "歷年高品質條目入選數量如下：")
+            + "\n"
+            + _figure_file(
+                issue_year,
+                chart.number,
+                f"600px|center|{chart.title}",
+            )
         )
-    )
-    groups = tuple(
-        group
-        for group in (
-            ("featured", "典范级", QUALITY_GRADES["fa"][1]),
-            ("a", "甲级", QUALITY_GRADES["a"][1]),
-            ("GA", "优良级", QUALITY_GRADES["ga"][1]),
-            ("Bplus", "乙上级", QUALITY_GRADES["bplus"][1]),
-        )
-        if group[0] != "a" or (frame["a"] > 0).any()
-    )
-    labels = frame["year"].cast(pl.String)
-    maximum = frame.select(
-        pl.sum_horizontal(key for key, _label, _color in groups).max(),
-    ).item()
-    axis_maximum = max(
-        _QUALITY_AXIS_MINIMUM_MAX,
-        math.ceil(maximum / _QUALITY_AXIS_STEP) * _QUALITY_AXIS_STEP,
-    )
-    parameters = [
-        "{{Graph:Chart",
-        "| title = 歷年新入選、晉級高品質條目",
-        "| type = stackedrect | width = 600 | height = 300",
-        "| xType = string | x = " + ", ".join(labels),
-    ]
-    for index, (key, label, _color) in enumerate(groups, start=1):
-        values = ", ".join(str(value) for value in frame[key])
-        parameters.append(f"| y{index} = {values} | y{index}Title = {label}")
-    parameters.extend((
-        "| colors = " + ", ".join(color for _key, _label, color in groups),
-        "| legend = true | interactive = true | animate = true",
-        "| xAxisAngle = -30 | xAxisTitle = 年份",
-        (
-            "| yAxisTitle = 入選篇數 | yType = integer "
-            f"| yAxisMin = 0 | yAxisMax = {axis_maximum} | yGrid = true"
-        ),
-        "}}",
-    ))
-    return (
-        _annual_intro(review, "歷年高品質條目入選數量如下：")
-        + '\n<div class="center" '
-        'style="max-width:100%;overflow-x:auto;text-align:center">\n'
-        + "\n".join(parameters)
-        + "\n</div>"
-    )
-
-
-def _milestone_charts(review: Mapping, year: int) -> tuple[str, str]:
-    """Extend audited GA and DYK charts with observed annual milestones.
-
-    Returns:
-        Annual quality additions and quarterly/current cumulative DYK.
-    """
-    quality = _quality_history_chart(review)
-    series = review.get("dyk_series")
-    if series is None:
+    chart = figures.get(2)
+    if chart is None:
         return quality, "尚未取得累計新條目推薦數量的完整歷史資料。"
-    dyk = [
-        (row["date"], row["count"])
-        for row in series
-        if row["date"][:4] <= str(year)
-    ]
-    chart = (
-        "{{Graph:Chart | type = area | width = 400 | height = 250 "
-        "| xType = date | x = "
-        + ", ".join(day for day, _ in dyk)
-        + " | y1 = "
-        + ", ".join(str(count) for _, count in dyk)
-        + " | colors = #b4bbff | xAxisTitle = 日期 | yAxisTitle = 條目數 }}"
+    caption = _annual_intro(
+        review,
+        chart.title,
+        partial=not review.get("complete") or chart.data_through is not None,
+        data_through=chart.data_through,
     )
-    return quality, (
-        "{{Image frame\n| align = right | width = 400\n| content = "
-        + chart
-        + "\n| caption = "
-        + _annual_intro(
-            review,
-            "電子遊戲專題累計新條目推薦數量",
-            partial=(
-                not review.get("complete")
-                or bool(dyk and dyk[-1][0] < f"{year}-12-31")
-            ),
-            data_through=dyk[-1][0] if dyk else None,
-        )
-        + "\n}}"
+    return quality, _figure_file(
+        issue_year,
+        chart.number,
+        f"thumb|right|upright=1.4|{caption}",
     )
 
 
@@ -1224,7 +1131,11 @@ def _annual(issue: Issue, review: Mapping) -> str:
         Annual wikitext without introductions or editor comments.
     """
     year = issue.year - 1
-    quality_chart, dyk_chart = _milestone_charts(review, year)
+    quality_chart, dyk_chart = _milestone_charts(
+        review,
+        issue.year,
+        annual_figures(review, year),
+    )
     quality_list, author_table = _quality(review)
     if quality_list:
         quality_list = (

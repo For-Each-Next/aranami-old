@@ -8,9 +8,9 @@ import datetime as dt
 from copy import deepcopy
 from unittest import TestCase
 
-import mwparserfromhell
 import polars as pl
 
+from data.newsletter.figures import annual_figures
 from data.newsletter.schema import valid_newsletter
 from newsletter.test_newsletter_data import Reader
 from shared.newsletter import Issue
@@ -246,18 +246,9 @@ class NewsletterDykCurrentTests(TestCase):
                 "dyk_current": prepare_year_dyk_current(_events(), issue, day),
             }
             review["dyk_series"] = prepare_dyk_series(review, issue.year - 1)
-            text = render_annual_feature(issue, review)
-            chart = next(
-                template
-                for template in mwparserfromhell.parse(text).filter_templates()
-                if template.name.matches("Graph:Chart")
-                and template.get("type").value.strip() == "area"
-            )
-            dates = str(chart.get("x").value).strip().split(", ")
-            counts = [
-                int(value)
-                for value in str(chart.get("y1").value).strip().split(", ")
-            ]
+            chart = annual_figures(review, issue.year - 1)[2]
+            dates = chart.axis
+            counts = chart.series[0].counts
             assert [
                 value for value in dates if value.startswith("2026-")
             ] == expected
@@ -296,14 +287,7 @@ class NewsletterDykCurrentTests(TestCase):
         """Leave unsupported years unextended and old facts readable."""
         review = {"dyk_current": {"date": "2027-11-01", "count": 12}}
         review["dyk_series"] = prepare_dyk_series(review, 2027)
-        text = render_annual_feature(Issue(2028, 1), review)
-        chart = next(
-            template
-            for template in mwparserfromhell.parse(text).filter_templates()
-            if template.name.matches("Graph:Chart")
-            and template.get("type").value.strip() == "area"
-        )
-        assert "2027-11-01" not in str(chart.get("x").value)
+        assert "2027-11-01" not in annual_figures(review, 2027)[2].axis
         legacy = render_annual_feature(
             Issue(2027, 1),
             {"dyk_new_quarters": [{"date": "2026-03-31", "count": 1}]},

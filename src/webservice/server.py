@@ -94,9 +94,8 @@ lazy from data.newsletter.archive import (
     NewsletterDraftArchive,
 )
 lazy from data.newsletter.historical import (
-    FrameFigureSource,
-    prepare_dyk_series,
     read_historical_data,
+    with_canonical_dyk_series,
 )
 lazy from data.newsletter.schema import (
     read_newsletter_data,
@@ -281,6 +280,7 @@ def _newsletter_feature(  # ruff: ignore[too-many-arguments]
             else None
         )
     if entry is not None:
+        review = _newsletter_figures(issue, entry["year_review"], runtime)
         value["pages"] = [
             page for page in value["pages"] if page["label"] != "專題"
         ]
@@ -288,11 +288,8 @@ def _newsletter_feature(  # ruff: ignore[too-many-arguments]
             "label": "專題",
             "title": f"WikiProject:電子遊戲/簡訊/{issue.value}/專題",
             "url": issue.page_url("專題"),
-            "text": render_annual_feature(
-                issue,
-                _newsletter_figures(issue, entry["year_review"], runtime),
-            ),
-            "charts": available_charts(runtime, issue, entry["year_review"]),
+            "text": render_annual_feature(issue, review),
+            "charts": available_charts(runtime, issue, review),
             "data_through": selected,
         })
         value["available"] = True
@@ -324,24 +321,9 @@ def _newsletter_figures(
         OSError: Existing canonical data cannot be safely read.
         ValueError: Existing canonical data fails validation.
     """  # ruff: ignore[docstring-extraneous-exception]
-    if (
-        issue.month != 1
-        or review is None
-        or review.get("dyk_series") is not None
-    ):
+    if issue.month != 1 or review is None:
         return review
-    bundle = read_historical_data(runtime)
-    if bundle is None:
-        return review
-    series = prepare_dyk_series(
-        review,
-        issue.year - 1,
-        source=FrameFigureSource(
-            "canonical-historical",
-            bundle.tables["figures"],
-        ),
-    )
-    return {**review, "dyk_series": series} if series else review
+    return with_canonical_dyk_series(runtime, review, issue.year - 1)
 
 
 def _newsletter_facts(issue: Issue, facts: dict, runtime: Path) -> dict:
@@ -1598,7 +1580,7 @@ class _PublicViews:
         """Serve a saved annual chart by its stable filename.
 
         Returns:
-            An SVG download or a missing-file response.
+            An image download or a missing-file response.
         """
         name = request.path.removeprefix(CHART_ROUTE)
         directory = self.runtime / CHART_DIRECTORY
@@ -1614,7 +1596,9 @@ class _PublicViews:
             return _error(HTTPStatus.NOT_FOUND)
         return _AssetHttpResponse(
             asset.content,
-            content_type="image/svg+xml",
+            content_type=(
+                "image/png" if name.endswith(".png") else "image/svg+xml"
+            ),
             headers={
                 "Cache-Control": "public, max-age=31536000, immutable",
                 "ETag": asset.etag,

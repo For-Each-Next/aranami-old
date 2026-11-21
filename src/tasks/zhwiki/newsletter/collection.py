@@ -299,12 +299,22 @@ def _apply_article_history(  # ruff: ignore[too-many-arguments]
             "url": revision_url,
         }
     if "homepage" in facts:
-        facts["homepage"]["news"] = prepared_news(
+        revisions = {
+            (row["title"], row["date"]): row["source_revision"]
+            for row in facts["homepage"]["news"] or []
+            if row.get("source_revision")
+        }
+        news = prepared_news(
             events,
             issue.start,
             through,
             url=url,
         )
+        for row in news:
+            revision = revisions.get((row["title"], row["date"]))
+            if revision is not None:
+                row["source_revision"] = revision
+        facts["homepage"]["news"] = news
         facts["homepage_sources"]["news"]["complete"] = True
     facts["available"] = True
 

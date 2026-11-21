@@ -284,7 +284,7 @@ def _report_plan(
             if name == "pageviews"
             else (
                 "quarterly-newsletter:current-new-article-observation:"
-                "shared-homepage:1:exact-project-spellings:2"
+                "shared-homepage:2:exact-project-spellings:2"
             )
             if name == "newsletter"
             else (

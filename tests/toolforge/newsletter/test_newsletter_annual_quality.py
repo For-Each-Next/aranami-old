@@ -74,7 +74,7 @@ class AnnualQualityLayoutTests(TestCase):
         sequence = (
             summary,
             "較去年10篇減少2篇。",
-            "{{Graph:Chart",
+            "{{File2",
             "新入選或晉級條目如下：",
             "[[:Featured game]]<!-- 0101 -->",
             "本年度高品質條目的題材分布待補充。",

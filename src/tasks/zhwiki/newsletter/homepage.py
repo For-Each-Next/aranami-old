@@ -174,6 +174,7 @@ def collect_newsletter_homepage(  # ruff: ignore[too-many-arguments,too-many-sta
                     "window_start",
                 }:
                     copied["date_kind"] = row["date_kind"]
+                    copied["source_revision"] = row.get("source_revision")
                 rows.append(copied)
                 known_kinds[row["title"], row["date"]] = copied.get("kind")
         selected = retained.filter(
@@ -196,6 +197,7 @@ def collect_newsletter_homepage(  # ruff: ignore[too-many-arguments,too-many-sta
                 copied["kind"] = "ga"
             elif section == "news":
                 copied["date_kind"] = "appearance"
+                copied["source_revision"] = row["source_revision"]
             rows.append(copied)
             sources.append({
                 "label": row["source_title"],
@@ -257,9 +259,15 @@ def collect_newsletter_homepage(  # ruff: ignore[too-many-arguments,too-many-sta
             row_schema["kind"] = pl.String
         elif section == "news":
             row_schema["date_kind"] = pl.String
+            row_schema["source_revision"] = pl.Int64
         rows = (
             pl
             .from_dicts(rows, schema=row_schema)
+            .with_columns(
+                pl.col("source_revision").min().over("title", "date")
+                if section == "news"
+                else (),
+            )
             .unique(subset=["title", "date"], keep="last", maintain_order=True)
             .sort("date", "title", descending=[True, False])
             .to_dicts()

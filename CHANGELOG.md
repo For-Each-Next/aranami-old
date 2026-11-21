@@ -5,6 +5,14 @@ v0.8.8 was consolidated into the v0.9.2 release.
 
 ## Until 0.10
 
+### 0.9.23 (2026-11-21 02:42 UTC)
+
+Overview: Added permanent newsletter news links and localized annual figures.
+
+- Linked verified news dates to their homepage template revisions.
+- Prepared January feature figures as localized PNG downloads and used
+  File2 to pair the current quality distribution with the published prior pie.
+
 ### 0.9.22 (2026-11-21 02:16 UTC)
 
 Overview: Updated the site to use Wikimedia Codex and reduced the initial

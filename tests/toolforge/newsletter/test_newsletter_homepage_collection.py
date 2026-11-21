@@ -219,7 +219,12 @@ class NewsletterHomepageCollectionTests(TestCase):
             },
         )
         assert result["homepage"]["news"] == [
-            {**base, "date": "2026-10-02", "date_kind": "appearance"},
+            {
+                **base,
+                "date": "2026-10-02",
+                "date_kind": "appearance",
+                "source_revision": None,
+            },
         ]
         assert not self.read.mock_calls
 

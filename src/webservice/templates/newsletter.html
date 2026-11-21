@@ -52,7 +52,7 @@
   {% if draft.charts %}
   <div class="newsletter-charts">
     {% for chart in draft.charts %}
-    <figure lang="{{ chart.language }}"><img src="{{ chart.url }}" alt="{{ chart.title }}" loading="lazy"><figcaption><a href="{{ chart.url }}" download="{{ chart.filename }}">{{ chart.title }} · {{ chart.label }}{% if language_tag == 'en' %} (SVG){% endif %}</a></figcaption></figure>
+    <figure lang="{{ chart.language }}"><img src="{{ chart.url }}" alt="{{ chart.title }}" loading="lazy"><figcaption><a href="{{ chart.url }}" download="{{ chart.filename }}">{{ chart.title }} · {{ chart.label }}</a></figcaption></figure>
     {% endfor %}
   </div>
   {% endif %}

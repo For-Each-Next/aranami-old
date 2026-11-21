@@ -13,7 +13,9 @@ from unittest import TestCase
 
 import mwparserfromhell
 import polars as pl
+from PIL import Image
 
+from data.newsletter.figures import annual_figures
 from data.newsletter.grades import QUALITY_GRADES
 from shared.newsletter import Issue
 from tasks.zhwiki.legacy.newsletter_figures import prepare_dyk_series
@@ -23,8 +25,10 @@ from tasks.zhwiki.newsletter.statistics import (
     quality_statistics,
 )
 from updater.services.newsletter_editorial import render_annual_feature
+from webservice import newsletter_charts
 from webservice.newsletter_charts import (
     CHART_DIRECTORY,
+    available_charts,
     prepare_newsletter_charts,
 )
 
@@ -159,41 +163,36 @@ class NewsletterStatisticsTests(TestCase):
             ],
         }
         text = render_annual_feature(Issue(2027, 1), review)
-        pies = [
-            template
-            for template in mwparserfromhell.parse(text).filter_templates()
-            if template.name.matches("Graph:Chart")
-            and template.get("type").value.strip() == "pie"
-        ]
-        assert len(pies) == 2
-        for pie in pies:
-            labels = str(pie.get("x").value).strip().split(", ")
-            assert labels == [
-                "典范级：499",
-                "特色列表级：500",
-                "甲级：5150",
-                "优良级：3851",
-            ]
-            assert pie.get("y1").value.strip() == "499, 500, 5150, 3851"
-            assert pie.get("showValues").value.strip() == "false"
-            legend_width = min(220, max(80, max(map(len, labels)) * 7.5 + 32))
-            width = float(str(pie.get("width").value))
-            assert width + legend_width + 28 <= 400
-            assert not pie.has("1")
-        assert "<svg" not in text
-        assert 'class="pie-percentage"' not in text
+        chart = annual_figures(review, 2026)[3]
+        counts = tuple(series.counts[0] for series in chart.series)
+        assert counts == (499, 500, 5150, 3851)
+        assert newsletter_charts._percentages(counts) == (  # ruff: ignore[private-member-access]
+            "",
+            "5.0%",
+            "51.5%",
+            "38.5%",
+        )
+        issue = Issue(2027, 1)
         with TemporaryDirectory() as temporary:
             runtime = Path(temporary)
-            payload = {"issues": {"2027-01": {"year_review": review}}}
+            payload = {
+                "issues": {
+                    "2026-01": {"year_review": review},
+                    issue.value: {"year_review": review},
+                },
+            }
             prepare_newsletter_charts(runtime, payload)
-            files = sorted((runtime / CHART_DIRECTORY).glob("*.svg"))
-            assert len(files) == 6
+            files = sorted((runtime / CHART_DIRECTORY).glob("*.png"))
+            assert len(files) == 3
             for path in files:
-                assert f"[[File:{path.name}]]" in text
-                svg = path.read_text(encoding="utf-8")
-                for label in ("5.0%", "51.5%", "38.5%"):
-                    assert label in svg
-                assert "4.99%" not in svg
+                with Image.open(path) as image:
+                    assert image.format == "PNG"
+                    assert image.size == (1440, 860)
+                    image.verify()
+            previews = available_charts(runtime, issue, review)
+            assert len(previews) == 3
+            assert all(item["filename"] in text for item in previews)
+            assert "WPVG Newsletter 202601 Feature Graph 3" in text
             stamps = [path.stat().st_mtime_ns for path in files]
             prepare_newsletter_charts(runtime, payload)
             assert stamps == [path.stat().st_mtime_ns for path in files]
@@ -214,7 +213,7 @@ class NewsletterStatisticsTests(TestCase):
                 ],
             },
         )
-        assert "| type = pie" not in text
+        assert "Feature Graph 3" not in text
 
     @staticmethod
     def test_current_and_legacy_popularity_contracts() -> None:
@@ -310,41 +309,39 @@ class NewsletterStatisticsTests(TestCase):
             "yearly",
         )
         popularity["provisional"] = True
-        text = render_annual_feature(
-            Issue(2027, 1),
-            _with_dyk_series({
-                "overview": {"total": 13000},
-                "previous_overview": {"total": 12497},
-                "quality_statistics": quality_statistics(
-                    pl.DataFrame({
-                        "pa_class": ["FA"] * 25,
-                        "page_namespace": [0] * 25,
-                    }),
-                    2026,
-                    complete=False,
-                ),
-                "complete": False,
-                "observation_end": "2026-11-01",
-                "dyk_new_quarters": [
-                    {"date": "2026-03-31", "count": 20},
-                    {"date": "2026-06-30", "count": 40},
-                    {"date": "2026-09-30", "count": 60},
-                ],
-                "monthly_popularity": [
-                    {
-                        "month": 1,
-                        "days": 31,
-                        "title": "Game",
-                        "views": 31000,
-                        "revision_id": 123456789,
-                    },
-                ],
-                "annual_popularity": popularity,
-                "revision_ranking": [{"title": "Game", "revisions": 123}],
-                "awards": [{"user": "New", "gained": 12, "total": 12}],
-                "newcomers": ["New"],
-            }),
-        )
+        review = _with_dyk_series({
+            "overview": {"total": 13000},
+            "previous_overview": {"total": 12497},
+            "quality_statistics": quality_statistics(
+                pl.DataFrame({
+                    "pa_class": ["FA"] * 25,
+                    "page_namespace": [0] * 25,
+                }),
+                2026,
+                complete=False,
+            ),
+            "complete": False,
+            "observation_end": "2026-11-01",
+            "dyk_new_quarters": [
+                {"date": "2026-03-31", "count": 20},
+                {"date": "2026-06-30", "count": 40},
+                {"date": "2026-09-30", "count": 60},
+            ],
+            "monthly_popularity": [
+                {
+                    "month": 1,
+                    "days": 31,
+                    "title": "Game",
+                    "views": 31000,
+                    "revision_id": 123456789,
+                },
+            ],
+            "annual_popularity": popularity,
+            "revision_ranking": [{"title": "Game", "revisions": 123}],
+            "awards": [{"user": "New", "gained": 12, "total": 12}],
+            "newcomers": ["New"],
+        })
+        text = render_annual_feature(Issue(2027, 1), review)
         assert "較去年年末的12,497篇淨增長503篇，日均淨增長1.65篇" in text
         assert "{{Memo|截至2026年10月31日|inline:info}}" in text
         assert "以下列出2026年瀏覽量最多的條目，至多25篇" in text
@@ -353,48 +350,31 @@ class NewsletterStatisticsTests(TestCase):
         assert "# [[:Game]]：123笔修订" in text
         assert "年内共有1名编辑获得ACG专题奖得分。其中1名編者首次得分" in text
         assert "1名首次達到10分。" in text
-        assert "{{Graph:Chart" in text
-        assert "| type = pie" in text
+        assert "{{Graph:Chart" not in text
+        assert "WPVG Newsletter 202701 Feature Graph 2" in text
+        assert "WPVG Newsletter 202701 Feature Graph 3" in text
+        assert "WPVG Newsletter 202601 Feature Graph 3" in text
+        assert "WPVG Newsletter 202501" not in text
         assert '<svg xmlns="http://www.w3.org/2000/svg"' not in text
-        assert "| type = area" in text
         assert "歷年資料來源" not in text
         assert "! 年份 !! 新增优良条目" not in text
         assert "! 日期 !! 累计新条目推荐" not in text
-        chart = next(
-            template
-            for template in mwparserfromhell.parse(text).filter_templates()
-            if template.name.matches("Graph:Chart")
-            and template.get("type").value.strip() == "area"
-        )
-        dates = str(chart.get("x").value).strip().split(", ")
-        assert dates[-4:] == [
+        chart = annual_figures(review, 2026)[2]
+        assert chart.axis[-4:] == (
             "2025-12-31",
             "2026-03-31",
             "2026-06-30",
             "2026-09-30",
-        ]
-        assert "2026-10-31" not in dates
-        assert (
-            str(chart.get("y1").value)
-            .strip()
-            .endswith(
-                "1323, 1360, 1380, 1400, 1420",
-            )
         )
+        assert "2026-10-31" not in chart.axis
+        assert chart.series[0].counts[-5:] == (1323, 1360, 1380, 1400, 1420)
         assert "! 品質 !!" not in text
-        assert "2024年條目品質概況" not in text
-        assert "2025年條目品質概況" in text
-        assert "2026年條目品質概況" in text
-        assert "| x = 典范级：25" in text
-        assert "| legend = true | showValues = false" in text
+        assert "2025年年终条目品质概况" in text
+        assert "2026年年终条目品质概况" in text
         assert "总浏览量为3,660万" in text
         assert "[[:Special:PermaLink/123456789#月瀏覽量|1月]]" in text
         assert "* 2月：" in text
-        assert (
-            "{{Image frame\n| align = right | width = 400\n| content = "
-            in text
-        )
-        assert "| type = area | width = 400" in str(chart)
+        assert "|thumb|right|upright=1.4|" in text
 
 
 class AnnualFigureIntroductionTests(TestCase):
@@ -402,31 +382,27 @@ class AnnualFigureIntroductionTests(TestCase):
 
     @staticmethod
     def test_pie_pair_follows_one_inline_notice() -> None:
-        """Keep bare pie templates and their file comments together."""
+        """Keep the paired figures in one grid after their notice."""
         code = mwparserfromhell.parse(
             render_annual_feature(Issue(2027, 1), _partial_annual_review()),
         )
+        grid = next(
+            tag
+            for tag in code.filter_tags(recursive=False)
+            if tag.tag == "div" and "display: grid" in str(tag)
+        )
         charts = [
             template
-            for template in code.filter_templates(recursive=False)
-            if template.name.matches("Graph:Chart")
-            and template.get("type").value.strip() == "pie"
+            for template in grid.contents.filter_templates()
+            if template.name.matches("File2")
         ]
         assert len(charts) == 2
-        assert "annual-quality-pies" not in str(code)
-        assert (
-            sum(
-                str(comment).count("[[File:")
-                for comment in code.filter_comments()
-            )
-            == 6
-        )
-        first_comment = next(
-            comment
-            for comment in code.filter_comments(recursive=False)
-            if "[[File:Aranami-quality-" in str(comment)
-        )
-        introduction = _preceding_introduction(code, first_comment)
+        for chart, issue in zip(charts, (202701, 202601), strict=True):
+            for variant in ("zh-cn", "zh-hk", "zh-tw"):
+                assert chart.get(variant).value == (
+                    f"WPVG Newsletter {issue} Feature Graph 3 ({variant}).png"
+                )
+        introduction = _preceding_introduction(code, grid)
         assert "各年度條目品質分布如下：" in introduction
         notices = mwparserfromhell.parse(introduction).filter_templates()
         assert len(notices) == 1
@@ -462,7 +438,11 @@ class AnnualFigureIntroductionTests(TestCase):
         blocks = (
             (
                 quality,
-                next(tag for tag in quality_blocks if tag.tag == "div"),
+                next(
+                    template
+                    for template in quality.filter_templates(recursive=False)
+                    if template.name.matches("File2")
+                ),
                 "歷年高品質條目入選數量如下：",
                 "2026年10月31日",
             ),
@@ -545,11 +525,11 @@ class AnnualFigureIntroductionTests(TestCase):
         dyk_chart = next(
             template
             for template in dyk.filter_templates(recursive=False)
-            if template.name.matches("Image frame")
+            if template.name.matches("File2")
         )
-        assert str(dyk_chart.get("caption").value).strip() == (
+        assert str(dyk_chart.get("3").value).strip() == (
             "{{Memo|截至2026年9月30日|inline:info}}"
-            "電子遊戲專題累計新條目推薦數量"
+            "电子游戏专题累计新条目推荐数量"
         )
         revision_tail = str(articles).partition("[[:Revised]]")[2]
         assert not any(

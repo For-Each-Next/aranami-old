@@ -16,11 +16,18 @@ from unittest.mock import patch
 from starlette.testclient import TestClient
 
 from data.newsletter.archive import DEFAULT_PATH, NewsletterDraftArchive
-from data.newsletter.historical import import_historical_data
+from data.newsletter.historical import (
+    import_historical_data,
+    with_canonical_dyk_series,
+)
 from data.newsletter.observations import OBSERVATIONS_PATH, save_observation
 from data.newsletter.schema import valid_newsletter
 from data.paths import artifact_path
 from shared.newsletter import SUFFIXES, Issue
+from webservice.newsletter_charts import (
+    available_charts,
+    prepare_newsletter_charts,
+)
 from webservice.server import create_app
 
 _DAY = dt.date(2026, 10, 31)
@@ -134,7 +141,7 @@ class HistoricalNewsletterRequests(TestCase):
         status, text = self._get()
         assert status == HTTPStatus.OK
         assert _UNKNOWN in text
-        assert "| y1 = 2 " not in text
+        assert "Feature Graph 2" not in text
         assert not (
             self.runtime / "data/parsed/newsletter/historical"
         ).exists()
@@ -148,11 +155,28 @@ class HistoricalNewsletterRequests(TestCase):
         import_historical_data(self.runtime, seed=_seed())
         other = Path(self.enterContext(TemporaryDirectory()))
         import_historical_data(other, seed=_seed(900))
+        review = with_canonical_dyk_series(self.runtime, _review(), 2026)
+        assert [point["count"] for point in review["dyk_series"]] == [41, 43]
+        prepare_newsletter_charts(
+            self.runtime,
+            {"issues": {_ISSUE.value: {"year_review": _review()}}},
+        )
+        previews = available_charts(self.runtime, _ISSUE, review)
+        assert {chart["language"] for chart in previews} == {
+            "zh-cn",
+            "zh-hk",
+            "zh-tw",
+        }
         with chdir(other):
             status, text = self._get()
         assert status == HTTPStatus.OK
-        assert "| y1 = 41, 43 " in text
-        assert "| y1 = 900, 902 " not in text
+        for chart in previews:
+            assert chart["filename"] in text
+            assert chart["url"] in text
+            response = self.client.get(chart["url"])
+            assert response.status_code == HTTPStatus.OK
+            assert response.headers["Content-Type"] == "image/png"
+            assert response.content.startswith(b"\x89PNG\r\n\x1a\n")
         assert _UNKNOWN not in text
         saved = self.archive.read_feature(_ISSUE, _DAY)
         assert "dyk_series" not in saved["year_review"]
@@ -178,8 +202,8 @@ class HistoricalNewsletterRequests(TestCase):
         (artifact_path(bundle.path, "figures.parquet")).write_bytes(b"damaged")
         status, text = self._get()
         assert status == HTTPStatus.OK
-        assert "| y1 = 777 " in text
-        assert "| y1 = 41, 43 " not in text
+        assert "Feature Graph 2" in text
+        assert _UNKNOWN not in text
 
     def test_current_and_dated_full_issues_receive_same_saved_baseline(
         self,
@@ -211,5 +235,5 @@ class HistoricalNewsletterRequests(TestCase):
             with self.subTest(url=url):
                 status, text = self._get(url)
                 assert status == HTTPStatus.OK
-                assert "| y1 = 41, 43 " in text
+                assert "Feature Graph 2" in text
                 assert _UNKNOWN not in text

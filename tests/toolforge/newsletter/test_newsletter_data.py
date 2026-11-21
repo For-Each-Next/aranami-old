@@ -155,7 +155,7 @@ class NewsletterDataTests(unittest.TestCase):
                 assert valid_newsletter(result)
 
     def test_news_uses_talk_notices_instead_of_template_history(self) -> None:
-        """Use recorded talk-page dates for news appearances."""
+        """Keep talk dates and link only exact display evidence."""
         now = dt.datetime(2026, 10, 31, tzinfo=dt.UTC)
         events = pl.DataFrame(
             {
@@ -170,10 +170,10 @@ class NewsletterDataTests(unittest.TestCase):
         )
 
         def homepage(_read: object, issue: Issue, **options: object) -> dict:
-            """Supply valid independently collected homepage records.
+            """Supply a competing date and an exact match with proof.
 
             Returns:
-                One subject whose precise date is proved by a template.
+                Source-backed homepage observations within the quarter.
             """
             day = issue.start + dt.timedelta(days=1)
             sections = {
@@ -185,6 +185,14 @@ class NewsletterDataTests(unittest.TestCase):
                     "date": str(day),
                     "url": "https://zh.wikipedia.org/wiki/Template_subject",
                     "date_kind": "appearance",
+                    "source_revision": 5,
+                },
+                {
+                    "title": "Past news",
+                    "date": "2026-10-04",
+                    "url": "https://zh.wikipedia.org/wiki/Past_news",
+                    "date_kind": "appearance",
+                    "source_revision": 6,
                 },
             ]
             return {
@@ -218,6 +226,8 @@ class NewsletterDataTests(unittest.TestCase):
             ("Past news", "2026-10-04"),
             ("Template subject", "2026-10-03"),
         ]
+        assert news[0]["source_revision"] == 6
+        assert "source_revision" not in news[1]
 
     def test_article_events_replace_list_edit_dates_and_keep_unknowns(
         self,

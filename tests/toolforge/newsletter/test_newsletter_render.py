@@ -559,6 +559,12 @@ class NewsletterObservedRenderingTests(unittest.TestCase):
                         "title": "新新聞",
                         "date": "2026-10-08",
                         "date_kind": "appearance",
+                        "source_revision": 12345,
+                    },
+                    {
+                        "title": "舊資料",
+                        "date": "2026-10-09",
+                        "date_kind": "appearance",
                     },
                 ],
                 "history": [{"title": "歷史遊戲", "date": "2026-10-15"}],
@@ -579,9 +585,10 @@ class NewsletterObservedRenderingTests(unittest.TestCase):
             "* [[:延續新聞]]<small>（期初已在首頁，首次日期不詳）</small>"
         ) in announcements
         assert (
-            "* [[:新新聞]]<small>（[[:Template:Itn|10月8日]]）</small>"
-            in announcements
+            "* [[:新新聞]]<small>（[[:Special:PermanentLink/12345|10月8日]]）"
+            "</small>" in announcements
         )
+        assert "* [[:舊資料]]<small>（10月9日）</small>" in announcements
         assert "* [[:歷史遊戲]]<small>（10月15日）</small>" in announcements
         assert "[[:延續新聞]]<!--" not in announcements
         assert "10月1日" not in announcements
