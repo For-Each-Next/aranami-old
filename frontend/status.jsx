@@ -61,6 +61,33 @@ export function consumers(context, item) {
     );
 }
 
+function jobFiles(context, files) {
+    if (!files?.length) return null;
+    return (
+        <li>
+            <details>
+                <summary>{context.t.dataset_updates.files}</summary>
+                <ul>
+                    {files.map(file => (
+                        <li key={file.key}>
+                            {file.url ? (
+                                <a href={attribute(file.url)} data-dataset-link={""}>
+                                    {display(file.filename)}
+                                </a>
+                            ) : display(file.filename)}
+                            {file.shape ? (
+                                <div class="dataset-update-note dataset-update-shape">
+                                    {display(file.shape)}
+                                </div>
+                            ) : null}
+                        </li>
+                    ))}
+                </ul>
+            </details>
+        </li>
+    );
+}
+
 export function DatasetUpdates(context) {
     const { server, t } = context;
     return ((updates) =>
@@ -87,15 +114,15 @@ export function DatasetUpdates(context) {
                                                 <span
                                                     role="img"
                                                     aria-label={attribute(
-                                                        item?.state === "running"
+                                                        item?.outcome ?? (item?.state === "running"
                                                             ? t.dataset_updates.running
                                                             : hasContent(item?.scheduled) &&
                                                                 hasContent(item?.scheduled?.known)
                                                               ? t.dataset_updates.scheduled
-                                                              : t.dataset_updates.waiting,
+                                                              : t.dataset_updates.waiting),
                                                     )}
                                                 >
-                                                    {"⌛"}
+                                                    {item?.icon ?? "⌛"}
                                                 </span>{" "}
                                                 <strong>{display(item?.filename)}</strong>
                                             </p>
@@ -113,6 +140,10 @@ export function DatasetUpdates(context) {
                                                             {display(t.dataset_updates.scheduled)}{" "}
                                                             {instant(context, item?.scheduled)}
                                                         </>
+                                                    ) : item?.outcome ? (
+                                                        display(item.outcome)
+                                                    ) : item?.cron ? (
+                                                        <code>{display(item.cron)}</code>
                                                     ) : (
                                                         display(t.dataset_updates.waiting)
                                                     )}
@@ -155,9 +186,9 @@ export function DatasetUpdates(context) {
                                                 ) : hasContent(item?.activity) ? (
                                                     <li>{display(item?.activity)}</li>
                                                 ) : null}
-                                                {!hasContent(item?.is_task)
-                                                    ? consumers(context, item)
-                                                    : null}
+                                                {item?.is_task
+                                                    ? jobFiles(context, item.files)
+                                                    : consumers(context, item)}
                                             </ul>
                                         </li>
                                     ))}
@@ -165,6 +196,7 @@ export function DatasetUpdates(context) {
                             ) : (
                                 <p class="context">
                                     {display(
+                                        current?.native ? t.dataset_updates.no_job_schedule :
                                         current?.state === "unavailable"
                                             ? t.dataset_updates.unavailable
                                             : t.dataset_updates.no_planned,
@@ -193,19 +225,19 @@ export function DatasetUpdates(context) {
                                             <span
                                                 role="img"
                                                 aria-label={attribute(
-                                                    item?.state === "succeeded"
+                                                    item?.outcome ?? (item?.state === "succeeded"
                                                         ? t.dataset_updates.succeeded
                                                         : item?.state === "failed"
                                                           ? t.dataset_updates.failed
-                                                          : t.data.unknown,
+                                                          : t.data.unknown),
                                                 )}
                                             >
                                                 {display(
-                                                    item?.state === "succeeded"
+                                                    item?.icon ?? (item?.state === "succeeded"
                                                         ? "✅"
                                                         : item?.state === "failed"
                                                           ? "❌"
-                                                          : "?",
+                                                          : "?"),
                                                 )}
                                             </span>{" "}
                                             <strong>
@@ -225,10 +257,12 @@ export function DatasetUpdates(context) {
                                             <li>
                                                 {display(t.dataset_updates.started)}{" "}
                                                 {instant(context, item?.started)}
-                                                <div class="dataset-update-note">{baseline(context, item)}</div>
+                                                {item?.is_task ? null : (
+                                                    <div class="dataset-update-note">{baseline(context, item)}</div>
+                                                )}
                                             </li>
                                             <li>
-                                                {t.dataset_updates.finished}{" "}
+                                                {display(item?.outcome ?? t.dataset_updates.finished)}{" "}
                                                 {instant(context, item?.finished)}
                                                 {hasContent(item?.shape) ? (
                                                     <div class="dataset-update-note dataset-update-shape">
@@ -236,13 +270,13 @@ export function DatasetUpdates(context) {
                                                     </div>
                                                 ) : null}
                                             </li>
-                                            {consumers(context, item)}
+                                            {item?.is_task ? jobFiles(context, item.files) : consumers(context, item)}
                                         </ul>
                                     </li>
                                 ))}
                             </ul>
                         ) : (
-                            <p class="context">{display(t.dataset_updates.no_previous)}</p>
+                            <p class="context">{display(previous?.native ? t.dataset_updates.no_recent_jobs : t.dataset_updates.no_previous)}</p>
                         )}
                     </section>
                 </>
@@ -632,12 +666,51 @@ export function Routines(context) {
     );
 }
 
-/** Present each service in its own column of the metrics table. */
+/** Present each installed job with its current state and container metrics. */
+function JobTable({ jobs, t }) {
+    return (
+        <table class="ui-table__table server-jobs" data-no-pagination="">
+            <caption class="visually-hidden">{t.server.heading}</caption>
+            <thead>
+                <tr>
+                    {["job", "job_type", "state", "memory", "cpu"].map(key => (
+                        <th scope="col" key={key}>{t.server[key]}</th>
+                    ))}
+                </tr>
+            </thead>
+            <tbody>
+                {jobs.map(job => (
+                    <tr key={job.key} data-key={job.key}>
+                        <th scope="row">{job.name}</th>
+                        <td>{job.type}</td>
+                        <td>
+                            <span data-observation-expires={job.expires ?? undefined}
+                                data-stale-text={job.expires ? t.server.job_unknown : undefined}>
+                                {job.status}
+                            </span>
+                        </td>
+                        {["memory", "cpu"].map(metric => (
+                            <td key={metric}>
+                                <span data-observation-expires={job.expires ?? undefined}
+                                    data-stale-text={job.expires ? job.idle_usage[metric] : undefined}>
+                                    {job.usage[metric]}
+                                </span>
+                            </td>
+                        ))}
+                    </tr>
+                ))}
+            </tbody>
+        </table>
+    );
+}
+
+/** Present the job metrics, with the legacy service view for earlier data. */
 export function Runtime(context) {
     const { server, t } = context;
     return (
         <div id="server-runtime" class="ui-table">
             <div class="ui-table__table-wrapper">
+                {server?.jobs?.length ? <JobTable jobs={server.jobs} t={t} /> : (
                 <table class="ui-table__table server-metrics" data-no-pagination="">
                     <caption class="visually-hidden">{t.server.heading}</caption>
                     <colgroup><col /><col /><col /></colgroup>
@@ -676,6 +749,7 @@ export function Runtime(context) {
                         ))}
                     </tbody>
                 </table>
+                )}
             </div>
         </div>
     );

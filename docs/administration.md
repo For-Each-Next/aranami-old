@@ -130,12 +130,19 @@ kubectl describe resourcequotas
 mkdir -p state
 sh app/scripts/toolforge/run-job.sh --manifest > state/aranami-jobs.yaml
 toolforge jobs load state/aranami-jobs.yaml
+kubectl get cronjobs -o json | sh app/scripts/toolforge/run-job.sh --record-schedules
 ```
 
 The manifest uses JSON, which is accepted as YAML. Loading a changed job
 definition can replace that job. Use `toolforge jobs load --job NAME FILE`
 for a deliberate change to one job. A run pins the managed Python 3.15
 environment even though the Toolforge image label is `python3.13`.
+Refresh the recorded schedules after changing job definitions. Source
+promotion also refreshes them. About reads installed CronJob names, UTC
+schedules and suspension flags from shared storage. The server status table
+uses localized job names, installed limits and fresh container readings. Each
+scheduled worker samples its own memory working set and CPU use. Recent jobs
+uses up to 24 runs recorded in the last day and their saved file observations.
 
 For a fresh tool, enable the jobs after registration. For migration from a
 running hub, wait for its current work to finish and for its pod to terminate
@@ -148,9 +155,11 @@ kubectl wait --for=delete pod -l app.kubernetes.io/name=aranami-hub --timeout=18
 kubectl get pods -l app.kubernetes.io/name=aranami-hub
 ```
 
-Confirm the last command lists no pods. Complete source promotions and
-cutovers outside 23:59:00–00:01:59 UTC to protect the daily capture. Then
-enable the schedules and start primary collection for the current hour.
+Confirm the last command lists no pods. Save the hub definition with
+`toolforge jobs dump -f FILE` and retire it with
+`toolforge jobs delete aranami-hub`. Complete source promotions and
+cutovers outside 23:59:00–00:01:59 UTC to protect the daily capture. Enable
+the schedules and start primary collection for the current hour.
 
 ```shell
 mkdir -p state/toolforge-jobs
@@ -170,8 +179,8 @@ cycle. Each job's lease and receipt guard duplicate runs.
 The starting profile has one continuous job and thirteen scheduled jobs.
 The published web job gets 2 GiB and one CPU core based on its observed
 working set. Scheduled jobs get 512 MiB to 2 GiB each. The busiest planned
-window uses 6.75 GiB, 2.05 CPU cores and seven pods including web. The setup
-job raises that to 7.25 GiB, 2.15 cores and eight pods. Aranami's Toolforge
+window uses 6.75 GiB, 2.25 CPU cores and seven pods including web. The setup
+job raises that to 7.25 GiB, 2.35 cores and eight pods. Aranami's Toolforge
 account has 8 GiB, 16 cores and 16 pods. Its web Deployment uses Recreate,
 which releases its old pod before starting the replacement. Check actual
 allocations, other running jobs and rollout strategy before changing limits.
@@ -246,8 +255,10 @@ scheduled job for individual collector or report recovery.
 
 To roll back to the legacy hub, remove `state/toolforge-jobs/active` and wait
 for every running scheduled worker to exit. Check `kubectl get jobs` for active
-workers before starting the original hub replica. If the hub already runs in
-legacy mode, drain and stop it before restoring its replica.
+workers before starting the original hub replica. If the hub definition was
+retired, restore it with `toolforge jobs load --job aranami-hub FILE` using the
+archived jobs definition. If a hub already runs in legacy mode, drain and
+stop it before replacing its replica.
 
 ```shell
 kubectl exec deployment/aranami-hub -- python3 /data/project/aranami/app/scripts/toolforge/drain-hub.py
@@ -270,6 +281,23 @@ A promotion transaction retains `jobs.yaml`, setup evidence, previous source
 selection in `app.before`, saved replica counts and stop markers. Interpret
 `app.before` relative to tool home. If setup cancellation cannot confirm the
 job exited, inspect the retained deployment lock before retrying.
+
+The current authorship store uses `data/parsed/authorship--latest.json`
+and artifacts such as `authorship--g-20261121045331--targets.parquet`.
+When upgrading from the original hashed filenames, copy the selected and
+previous bundles under the existing report lock. Verify both before archiving
+the former paths. Run this from the tool directory with the selected source
+on `PYTHONPATH`.
+
+```shell
+"$runtime_python" -c 'from pathlib import Path; from data.articles.current_authorship import compact_storage; compact_storage(Path.cwd())'
+```
+
+For a rollback to a release that reads the original paths, pause the authorship
+job and use `compact_storage(Path.cwd(), restore=True)` before selecting the
+older release. The command verifies and copies the latest two selected bundles.
+It switches the selector after readback so later upgrades see any data saved
+by the older release.
 
 A failure after source selection retains the new selection and both generations:
 a process may already have loaded the new source. Inspect actual jobs/pods,

@@ -3,6 +3,7 @@
 # ruff: file-ignore[pytest-unittest-raises-assertion]
 
 import datetime as dt
+import json
 from contextlib import chdir
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -19,6 +20,7 @@ from shared.toolforge_jobs import (
     WEB_MEMORY,
     job_definitions,
     job_name,
+    save_installed_schedules,
 )
 
 
@@ -119,6 +121,8 @@ class TestScheduledJob(TestCase):
         with self.assertRaises(OSError):
             toolforge_job.run_job("project-data")
         assert not (ACTIVE_PATH.parent / "project-data.json").exists()
+        sample = ACTIVE_PATH.parent / "samples/project-data.json"
+        assert json.loads(sample.read_text())["outcome"] == "failed"
 
     def test_publishers_share_the_job_lease(self) -> None:
         """Skip another job invocation while its owner is live."""
@@ -131,15 +135,37 @@ class TestScheduledJob(TestCase):
             toolforge_job.run_job("assessment_lists")
         self.execute.assert_not_called()
 
-    def test_configured_times_do_not_require_hub_heartbeat(self) -> None:
-        """Report cron plans with ordinary status domains."""
+    def test_installed_times_do_not_require_hub_heartbeat(self) -> None:
+        """Use the installed plans for changed and suspended jobs."""
         self.enable_jobs()
+        save_installed_schedules(
+            self.runtime,
+            {
+                "items": [
+                    {
+                        "metadata": {"name": "aranami-project-data"},
+                        "spec": {"schedule": "5 * * * *"},
+                    },
+                    {
+                        "metadata": {"name": "aranami-assessment-lists"},
+                        "spec": {"schedule": "22 0 * * *"},
+                    },
+                    {
+                        "metadata": {"name": "aranami-pexbot"},
+                        "spec": {"schedule": "23 0 * * *", "suspend": True},
+                    },
+                ],
+            },
+        )
         status = read_status(self.runtime, as_of=self.now)
         assert not status["services"]
         jobs = status["toolforge_schedules"]
         assert jobs["collections"]["project-data"]["next_run_at"] == (
-            "2026-11-21T01:00:00+00:00"
+            "2026-11-21T01:05:00+00:00"
         )
         assert jobs["routines"]["assessment_lists"]["next_run_at"] == (
-            "2026-11-21T00:17:00+00:00"
+            "2026-11-21T00:22:00+00:00"
         )
+        assert jobs["routines"]["pexbot"]["state"] == "paused"
+        assert jobs["routines"]["pexbot"]["next_run_at"] is None
+        assert "assessment_log" not in jobs["routines"]

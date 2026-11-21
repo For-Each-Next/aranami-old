@@ -59,7 +59,33 @@ def validate_runtime(value: object) -> dict[str, object] | None:
         if not isinstance(text, str) or not text or len(text) > MAX_TEXT:
             message = "Invalid server environment value."
             raise ValueError(message)
-    for key in _NUMBER_FIELDS | _STORAGE_FIELDS:
+    _validate_numbers(value, _NUMBER_FIELDS | _STORAGE_FIELDS)
+    return dict(value)
+
+
+def validate_usage(value: object) -> dict[str, object]:
+    """Validate only the four container counters used by scheduled jobs.
+
+    Returns:
+        A copy of the observed counters, including explicit unknowns.
+
+    Raises:
+        ValueError: A counter is missing or invalid.
+    """
+    if not isinstance(value, dict) or value.keys() != _NUMBER_FIELDS:
+        message = "Invalid container resource fields."
+        raise ValueError(message)
+    _validate_numbers(value, _NUMBER_FIELDS)
+    return dict(value)
+
+
+def _validate_numbers(value: dict, fields: set[str]) -> None:
+    """Accept nonnegative finite quantities and whole-byte counters.
+
+    Raises:
+        ValueError: A quantity or its unit is invalid.
+    """
+    for key in fields:
         number = value.get(key)
         if number is None:
             continue
@@ -73,4 +99,3 @@ def validate_runtime(value: object) -> dict[str, object] | None:
         if key.endswith("_bytes") and type(number) is not int:
             message = "Server memory counters must be whole bytes."
             raise ValueError(message)
-    return dict(value)

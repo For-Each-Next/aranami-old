@@ -147,6 +147,10 @@ python3 "$validator" receipt "$stage" "$receipt"
 setup_started=false
 # Observe current services after setup, which may take several minutes.
 toolforge jobs dump -f "$backup/jobs.yaml"
+if [ -f state/toolforge-jobs/active ]; then
+    kubectl get cronjobs -o json |
+        PYTHONPATH="$stage/src" "$environment/bin/python" -B -m runtime.toolforge_job --record-schedules
+fi
 for service in aranami-web aranami-hub; do
     replicas=$(kubectl get deployment "$service" --ignore-not-found -o 'jsonpath={.spec.replicas}')
     case "$replicas" in

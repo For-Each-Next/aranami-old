@@ -457,14 +457,28 @@
         const instant = value => value?.known ? `${value.label} UTC` : labels.unknown;
         const list = (model, current) => {
             if (!Array.isArray(model.items)) throw new StatusError("protocol");
-            if (!model.items.length) return element("p", current ? (model.state === "unavailable" ? labels.unavailable : labels.no_planned) : labels.no_previous, {class: "context"});
+            if (!model.items.length) {
+                const empty = current
+                    ? (model.native ? labels.no_job_schedule : model.state === "unavailable" ? labels.unavailable : labels.no_planned)
+                    : (model.native ? labels.no_recent_jobs : labels.no_previous);
+                return element("p", empty, {class: "context"});
+            }
             return element("ul", null, {class: "dataset-update-files"}, model.items.map(item => {
                 const active = item.state === "running";
-                const result = current ? (active ? labels.running : item.scheduled?.known ? labels.scheduled : labels.waiting) : (item.state === "succeeded" ? labels.succeeded : item.state === "failed" ? labels.failed : labels.unknown);
-                const icon = element("span", current ? "⌛" : item.state === "succeeded" ? "✅" : item.state === "failed" ? "❌" : "?", {role: "img", "aria-label": result});
+                const result = item.outcome ?? (current ? (active ? labels.running : item.scheduled?.known ? labels.scheduled : labels.waiting) : (item.state === "succeeded" ? labels.succeeded : item.state === "failed" ? labels.failed : labels.unknown));
+                const icon = element("span", item.icon ?? (current ? "⌛" : item.state === "succeeded" ? "✅" : item.state === "failed" ? "❌" : "?"), {role: "img", "aria-label": result});
                 const title = element("strong", null, {}, [link(item.filename, current ? null : item.url, true)]);
                 const details = [];
-                const first = element("li", current && !item.started?.known ? (item.scheduled?.known ? `${labels.scheduled} ${instant(item.scheduled)}` : labels.waiting) : `${labels.started} ${instant(item.started)}`);
+                const first = element("li");
+                if (!current || item.started?.known) {
+                    first.textContent = `${labels.started} ${instant(item.started)}`;
+                } else if (item.scheduled?.known) {
+                    first.textContent = `${labels.scheduled} ${instant(item.scheduled)}`;
+                } else if (item.cron && !item.outcome) {
+                    first.appendChild(element("code", item.cron));
+                } else {
+                    first.textContent = item.outcome ?? labels.waiting;
+                }
                 if (!item.is_task) {
                     const baseline = element(current ? "span" : "div", `${current ? "; " : ""}${labels.baseline} `, current ? {} : {class: "dataset-update-note"});
                     baseline.appendChild(link(item.baseline?.filename || labels.unknown, item.baseline?.url, true));
@@ -472,7 +486,7 @@
                 }
                 details.push(first);
                 if (!current) {
-                    const finished = element("li", `${labels.finished} ${instant(item.finished)}`);
+                    const finished = element("li", `${item.outcome ?? labels.finished} ${instant(item.finished)}`);
                     if (item.shape) finished.appendChild(element("div", item.shape, {class: "dataset-update-note dataset-update-shape"}));
                     details.push(finished);
                 }
@@ -480,7 +494,18 @@
                     const elapsed = element("span", item.elapsed.label, {"data-clock": "dataset-elapsed", "data-started-at": item.elapsed.started, "data-clock-unknown": labels.unknown, ...(updates.expires ? {"data-clock-expires": updates.expires} : {})});
                     details.push(element("li", null, {}, [element("span", `${labels.elapsed} `), elapsed, element("span", item.activity ? ` · ${item.activity}` : "")]));
                 } else if (current && item.activity) details.push(element("li", item.activity));
-                if (!item.is_task) details.push(element("li", null, {}, [element("span", labels.used_by), item.reports?.length ? element("ul", null, {}, item.reports.map(report => element("li", null, {}, [link(report.name, report.url)]))) : element("div", labels.no_reports, {class: "dataset-update-note"})]));
+                if (item.files?.length) {
+                    const files = item.files.map(file => {
+                        const row = element("li", null, {}, [link(file.filename, file.url, true)]);
+                        if (file.shape) row.appendChild(element("div", file.shape, {class: "dataset-update-note dataset-update-shape"}));
+                        return row;
+                    });
+                    details.push(element("li", null, {}, [
+                        element("details", null, {}, [element("summary", labels.files), element("ul", null, {}, files)]),
+                    ]));
+                } else if (!item.is_task) {
+                    details.push(element("li", null, {}, [element("span", labels.used_by), item.reports?.length ? element("ul", null, {}, item.reports.map(report => element("li", null, {}, [link(report.name, report.url)]))) : element("div", labels.no_reports, {class: "dataset-update-note"})]));
+                }
                 return element("li", null, {"data-key": item.key || item.filename}, [element("p", null, {}, [icon, element("span", " "), title]), element("ul", null, {class: "dataset-update-details"}, details)]);
             }));
         };

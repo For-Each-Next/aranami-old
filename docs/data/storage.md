@@ -375,9 +375,11 @@ for presentation. Older evidence is preserved under its original contract and
 recollected in bounded passes before entering current statistics. Missing
 current evidence differs from a confirmed empty selection.
 
-Universal selection obtains B/BL listing evidence from a separate
-`current-authorship/b-class` bundle under flat `data/parsed/`. It retains current
-membership, the first talk revision of the latest continuous B/BL banner range,
+Universal selection obtains B/BL listing evidence from the
+`current-authorship/b-class` bundle selected by `data/parsed/authorship--latest.json`.
+Its tables use names such as `authorship--g-20261121045331--targets.parquet`.
+The selector retains the current and previous generation identities. The bundle
+stores membership, the first talk revision of the latest continuous B/BL banner range,
 its exact UTC assessment timestamp, the article cutoff revision and timestamp,
 and successful
 attribution keyed by `(page_id, revision_id)`. The `rating-history` report

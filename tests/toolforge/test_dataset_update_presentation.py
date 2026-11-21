@@ -310,3 +310,93 @@ class DatasetUpdateContextTests(TestCase):
         ]
         (item,) = self.context()["previous"]["items"]
         assert item["filename"] == "data/raw/retained.parquet"
+
+    def test_native_sections_include_schedules_and_run_outcomes(self) -> None:
+        """Use installed jobs and preserve their file observations."""
+        self.status["toolforge_schedules"] = {
+            "active_since": (_NOW - dt.timedelta(hours=1)).isoformat(),
+            "collections": {},
+            "routines": {
+                "pexbot": {
+                    "job_name": "aranami-pexbot",
+                    "state": "scheduled",
+                    "next_run_at": (_NOW + dt.timedelta(hours=8)).isoformat(),
+                    "cron": "23 20 * * *",
+                },
+            },
+        }
+        run_id = "a" * 32
+        self.status["executions"][run_id] = {
+            "run_id": run_id,
+            "task_id": "quality-authorship",
+            "trigger": "scheduled",
+            "kind": "collection",
+            "outcome": "failed",
+            "started_at": (_NOW - dt.timedelta(minutes=2)).isoformat(),
+            "finished_at": _NOW.isoformat(),
+        }
+        self.status["dataset_updates"]["recent"] = [
+            {
+                "run_id": run_id,
+                "file": {
+                    "filename": (
+                        "data/parsed/authorship--g-20261114120000--targets.parquet"
+                    ),
+                    "state": "succeeded",
+                    "available": True,
+                    "finished_at": _NOW.isoformat(),
+                },
+            },
+        ]
+        result = self.context()
+        (scheduled,) = result["current"]["items"]
+        assert scheduled["job_name"] == "aranami-pexbot"
+        assert scheduled["scheduled"]["known"]
+        (recent,) = result["previous"]["items"]
+        assert recent["job_name"] == "aranami-quality-authorship"
+        assert recent["state"] == "failed"
+        assert recent["files"][0]["state"] == "succeeded"
+        rendered = _render_updates(result, "en")
+        assert "<strong>" + self.interface.text("routine.pexbot") in rendered
+        assert self.interface.text("routine.quality-authorship") in rendered
+        assert "<code>aranami-" not in rendered
+        assert "<summary>Dataset files</summary>" in rendered
+
+    @staticmethod
+    def test_job_table_shows_localized_names_and_cpu_cores() -> None:
+        """Render installed jobs with bounded current samples."""
+        status = status_snapshot()
+        status["toolforge_schedules"] = {
+            "active_since": (_NOW - dt.timedelta(hours=1)).isoformat(),
+            "routines": {},
+            "collections": {
+                "project-data": {
+                    "job_name": "aranami-project-data",
+                    "state": "scheduled",
+                    "next_run_at": (_NOW + dt.timedelta(hours=1)).isoformat(),
+                    "cron": "0 * * * *",
+                    "memory_limit_bytes": 1024**3,
+                    "cpu_limit": 1,
+                },
+            },
+        }
+        status["toolforge_samples"] = {
+            "project-data": {
+                "started_at": (_NOW - dt.timedelta(seconds=10)).isoformat(),
+                "observed_at": _NOW.isoformat(),
+                "expires_at": (_NOW + dt.timedelta(seconds=35)).isoformat(),
+                "outcome": "running",
+                "resources": {"cpu_percent": 3, "memory_bytes": 768 * 1024**2},
+            },
+        }
+        output = render_about(
+            {"version": "0.10.0.dev4"},
+            "zh-hans",
+            status=status,
+            now=_NOW,
+        )
+        assert '<th scope="row">网页服务</th>' in output
+        assert '<th scope="row">aranami-' not in output
+        assert "0.03 核心 / 1 核心" in output
+        assert "768.0 MiB / 1.0 GiB" in output
+        assert "每小时第 00 分" in output

@@ -56,6 +56,37 @@
   },
   "server.hub": {"en": "Hub", "zh-hans": "调度服务（Hub）", "zh-hant": "排程服務（Hub）"},
   "server.web": {"en": "Web", "zh-hans": "网页服务（Web）", "zh-hant": "網頁服務（Web）"},
+  "server.web_service": {"en": "Web service", "zh-hans": "网页服务", "zh-hant": "網頁服務"},
+  "server.job": {"en": "Job", "zh-hans": "作业", "zh-hant": "作業"},
+  "server.job_type": {"en": "Schedule", "zh-hans": "运行方式", "zh-hant": "執行方式"},
+  "server.job_continuous": {"en": "Continuous", "zh-hans": "持续运行", "zh-hant": "持續執行"},
+  "server.job_hourly": {
+    "en": "Hourly at :{minute} UTC",
+    "zh-hans": "每小时第 {minute} 分（UTC）",
+    "zh-hant": "每小時第 {minute} 分（UTC）"
+  },
+  "server.job_daily": {
+    "en": "Daily at {time} UTC",
+    "zh-hans": "每天 {time} UTC",
+    "zh-hant": "每天 {time} UTC"
+  },
+  "server.job_scheduled": {
+    "en": "Scheduled ({cron})",
+    "zh-hans": "定时运行（{cron}）",
+    "zh-hant": "排程執行（{cron}）"
+  },
+  "server.job_running_for": {
+    "en": "Running for {duration}",
+    "zh-hans": "已运行 {duration}",
+    "zh-hant": "已執行 {duration}"
+  },
+  "server.job_running": {"en": "Running", "zh-hans": "运行中", "zh-hant": "執行中"},
+  "server.job_pending": {"en": "Pending", "zh-hans": "等待排程", "zh-hant": "等待排程"},
+  "server.job_failed": {"en": "Failed", "zh-hans": "失败", "zh-hant": "失敗"},
+  "server.job_deferred": {"en": "Deferred", "zh-hans": "已延后", "zh-hant": "已延後"},
+  "server.job_interrupted": {"en": "Interrupted", "zh-hans": "已中断", "zh-hant": "已中斷"},
+  "server.job_paused": {"en": "Paused", "zh-hans": "已暂停", "zh-hant": "已暫停"},
+  "server.job_unknown": {"en": "Unknown", "zh-hans": "状态未知", "zh-hant": "狀態未知"},
   "server.heartbeat": {
     "en": "Last observed",
     "zh-hans": "最近观测",
@@ -911,6 +942,36 @@
     "en": "No dataset update finished in the last two hours.",
     "zh-hans": "最近两小时内没有已结束的资料更新。",
     "zh-hant": "最近兩小時內沒有已結束的資料更新。"
+  },
+  "dataset_updates.no_recent_jobs": {
+    "en": "No recorded Toolforge job runs in the last 24 hours.",
+    "zh-hans": "最近 24 小时没有 Toolforge 作业记录。",
+    "zh-hant": "最近 24 小時沒有 Toolforge 作業紀錄。"
+  },
+  "dataset_updates.no_job_schedule": {
+    "en": "Toolforge job schedules are unavailable.",
+    "zh-hans": "暂时无法确认 Toolforge 作业排程。",
+    "zh-hant": "暫時無法確認 Toolforge 作業排程。"
+  },
+  "dataset_updates.files": {
+    "en": "Dataset files",
+    "zh-hans": "资料文件",
+    "zh-hant": "資料檔案"
+  },
+  "dataset_updates.paused": {
+    "en": "Paused",
+    "zh-hans": "已暂停",
+    "zh-hant": "已暫停"
+  },
+  "dataset_updates.deferred": {
+    "en": "Deferred",
+    "zh-hans": "已延后",
+    "zh-hant": "已延後"
+  },
+  "dataset_updates.interrupted": {
+    "en": "Interrupted",
+    "zh-hans": "已中断",
+    "zh-hant": "已中斷"
   },
   "dataset_updates.no_planned": {
     "en": "No dataset update is running or due within the next hour.",

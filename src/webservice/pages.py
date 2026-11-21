@@ -1894,6 +1894,9 @@ def render_live_update(
             "no_previous",
             "no_planned",
             "unavailable",
+            "no_recent_jobs",
+            "no_job_schedule",
+            "files",
         )
     }
     updates["labels"]["unknown"] = page.interface.text("data.unknown")

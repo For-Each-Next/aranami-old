@@ -7,15 +7,20 @@ import datetime as dt
 import json
 import logging
 import os
+import sys
+from contextlib import contextmanager
 from pathlib import Path
+from threading import Event, Thread
 from time import monotonic, sleep
 from typing import TYPE_CHECKING
 
 from data.collection_leases import collection_lease
 from data.runtime.logs import open_run_log
+from data.runtime.server_samples import save_job_sample
 from runtime.interrupted_runs import recover_interrupted_runs
 from shared.config import TASK_DEFINITIONS
 from shared.support.files import atomic_json, read_json_object
+from shared.support.resources import sample_container
 from shared.toolforge_jobs import (
     ACTIVE_PATH,
     ALLOCATIONS,
@@ -23,6 +28,7 @@ from shared.toolforge_jobs import (
     STATE_DIRECTORY,
     job_definitions,
     job_name,
+    save_installed_schedules,
 )
 lazy from runtime.jobs import newsletter_history, project_data, website
 lazy from runtime.jobs.dispatch import dispatch_scheduled_report
@@ -33,12 +39,13 @@ lazy from runtime.quality_analysis import (
 lazy from shared.identity import configure_pywikibot
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterator, Sequence
 
 _LOGGER = logging.getLogger(__name__)
 _RECEIPT_BYTES = 512
 _PROJECT_JOB = "project-data"
 _HISTORY_JOB = "newsletter-history"
+_SAMPLE_SECONDS = 10
 
 
 def _receipt_path(runtime: Path, name: str) -> Path:
@@ -122,6 +129,46 @@ def _execute(name: str, now: dt.datetime) -> None:
         refresh_quality_authorship(toolforge_job=True)
 
 
+@contextmanager
+def _observe_job(
+    runtime: Path,
+    name: str,
+    started: dt.datetime,
+) -> Iterator[None]:
+    """Sample this container during one owned invocation."""
+    stopped = Event()
+
+    def record(outcome: str) -> None:
+        """Publish optional readings independently of the work."""
+        try:
+            save_job_sample(
+                runtime,
+                name,
+                started,
+                outcome,
+                sample_container(),
+            )
+        except OSError, ValueError:
+            _LOGGER.warning("Could not record resource usage for %s.", name)
+
+    def sample() -> None:
+        """Refresh live usage until the invocation finishes."""
+        while not stopped.wait(_SAMPLE_SECONDS):
+            record("running")
+
+    record("running")
+    monitor = Thread(target=sample, daemon=True)
+    monitor.start()
+    outcome = "failed"
+    try:
+        yield
+        outcome = "succeeded"
+    finally:
+        stopped.set()
+        monitor.join()
+        record(outcome)
+
+
 def run_job(name: str) -> None:
     """Run an enabled workload using the current committed source cycle.
 
@@ -150,16 +197,17 @@ def run_job(name: str) -> None:
         if not acquired or _completed(runtime, name, completed_cycle):
             _LOGGER.info("Job %s already owns or completed this cycle.", name)
             return
-        _wait_for_inputs(runtime, name, cycle)
-        if not active.is_file():
-            return
-        recover_interrupted_runs(before=now)
-        _execute(name, now)
-        atomic_json(
-            _receipt_path(runtime, name),
-            {"cycle": completed_cycle.isoformat()},
-            max_bytes=_RECEIPT_BYTES,
-        )
+        with _observe_job(runtime, name, now):
+            _wait_for_inputs(runtime, name, cycle)
+            if not active.is_file():
+                return
+            recover_interrupted_runs(before=now)
+            _execute(name, now)
+            atomic_json(
+                _receipt_path(runtime, name),
+                {"cycle": completed_cycle.isoformat()},
+                max_bytes=_RECEIPT_BYTES,
+            )
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -172,12 +220,15 @@ def main(argv: Sequence[str] | None = None) -> None:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("name", nargs="?", choices=tuple(ALLOCATIONS))
     mode.add_argument("--manifest", action="store_true")
+    mode.add_argument("--record-schedules", action="store_true")
     arguments = parser.parse_args(argv)
     if arguments.manifest:
         tool_directory = Path(
             os.environ.get("ARANAMI_TOOL_DIR", "/data/project/aranami"),
         )
         print(json.dumps(job_definitions(tool_directory), indent=2))  # ruff: ignore[print]
+    elif arguments.record_schedules:
+        save_installed_schedules(Path.cwd(), json.load(sys.stdin))
     else:
         run_job(arguments.name)
 

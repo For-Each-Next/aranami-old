@@ -10,7 +10,10 @@ import datetime as dt
 import operator
 from typing import TYPE_CHECKING
 
-from webservice.dataset_updates import dataset_updates_context
+from webservice.dataset_updates import (
+    dataset_updates_context,
+    native_executions,
+)
 from webservice.job_history import (
     REPORTS_PAGE_SIZE,
     history_context,
@@ -621,6 +624,187 @@ def _runtime_cells(
     }
 
 
+def _occurrence(interface: Interface, schedule: Record) -> str:
+    """Localize the schedule using its next UTC occurrence.
+
+    Returns:
+        Hourly or daily timing, or the recorded cron expression.
+    """
+    instant = timestamp(schedule.get("next_run_at"))
+    cron = schedule["cron"]
+    if instant is None:
+        return interface.text("server.job_scheduled", cron=cron)
+    if cron.split()[1] == "*":
+        return interface.text("server.job_hourly", minute=f"{instant:%M}")
+    return interface.text("server.job_daily", time=f"{instant:%H:%M}")
+
+
+def _job_usage(
+    interface: Interface,
+    resources: Record,
+    limits: Record,
+) -> Record:
+    """Format memory and CPU against the job allocation.
+
+    Returns:
+        Usage and limit labels with explicit unknown values.
+    """
+    unknown = interface.text("data.unknown")
+    used = resources.get("memory_bytes")
+    memory = resources.get("memory_limit_bytes") or limits.get(
+        "memory_limit_bytes",
+    )
+    cpu_percent = resources.get("cpu_percent")
+    cpu = resources.get("cpu_limit") or limits.get("cpu_limit")
+    cpu_use = (
+        _core_label(interface, cpu_percent / 100)
+        if cpu_percent is not None
+        else unknown
+    )
+    cpu_cap = _core_label(interface, cpu) if cpu is not None else unknown
+    return {
+        "memory": (
+            f"{readable_size(used) if used is not None else unknown}"
+            f" / {readable_size(memory) if memory is not None else unknown}"
+        ),
+        "cpu": f"{cpu_use} / {cpu_cap}",
+    }
+
+
+def _job_state(
+    interface: Interface,
+    now: dt.datetime,
+    outcome: str,
+    started: str | None,
+) -> str:
+    """Localize the current lifecycle with elapsed time when observed.
+
+    Returns:
+        Human-readable lifecycle for the Toolforge status table.
+    """
+    if outcome == "running" and (instant := timestamp(started)):
+        elapsed = duration(
+            max(0, (now - instant).total_seconds()),
+            interface,
+            running=True,
+        ).removesuffix("…")
+        return interface.text("server.job_running_for", duration=elapsed)
+    return interface.text(f"server.job_{outcome}")
+
+
+def _scheduled_job_row(
+    interface: Interface,
+    now: dt.datetime,
+    schedule: Record,
+    execution: Record,
+    sample: Record,
+) -> Record:
+    """Present the latest observed run beside the job's real allocation.
+
+    Returns:
+        A row for one installed CronJob.
+    """
+    observed = timestamp(sample.get("observed_at"))
+    execution_at = timestamp(
+        execution.get("finished_at")
+        or execution.get("detected_at")
+        or execution.get("started_at"),
+    )
+    expiry = None
+    resources = {}
+    outcome = "pending"
+    started = None
+    if observed and (execution_at is None or execution_at <= observed):
+        started = sample["started_at"]
+        outcome = sample["outcome"]
+        if outcome == "running" and sample["expires_at"]:
+            resources = sample["resources"]
+            expiry = sample["expires_at"]
+        elif outcome == "running":
+            outcome = "unknown"
+    elif execution_at is not None:
+        started = execution["started_at"]
+        outcome = execution["outcome"]
+        heartbeat = timestamp(execution.get("updated_at"))
+        if outcome == "running":
+            expires = (
+                heartbeat + dt.timedelta(seconds=90) if heartbeat else None
+            )
+            if expires and now < expires:
+                expiry = expires.isoformat()
+            else:
+                outcome = "unknown"
+    if outcome == "succeeded":
+        outcome = "pending"
+    if schedule["state"] == "paused" and outcome != "running":
+        outcome = "paused"
+    return {
+        "key": schedule["job_name"],
+        "type": _occurrence(interface, schedule),
+        "status": _job_state(interface, now, outcome, started),
+        "expires": expiry,
+        "usage": _job_usage(interface, resources, schedule),
+        "idle_usage": _job_usage(interface, {}, schedule),
+    }
+
+
+def _toolforge_rows(
+    interface: Interface,
+    status: Record,
+    now: dt.datetime,
+) -> list[Record]:
+    """Build the continuous and scheduled workload status table.
+
+    Returns:
+        The web job followed by installed collection and report jobs.
+    """
+    plan = status["toolforge_schedules"]
+    web = status.get("services", {}).get("web", {})
+    expiry = _service_expiry(web)
+    resources = web.get("resources") or {}
+    rows = [
+        {
+            "key": "aranami-web",
+            "name": interface.text("server.web_service"),
+            "type": interface.text("server.job_continuous"),
+            "status": _job_state(
+                interface,
+                now,
+                "running"
+                if expiry and web.get("lifecycle") == "running"
+                else "unknown",
+                web.get("started_at"),
+            ),
+            "expires": expiry,
+            "usage": _job_usage(
+                interface,
+                resources if expiry else {},
+                resources,
+            ),
+            "idle_usage": _job_usage(interface, {}, resources),
+        },
+    ]
+    executions = {}
+    for run in sorted(
+        native_executions(status),
+        key=operator.itemgetter("started_at"),
+    ):
+        executions[run["task_id"]] = run
+    samples = status.get("toolforge_samples", {})
+    for task, schedule in (plan["collections"] | plan["routines"]).items():
+        rows.append({
+            **_scheduled_job_row(
+                interface,
+                now,
+                schedule,
+                executions.get(task, {}),
+                samples.get(task, {}),
+            ),
+            "name": task_name(interface, task),
+        })
+    return rows
+
+
 def status_context(  # ruff: ignore[too-many-arguments]
     interface: Interface,
     status: Record,
@@ -647,8 +831,10 @@ def status_context(  # ruff: ignore[too-many-arguments]
     services = _services(interface, status)
     web = status.get("services", {}).get("web", {})
     service = status.get("services", {}).get("scheduler", {})
-    expires = _service_expiry(service)
-    started = service.get("started_at") if expires else None
+    native = bool(status.get("toolforge_schedules"))
+    uptime = web if native else service
+    expires = _service_expiry(uptime)
+    started = uptime.get("started_at") if expires else None
     instant = timestamp(started)
     footer_unknown = interface.text("footer.uptime_unknown", version=version)
     footer_label = (
@@ -723,6 +909,7 @@ def status_context(  # ruff: ignore[too-many-arguments]
         "server": {
             "dataset_updates": dataset_updates_context(interface, status, now),
             "rows": runtime_rows,
+            "jobs": _toolforge_rows(interface, status, now) if native else [],
             "opening": " (" if interface.locale == "en" else "\uff08",
             "separator": ", " if interface.locale == "en" else "\uff0c",
             "closing": ")" if interface.locale == "en" else "\uff09",

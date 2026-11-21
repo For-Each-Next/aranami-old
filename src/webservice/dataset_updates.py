@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import datetime as dt
 from hashlib import sha256
+from operator import itemgetter
 from typing import TYPE_CHECKING
 from urllib.parse import urlencode
 
 from data.runtime.dataset_updates import collection_schedules
 from shared.config import COLLECTION_DEFINITIONS, TASK_DEFINITIONS
 from shared.support.files import encode_json
+from shared.toolforge_jobs import JOB_DEFINITIONS, job_name
 from webservice.job_history import source_description
 from webservice.presentation import (
     catalog,
@@ -21,6 +23,14 @@ from webservice.presentation import (
 
 if TYPE_CHECKING:
     from webservice.presentation import Interface
+
+_JOB_ICONS = {
+    "succeeded": "✅",
+    "failed": "❌",
+    "deferred": "⏳",
+    "interrupted": "⚠",
+    "paused": "⏸",
+}
 
 
 def _time(value: str | None) -> dict:
@@ -105,6 +115,7 @@ def _reports(filename: str, interface: Interface) -> list[dict]:
             "current-assessments",
             "current-quality",
             "current-authorship",
+            "data/parsed/authorship--",
             "article-authorship",
             "rating-history",
             "b-listing",
@@ -226,13 +237,11 @@ def _active_until(
     Returns:
         Observation expiry, or none for completed or stale owners.
     """
-    if (
-        execution.get("kind") != "collection"
-        or execution.get("outcome") != "running"
-        or execution.get("finished_at")
-    ):
+    if execution.get("outcome") != "running" or execution.get("finished_at"):
         return None
-    scheduler_owned = execution.get("boot_id") == scheduler.get("boot_id")
+    scheduler_owned = bool(scheduler) and (
+        execution.get("boot_id") == scheduler.get("boot_id")
+    )
     observed = timestamp(
         scheduler.get("heartbeat_at")
         if scheduler_owned
@@ -328,6 +337,135 @@ def _recent_items(
     )
 
 
+def _run_files(evidence: dict) -> dict[str, dict[str, dict]]:
+    """Index file observations by the job execution that recorded them.
+
+    Returns:
+        Recent and active files, keeping the last record for each path.
+    """
+    files: dict[str, dict[str, dict]] = {}
+    for item in evidence.get("recent", []):
+        row = item["file"]
+        files.setdefault(item["run_id"], {})[row["filename"]] = row
+    for records in evidence.get("tasks", {}).values():
+        for run in records.values():
+            if run:
+                files.setdefault(run["run_id"], {}).update(
+                    (row["filename"], row) for row in run["files"].values()
+                )
+    return files
+
+
+def native_executions(status: dict) -> list[dict]:
+    """Select scheduled executions after the individual-job cutover.
+
+    Returns:
+        Recorded executions of known Toolforge jobs.
+    """
+    activated = timestamp(status["toolforge_schedules"]["active_since"])
+    return [
+        run
+        for run in status.get("executions", {}).values()
+        if run["task_id"] in JOB_DEFINITIONS
+        and run.get("trigger") == "scheduled"
+        and (started := timestamp(run["started_at"])) is not None
+        and activated is not None
+        and started >= activated
+    ]
+
+
+def _job_items(
+    interface: Interface,
+    status: dict,
+    now: dt.datetime,
+) -> tuple[list[dict], list[dict], list[dt.datetime]]:
+    """Group live, upcoming and recent workload rows by native job.
+
+    Returns:
+        Current rows, recent terminal runs, and observation expiries.
+    """
+    plan = status["toolforge_schedules"]
+    evidence = status.get("dataset_updates", {})
+    files = _run_files(evidence)
+    current = []
+    previous = []
+    expiries = []
+    for run in native_executions(status):
+        task = run["task_id"]
+        expiry = _active_until(run, {}, now)
+        finished = timestamp(run.get("finished_at") or run.get("detected_at"))
+        if expiry is None and (
+            finished is None
+            or not dt.timedelta(0) <= now - finished <= dt.timedelta(hours=24)
+        ):
+            continue
+        item = _task_item(task, interface, now, run)
+        outcome = run["outcome"]
+        item.update(
+            job_name=job_name(task),
+            state=outcome,
+            finished=_time(run.get("finished_at")),
+            files=[
+                _item(row, interface, now, run)
+                for row in files.get(run["run_id"], {}).values()
+            ],
+        )
+        if expiry is not None:
+            current.append(item)
+            expiries.append(expiry)
+        else:
+            item["elapsed"] = None
+            item["icon"] = _JOB_ICONS[outcome]
+            item["outcome"] = interface.text(f"dataset_updates.{outcome}")
+            previous.append((finished, item))
+    current.extend(
+        _installed_items(
+            interface,
+            plan,
+            evidence.get("planned", []),
+            now,
+        ),
+    )
+    previous.sort(key=itemgetter(0), reverse=True)
+    return current, [item for _, item in previous[:24]], expiries
+
+
+def _installed_items(
+    interface: Interface,
+    plan: dict,
+    planned: list[dict],
+    now: dt.datetime,
+) -> list[dict]:
+    """Present installed job definitions and already known destinations.
+
+    Returns:
+        A job row per installed definition, ordered by next launch time.
+    """
+    schedules = plan["collections"] | plan["routines"]
+    items = []
+    for task, schedule in sorted(
+        schedules.items(),
+        key=lambda pair: (pair[1].get("next_run_at") or "~", pair[0]),
+    ):
+        launch = schedule["next_run_at"]
+        item = _task_item(task, interface, now, scheduled_at=launch)
+        item.update(
+            job_name=schedule["job_name"],
+            state=schedule["state"],
+            cron=schedule["cron"],
+            files=[
+                _item(row, interface, now, {})
+                for row in planned
+                if row["task_id"] == task and row["scheduled_at"] == launch
+            ],
+        )
+        if item["state"] == "paused":
+            item["icon"] = _JOB_ICONS["paused"]
+            item["outcome"] = interface.text("dataset_updates.paused")
+        items.append(item)
+    return items
+
+
 def dataset_updates_context(
     interface: Interface,
     status: dict,
@@ -343,11 +481,30 @@ def dataset_updates_context(
     Returns:
         Recent completed file updates and ongoing/upcoming collections.
     """
+    native = bool(status.get("toolforge_schedules"))
+    if native:
+        current, previous, expiries = _job_items(interface, status, now)
+        return {
+            "previous": {
+                "items": previous,
+                "key": sha256(
+                    encode_json([interface.locale, previous, native]),
+                ).hexdigest(),
+                "native": True,
+            },
+            "current": {
+                "items": current,
+                "state": "running" if expiries else "planned",
+                "native": True,
+            },
+            "expires": min(expiries).isoformat() if expiries else None,
+        }
     scheduler = status.get("services", {}).get("scheduler", {})
     active_runs = {
         run_id: execution
         for run_id, execution in status.get("executions", {}).items()
         if execution.get("task_id") in COLLECTION_DEFINITIONS
+        and execution.get("kind") == "collection"
         and _active_until(execution, scheduler, now) is not None
     }
     current = [
@@ -381,8 +538,7 @@ def dataset_updates_context(
             "state": "running"
             if active_runs
             else "planned"
-            if status.get("toolforge_schedules")
-            or scheduler.get("freshness") == "current"
+            if scheduler.get("freshness") == "current"
             else "unavailable",
         },
         "expires": min(expiries).isoformat() if expiries else None,

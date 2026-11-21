@@ -28,7 +28,6 @@ from shared.assessment_profiles import assessment_profile
 if TYPE_CHECKING:
     from pathlib import Path
 
-DEFAULT_PATH = DEFAULT_ROOT / "current-authorship"
 KEY = ["page_id", "revision_id"]
 GRADES = ("B", "BL", "C", "CL", "Start", "List", "Stub", "SL", "Unassessed")
 CONTRACT = "wikiwho-zh:current-revision-nonref-bytes-v1"
@@ -83,8 +82,8 @@ _SCHEMAS = {
     "evidence": EVIDENCE_SCHEMA,
     "attempts": ATTEMPT_SCHEMA,
 }
-_STORE_ROOT = DEFAULT_ROOT
 _KEY = "articles/current-authorship/b-class"
+_FLAT_NAME = "authorship"
 _MAX_ROWS = 100_000
 _MAX_BYTES = 128 * 1024 * 1024
 _SHARE_TOLERANCE = 1e-9
@@ -444,7 +443,21 @@ def load(runtime: Path) -> dict[str, pl.DataFrame]:
         times.
         Each table is empty before its first successful collection.
     """
-    return _read(ReportStore(runtime / _STORE_ROOT))
+    return _read(ReportStore(runtime / DEFAULT_ROOT, flat_name=_FLAT_NAME))
+
+
+def compact_storage(runtime: Path, *, restore: bool = False) -> bool:
+    """Copy selected attribution tables to short flat filenames.
+
+    Args:
+        runtime: Toolforge runtime with the current authorship bundle.
+        restore: Populate the former paths for a rollback.
+
+    Returns:
+        Whether the corresponding selector was published.
+    """
+    store = ReportStore(runtime / DEFAULT_ROOT, flat_name=_FLAT_NAME)
+    return store.copy_selection(_KEY, restore=restore)
 
 
 def checkpoint(  # ruff: ignore[too-many-arguments] - Single atomic checkpoint for the cohort and attempts.
@@ -473,7 +486,7 @@ def checkpoint(  # ruff: ignore[too-many-arguments] - Single atomic checkpoint f
         The selected tables, including earlier exact revisions. A failed
         attempt changes retry order and preserves existing evidence.
     """
-    store = ReportStore(runtime / _STORE_ROOT)
+    store = ReportStore(runtime / DEFAULT_ROOT, flat_name=_FLAT_NAME)
     with store.locked(_KEY):
         tables = _read(store, locked=True)
         previous_tables = tables.copy()

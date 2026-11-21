@@ -20,6 +20,7 @@ from data.articles import (
     rating_history as assessment_inference,
 )
 from data.articles.quality_authors import prepare_current_b_articles
+from data.reports import ReportResult, ReportStore
 from shared.sources import wikiwho
 from tasks.articles import current_authorship as collector
 
@@ -156,6 +157,56 @@ def _evidence(
 
 class CurrentAuthorshipStoreTests(TestCase):
     """Preserve revision facts without inventing dated recognition."""
+
+    @staticmethod
+    def test_compact_storage_can_restore_both_selections() -> None:
+        """Preserve observations and use short paths for new writes."""
+        with TemporaryDirectory() as path:
+            runtime = Path(path)
+            root = runtime / "data/parsed"
+            original = ReportStore(root)
+            key = "articles/current-authorship/b-class"
+            for index in range(2):
+                original.write(
+                    key,
+                    ReportResult(
+                        family="current-authorship",
+                        tables=store.empty_tables(),
+                    ),
+                    "",
+                    run_id=str(index + 1) * 32,
+                    started_at=_NOW + dt.timedelta(seconds=index),
+                    target={"site": "zhwiki", "title": "B-class authorship"},
+                )
+            old_selector = original.selection_path(key)
+            assert store.compact_storage(runtime)
+            compact_selector = root / "authorship--latest.json"
+            assert compact_selector.read_bytes() == old_selector.read_bytes()
+            assert not store.compact_storage(runtime)
+            before = set(root.glob("authorship--g-*--targets.parquet"))
+            assert len(before) == 2
+
+            tables = store.checkpoint(
+                runtime,
+                members=_members(_membership(), _NOW),
+            )
+            assert tables["members"].height == 1
+            after = set(root.glob("authorship--g-*--targets.parquet"))
+            assert len(after) == 2
+            assert len(before & after) == 1
+            assert store.load(runtime)["members"].equals(tables["members"])
+            assert old_selector.read_bytes() != compact_selector.read_bytes()
+
+            assert store.compact_storage(runtime, restore=True)
+            restored = original.read(key)
+            previous = original.read(key, previous=True)
+            assert restored is not None
+            assert previous is not None
+            assert restored.tables["members"].equals(tables["members"])
+            assert previous.tables["members"].is_empty()
+            assert not compact_selector.exists()
+            assert store.compact_storage(runtime)
+            assert store.load(runtime)["members"].equals(tables["members"])
 
     @staticmethod
     def test_only_current_b_articles_and_lists_enter_the_cohort() -> None:

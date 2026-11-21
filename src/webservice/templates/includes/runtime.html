@@ -1,5 +1,28 @@
 <div id="server-runtime" class="ui-table">
 <div class="ui-table__table-wrapper">
+{% if server.jobs %}
+<table class="ui-table__table server-jobs" data-no-pagination>
+<caption class="visually-hidden">{{ t.server.heading }}</caption>
+<thead><tr>
+<th scope="col">{{ t.server.job }}</th>
+<th scope="col">{{ t.server.job_type }}</th>
+<th scope="col">{{ t.server.state }}</th>
+<th scope="col">{{ t.server.memory }}</th>
+<th scope="col">{{ t.server.cpu }}</th>
+</tr></thead>
+<tbody>
+{% for job in server.jobs %}
+<tr data-key="{{ job.key }}">
+<th scope="row">{{ job.name }}</th>
+<td>{{ job.type }}</td>
+<td><span{% if job.expires %} data-observation-expires="{{ job.expires }}" data-stale-text="{{ t.server.job_unknown }}"{% endif %}>{{ job.status }}</span></td>
+{% for metric in ('memory', 'cpu') %}
+<td><span{% if job.expires %} data-observation-expires="{{ job.expires }}" data-stale-text="{{ job.idle_usage[metric] }}"{% endif %}>{{ job.usage[metric] }}</span></td>
+{% endfor %}
+</tr>
+{% endfor %}
+</tbody></table>
+{% else %}
 <table class="ui-table__table server-metrics" data-no-pagination>
 <caption class="visually-hidden">{{ t.server.heading }}</caption><colgroup><col><col><col></colgroup>
 <thead><tr><td></td><th scope="col">{{ t.server.hub }}</th><th scope="col">{{ t.server.web }}</th></tr></thead>
@@ -12,4 +35,5 @@
 </tr>
 {% endfor %}
 </tbody></table>
+{% endif %}
 </div></div>

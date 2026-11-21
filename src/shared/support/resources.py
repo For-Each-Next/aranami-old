@@ -68,8 +68,8 @@ def _memory_working_set(root: Path) -> int | None:
     return None
 
 
-def sample_runtime() -> dict[str, object]:
-    """Observe the service environment and its Linux cgroup allocation.
+def sample_container() -> dict[str, int | float | None]:
+    """Read the working set and recent CPU use of this Linux container.
 
     CPU percentages measure time used since the preceding observation;
     one fully used core is 100%. Memory reports the service container's
@@ -77,7 +77,7 @@ def sample_runtime() -> dict[str, object]:
     Missing cgroup counters leave the associated measurements unknown.
 
     Returns:
-        Bounded environment and resource facts for a saved heartbeat.
+        Current memory and CPU usage and their container limits.
     """
     global _PREVIOUS_CPU  # ruff: ignore[global-statement]
     root = Path("/sys/fs/cgroup")
@@ -109,15 +109,26 @@ def sample_runtime() -> dict[str, object]:
         if _PREVIOUS_CPU is None or now - _PREVIOUS_CPU[0] >= 1:
             _PREVIOUS_CPU = now, seconds, percent
     return {
+        "memory_bytes": _memory_working_set(root),
+        "memory_limit_bytes": _positive_integer(_read(root / "memory.max")),
+        "cpu_percent": percent,
+        "cpu_limit": cpu_limit,
+    }
+
+
+def sample_runtime() -> dict[str, object]:
+    """Observe the service environment and its container allocation.
+
+    Returns:
+        Bounded environment and resource facts for a saved heartbeat.
+    """
+    return {
         **_environment(),
         **_storage_usage(),
         "python": platform.python_version(),
         "system": platform.system(),
         "machine": platform.machine(),
-        "memory_bytes": _memory_working_set(root),
-        "memory_limit_bytes": _positive_integer(_read(root / "memory.max")),
-        "cpu_percent": percent,
-        "cpu_limit": cpu_limit,
+        **sample_container(),
     }
 
 

@@ -1429,6 +1429,12 @@ ul.consistency-cards {
 
 .server-metrics .server-start { display: block; }
 
+.server-jobs th { text-align: start; }
+.server-jobs td:nth-last-child(-n + 2) {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
 @media (max-width: 30rem) {
     .server-metrics col:first-child { width: 5.5rem; }
     .server-metrics th, .server-metrics td { padding-inline: .55rem; }

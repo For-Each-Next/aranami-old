@@ -54,6 +54,7 @@ _GENERATION = re.compile(
     r"(?:[0-9a-f]{32}|[0-9]{8}T[0-9]{12}Z|"
     r"[a-z0-9][a-z0-9._-]{0,127}-[0-9]{14}(?:-[1-9][0-9]*)?)",
 )
+_GENERATION_STAMP = re.compile(r"-([0-9]{14}(?:-[1-9][0-9]*)?)$")
 _MAX_MANIFEST_BYTES = 4 * 1024 * 1024
 _LOCKS_GUARD = RLock()
 _REPORT_LOCKS: dict[Path, RLock] = {}
@@ -445,6 +446,7 @@ class ReportStore:
         dry: bool = False,
         daily: bool = False,
         keep_previous: bool = True,
+        flat_name: str | None = None,
     ) -> None:
         """Select a durable production store or isolated preview store.
 
@@ -454,6 +456,10 @@ class ReportStore:
             daily: Store an immutable snapshot directly at its key.
             keep_previous: Retain a predecessor for durable comparisons.
                 Disable for disposable latest-only result caches.
+            flat_name: Short namespace for a singleton current store.
+
+        Raises:
+            ValueError: The short name or its storage layout is invalid.
         """
         self.root = root or Path.cwd() / (
             "dry-run/data/parsed" if dry else "data/parsed"
@@ -461,6 +467,14 @@ class ReportStore:
         self.dry = dry
         self.daily = daily
         self.keep_previous = keep_previous
+        self._flat_name = flat_name
+        if flat_name is not None:
+            _validate_key(flat_name)
+            if daily or flat_root(self.root) != self.root:
+                message = (
+                    "A short report namespace requires a flat current store."
+                )
+                raise ValueError(message)
         runtime = (
             self.root.parent.parent
             if self.root.name
@@ -496,6 +510,11 @@ class ReportStore:
         Returns:
             Current physical path or a read-only legacy fallback.
         """
+        if self._flat_name is not None:
+            _validate_report_key(key)
+            compact = storage_path(self.root, self._flat_name)
+            if writing or artifact_path(compact, "latest.json").exists():
+                return compact
         if self.root.parent.name == "data" and self.root.name in {
             "raw",
             "parsed",
@@ -568,11 +587,16 @@ class ReportStore:
             finally:
                 fcntl.flock(stream, fcntl.LOCK_UN)
 
-    def _selection(self, key: str) -> dict[str, object]:
+    def _selection(
+        self,
+        key: str,
+        directory: Path | None = None,
+    ) -> dict[str, object]:
         """Read the generation selector, failing closed on damage.
 
         Args:
             key: Validated internal report identity.
+            directory: Explicit namespace when copying a selection.
 
         Returns:
             Latest and previous generation identities, when available.
@@ -581,7 +605,11 @@ class ReportStore:
             ValueError: The selector has an invalid schema or identity.
         """
         try:
-            value = _read_json(self.selection_path(key))
+            value = _read_json(
+                self.selection_path(key)
+                if directory is None
+                else artifact_path(directory, "latest.json"),
+            )
         except FileNotFoundError:
             return {"schema": 1, "latest": None, "previous": None}
         if (
@@ -599,6 +627,79 @@ class ReportStore:
                 message = "Invalid report generation identity."
                 raise ValueError(message)
         return value
+
+    def _generation_path(self, directory: Path, generation: str) -> Path:
+        """Use just the timestamp for compact report paths.
+
+        Returns:
+            The logical path with its selected generation component.
+        """
+        if directory.name == self._flat_name and (
+            stamp := _GENERATION_STAMP.search(generation)
+        ):
+            generation = f"g-{stamp[1]}"
+        return directory / generation
+
+    def copy_selection(
+        self,
+        key: str,
+        *,
+        restore: bool = False,
+        locked: bool = False,
+    ) -> bool:
+        """Publish verified generations under the other flat name.
+
+        Args:
+            key: Report identity protected by its existing lock.
+            restore: Select the former namespace for a source rollback.
+            locked: Caller already holds the report lock.
+
+        Returns:
+            Whether a selector was published.
+
+        Raises:
+            ValueError: A namespace or selected generation is invalid.
+            FileExistsError: The destination owns conflicting artifacts.
+        """
+        if self._flat_name is None:
+            message = "A reserved compact namespace is required."
+            raise ValueError(message)
+        compact = storage_path(self.root, self._flat_name)
+        legacy = read_storage_path(self.root, report_storage_key(key))
+        source, target = (compact, legacy) if restore else (legacy, compact)
+        with nullcontext() if locked else self.locked(key):
+            selector = artifact_path(target, "latest.json")
+            if not restore and selector.exists():
+                return False
+            selection = self._selection(key, source)
+            if selection["latest"] is None:
+                return False
+            identities = {selection["latest"], selection["previous"]} - {None}
+            for selected in identities:
+                identity = str(selected)
+                original = self._generation_path(source, identity)
+                destination = self._generation_path(target, identity)
+                bundle = self._read_bundle_path(original, key, identity)
+                for name in (
+                    *(f"{table}.parquet" for table in bundle.tables),
+                    "report.wikitext",
+                    "manifest.json",
+                ):
+                    old = artifact_path(original, name)
+                    new = artifact_path(destination, name)
+                    try:
+                        os.link(old, new)
+                    except FileExistsError:
+                        if _digest(old) != _digest(new):
+                            raise
+                self._read_bundle_path(destination, key, identity)
+            _sync_directory(self.root)
+            _atomic_json(selector, selection)
+            _sync_directory(self.root)
+            if restore:
+                artifact_path(compact, "latest.json").unlink()
+                _sync_directory(self.root)
+        return True
 
     def write(  # ruff: ignore[too-many-arguments]
         self,
@@ -677,6 +778,8 @@ class ReportStore:
             # Ordering needs only the manifest. Do not retain a second
             # daily dataset during generation validation and writes.
             del current
+        if self._flat_name is not None:
+            self.copy_selection(key, locked=True)
         return self._persist(
             key,
             result,
@@ -714,7 +817,11 @@ class ReportStore:
         """
         directory = self.data_path(key, writing=True)
         now = dt.datetime.now(dt.UTC)
-        generation = _generation_name(directory, result.family, now)
+        generation = _generation_name(
+            directory,
+            "g" if self._flat_name else result.family,
+            now,
+        )
         if flat_root(directory) is not None:
             owner_directory(directory).mkdir(parents=True, exist_ok=True)
         elif self.daily:
@@ -725,7 +832,11 @@ class ReportStore:
         temporary = Path(
             tempfile.mkdtemp(prefix="generation-", dir=self.cache),
         )
-        final = directory if self.daily else directory / generation
+        final = (
+            directory
+            if self.daily
+            else self._generation_path(directory, generation)
+        )
         try:
             tables: dict[str, object] = {}
             for name, frame in result.tables.items():
@@ -734,7 +845,7 @@ class ReportStore:
                     "begin",
                     artifact_path(final, f"{name}.parquet"),
                     baseline=artifact_path(
-                        directory / str(latest),
+                        self._generation_path(directory, str(latest)),
                         f"{name}.parquet",
                     )
                     if latest
@@ -827,7 +938,9 @@ class ReportStore:
             latest: Retained predecessor, when present.
         """
         directory = self.data_path(key, writing=True)
-        retained = {generation, latest if self.keep_previous else None}
+        retained = {self._generation_path(directory, generation).name}
+        if self.keep_previous and latest is not None:
+            retained.add(self._generation_path(directory, str(latest)).name)
         if flat_root(directory) is not None:
             for candidate in artifact_files(directory):
                 prefix = flat_path(directory).name + "--"
@@ -949,11 +1062,8 @@ class ReportStore:
         Returns:
             Complete validated report bundle.
         """
-        return self._read_bundle_path(
-            self.data_path(key) / generation,
-            key,
-            generation,
-        )
+        path = self._generation_path(self.data_path(key), generation)
+        return self._read_bundle_path(path, key, generation)
 
     @staticmethod
     def _read_bundle_path(
