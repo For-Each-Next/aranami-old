@@ -4378,9 +4378,239 @@
     "zh-hant": "正文長度比較"
   },
   "quality_analysis.articles": {
-    "en": "All articles and lists",
-    "zh-hans": "全部条目及列表",
-    "zh-hant": "全部條目及列表"
+    "en": "Article list",
+    "zh-hans": "条目清单",
+    "zh-hant": "條目清單"
+  },
+  "article_query.heading": {
+    "en": "Advanced query",
+    "zh-hans": "高级查询",
+    "zh-hant": "進階查詢"
+  },
+  "article_query.blocks": {
+    "en": "Blocks",
+    "zh-hans": "积木",
+    "zh-hant": "積木"
+  },
+  "article_query.code": {
+    "en": "Query code",
+    "zh-hans": "查询代码",
+    "zh-hant": "查詢程式碼"
+  },
+  "article_query.add": {
+    "en": "Add condition",
+    "zh-hans": "添加条件",
+    "zh-hant": "新增條件"
+  },
+  "article_query.add_value": {
+    "en": "Add value",
+    "zh-hans": "添加值",
+    "zh-hant": "新增值"
+  },
+  "article_query.remove": {
+    "en": "Remove",
+    "zh-hans": "移除",
+    "zh-hant": "移除"
+  },
+  "article_query.edit_group": {
+    "en": "Boolean operator",
+    "zh-hans": "布尔运算符",
+    "zh-hant": "布林運算子"
+  },
+  "article_query.wrap": {
+    "en": "Group with",
+    "zh-hans": "组合条件",
+    "zh-hant": "組合條件"
+  },
+  "article_query.and": {
+    "en": "AND",
+    "zh-hans": "且",
+    "zh-hant": "且"
+  },
+  "article_query.or": {
+    "en": "OR",
+    "zh-hans": "或",
+    "zh-hant": "或"
+  },
+  "article_query.not": {
+    "en": "NOT",
+    "zh-hans": "非",
+    "zh-hant": "非"
+  },
+  "article_query.predicate": {
+    "en": "Condition",
+    "zh-hans": "条件",
+    "zh-hant": "條件"
+  },
+  "article_query.value": {
+    "en": "Value",
+    "zh-hans": "值",
+    "zh-hant": "值"
+  },
+  "article_query.cat": {
+    "en": "Category",
+    "zh-hans": "分类",
+    "zh-hant": "分類"
+  },
+  "article_query.tl": {
+    "en": "Transcludes template",
+    "zh-hans": "嵌入模板",
+    "zh-hant": "嵌入模板"
+  },
+  "article_query.link": {
+    "en": "Links to",
+    "zh-hans": "链接到",
+    "zh-hant": "連結到"
+  },
+  "article_query.backlink": {
+    "en": "Linked from",
+    "zh-hans": "被链接自",
+    "zh-hant": "被連結自"
+  },
+  "article_query.wp": {
+    "en": "WikiProject",
+    "zh-hans": "维基专题",
+    "zh-hant": "維基專題"
+  },
+  "article_query.class": {
+    "en": "Assessment class",
+    "zh-hans": "评级",
+    "zh-hant": "評級"
+  },
+  "article_query.imp": {
+    "en": "Importance",
+    "zh-hans": "重要度",
+    "zh-hant": "重要度"
+  },
+  "article_query.has_wiki": {
+    "en": "Has a counterpart",
+    "zh-hans": "有跨语言对应条目",
+    "zh-hant": "有跨語言對應條目"
+  },
+  "article_query.site": {
+    "en": "Wikipedia",
+    "zh-hans": "维基百科",
+    "zh-hant": "維基百科"
+  },
+  "article_query.zh": {
+    "en": "Chinese",
+    "zh-hans": "中文",
+    "zh-hant": "中文"
+  },
+  "article_query.en": {
+    "en": "English",
+    "zh-hans": "英文",
+    "zh-hant": "英文"
+  },
+  "article_query.on": {
+    "en": "Page",
+    "zh-hans": "页面",
+    "zh-hant": "頁面"
+  },
+  "article_query.main": {
+    "en": "Main page",
+    "zh-hans": "条目或列表",
+    "zh-hant": "條目或列表"
+  },
+  "article_query.talk": {
+    "en": "Talk page",
+    "zh-hans": "讨论页",
+    "zh-hant": "討論頁"
+  },
+  "article_query.depth": {
+    "en": "Subcategory depth",
+    "zh-hans": "子分类深度",
+    "zh-hant": "子分類深度"
+  },
+  "article_query.precheck": {
+    "en": "Pre-check",
+    "zh-hans": "预检",
+    "zh-hant": "預檢"
+  },
+  "article_query.run": {
+    "en": "Run",
+    "zh-hans": "运行",
+    "zh-hant": "執行"
+  },
+  "article_query.clear": {
+    "en": "Clear query",
+    "zh-hans": "清除查询",
+    "zh-hant": "清除查詢"
+  },
+  "article_query.example": {
+    "en": "Load example",
+    "zh-hans": "载入示例",
+    "zh-hant": "載入範例"
+  },
+  "article_query.fix": {
+    "en": "Auto-fix Chinese titles",
+    "zh-hans": "自动修正繁简标题",
+    "zh-hant": "自動修正繁簡標題"
+  },
+  "article_query.redirects": {
+    "en": "Follow redirects",
+    "zh-hans": "跟随重定向",
+    "zh-hant": "跟隨重新導向"
+  },
+  "article_query.exists": {
+    "en": "Exists",
+    "zh-hans": "存在",
+    "zh-hant": "存在"
+  },
+  "article_query.missing": {
+    "en": "Missing",
+    "zh-hans": "不存在",
+    "zh-hant": "不存在"
+  },
+  "article_query.unverified": {
+    "en": "Unverified",
+    "zh-hans": "待核实",
+    "zh-hant": "待查證"
+  },
+  "article_query.variant": {
+    "en": "Chinese title corrected",
+    "zh-hans": "已修正繁简标题",
+    "zh-hant": "已修正繁簡標題"
+  },
+  "article_query.redirect": {
+    "en": "Redirect resolved",
+    "zh-hans": "已解析重定向",
+    "zh-hant": "已解析重新導向"
+  },
+  "article_query.ambiguous": {
+    "en": "Multiple possible titles",
+    "zh-hans": "有多个可能的标题",
+    "zh-hant": "有多個可能的標題"
+  },
+  "article_query.loading": {
+    "en": "Checking query…",
+    "zh-hans": "正在检查查询…",
+    "zh-hant": "正在檢查查詢…"
+  },
+  "article_query.failed": {
+    "en": "Query data could not be loaded. Try again.",
+    "zh-hans": "无法加载查询数据。请重试。",
+    "zh-hant": "無法載入查詢資料。請重試。"
+  },
+  "article_query.syntax": {
+    "en": "Invalid query at character {position}.",
+    "zh-hans": "查询在第 {position} 个字符处无效。",
+    "zh-hant": "查詢在第 {position} 個字元處無效。"
+  },
+  "article_query.unavailable": {
+    "en": "The first query snapshot is pending.",
+    "zh-hans": "正在等待首份查询数据。",
+    "zh-hant": "正在等待首份查詢資料。"
+  },
+  "article_query.observed": {
+    "en": "Query data collected {time}.",
+    "zh-hans": "查询数据采集于 {time}。",
+    "zh-hant": "查詢資料採集於 {time}。"
+  },
+  "article_query.unknown": {
+    "en": "{count} candidates could not be checked.",
+    "zh-hans": "有 {count} 个候选条目无法检查。",
+    "zh-hant": "有 {count} 個候選條目無法檢查。"
   },
   "quality_analysis.coverage_note": {
     "en": "Summary cards and annual counts cover every selected grade. Unknown values are not treated as zero.",
@@ -4516,6 +4746,11 @@
     "en": "Hourly project data",
     "zh-hans": "每小时专题数据",
     "zh-hant": "每小時專題資料"
+  },
+  "routine.web-query": {
+    "en": "Article List query data",
+    "zh-hans": "条目清单查询数据",
+    "zh-hant": "條目清單查詢資料"
   },
   "routine.fetch-newsletter-daily": {
     "en": "Newsletter source data",

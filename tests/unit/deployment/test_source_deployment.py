@@ -343,6 +343,7 @@ class TestSourcePayload(TestCase):
             *(
                 f"src/webservice/public_html/{name}.js"
                 for name in (
+                    "article_query",
                     "copy",
                     "datasets",
                     "heading_links",

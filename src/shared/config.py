@@ -176,6 +176,11 @@ COLLECTION_DEFINITIONS: dict[str, CollectionDefinition] = {
         blocks_reports=False,
         cutoff="Refresh due datasets independently after their last success.",
     ),
+    "web-query": CollectionDefinition(
+        minute=40,
+        blocks_reports=False,
+        cutoff="Refresh the Article List query index from the saved cohort.",
+    ),
     "quality-analysis": CollectionDefinition(
         minute=2,
         idle=True,

@@ -13,8 +13,10 @@ from typing import TYPE_CHECKING
 
 import regex
 
-from data.articles import quality_pages
+from data.articles import quality_pages, query_index
+from data.articles.article_query import ArticleQuery, QueryOptions
 from data.articles.quality_selection import quartiles
+from shared.article_query import parse
 from webservice.presentation import Interface, display_title
 from webservice.quality_analysis import (
     ARTICLE_PAGE_SIZE,
@@ -29,6 +31,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
+    from data.caching.article_query_checks import TitleChecks
+
 _VIEWS = {"articles", "chart", "coverage", "summary"}
 _FIELD_TYPES = {
     **dict.fromkeys(
@@ -39,6 +43,8 @@ _FIELD_TYPES = {
             "role",
             "group",
             "value",
+            "expression",
+            "query_generation",
         ),
         str,
     ),
@@ -50,6 +56,8 @@ _FIELD_TYPES = {
             "script_sensitive",
             "descending",
             "measured",
+            "query_redirects",
+            "query_variants",
         ),
         bool,
     ),
@@ -131,6 +139,9 @@ def _decode(encoded: str) -> dict:
         or value.get("role", "main") not in {"main", "significant"}
     ):
         message = "Invalid directory search controls."
+        raise ValueError(message)
+    if "expression" in value and value["view"] != "articles":
+        message = "Advanced queries apply to the article directory."
         raise ValueError(message)
     if (
         not 1 <= value.get("page", 1) <= _MAX_PAGE
@@ -574,7 +585,15 @@ def _summary(
     }
 
 
-def read_directory(path: Path, name: str, locale: str, encoded: str) -> dict:
+def read_directory(  # ruff: ignore[too-many-arguments] - Existing directory and optional query context.
+    path: Path,
+    name: str,
+    locale: str,
+    encoded: str,
+    *,
+    runtime: Path | None = None,
+    checks: TitleChecks | None = None,
+) -> dict:
     """Read one directory page or figure summary without acquiring data.
 
     Returns:
@@ -585,13 +604,12 @@ def read_directory(path: Path, name: str, locale: str, encoded: str) -> dict:
     saved = record["data"]
     cells = _selection(query, saved)
     cohort = _cohort(saved, query, cells)
-    view = query["view"]
-    if view == "summary":
+    if query["view"] == "summary":
         return _summary(saved, cohort, query, cells)
     interface = Interface(locale)
-    if view == "coverage":
+    if query["view"] == "coverage":
         return _coverage(saved, cohort, query, cells, interface)
-    if view == "chart":
+    if query["view"] == "chart":
         filtered = _chart_articles(cohort, query, saved)
         suggestions = []
     else:
@@ -601,10 +619,45 @@ def read_directory(path: Path, name: str, locale: str, encoded: str) -> dict:
             query,
             interface,
         )
+    advanced = None
+    result = {}
+    if expression := parse(query.get("expression", "")):
+        index = (
+            query_index.load(runtime, query.get("query_generation"))
+            if runtime is not None
+            else None
+        )
+        advanced = ArticleQuery(
+            expression,
+            index,
+            QueryOptions(
+                redirects=query.get("query_redirects", True),
+                variants=query.get("query_variants", True),
+            ),
+            checks,
+        )
+        matches, unknown = advanced.select([
+            row["page_id"] for row in filtered
+        ])
+        filtered = [row for row in filtered if row["page_id"] in matches]
+        result["advanced"] = {
+            "generation": index.generation if index is not None else None,
+            "observed_at": index.observed_at if index is not None else None,
+            "unknown": unknown,
+        }
     page = _page(_sort_articles(filtered, record, query, interface), query)
     metadata = saved.get("article_metadata", {})
+    if advanced is not None:
+        result["counterparts"] = advanced.counterparts(
+            [row["page_id"] for row in page["rows"]],
+        )
     page["rows"] = [
         catalog_article(row, interface, metadata.get(str(row["page_id"])))
         for row in page["rows"]
     ]
-    return {**page, "cohort": len(cohort), "suggestions": suggestions}
+    return {
+        **result,
+        **page,
+        "cohort": len(cohort),
+        "suggestions": suggestions,
+    }

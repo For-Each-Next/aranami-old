@@ -36,9 +36,11 @@ from shared.toolforge.jobs import (
     PROJECT_HOURLY,
     PROJECT_SNAPSHOT,
     REPORT_WORKLOADS,
+    WEB_QUERY,
     WEBSITE_FETCH,
     job_name,
 )
+lazy from runtime.fetch import article_query
 
 NEWSLETTER = "newsletter-daily"
 ARTICLE_OUTPUT = "article-statistics-output"
@@ -47,6 +49,7 @@ _WORKLOADS = {
     "fetch": {
         PROJECT_SNAPSHOT,
         PROJECT_HOURLY,
+        WEB_QUERY,
         NEWSLETTER,
         *FETCH_WORKLOADS,
         *TASK_DEFINITIONS,
@@ -116,6 +119,8 @@ def _fetch(name: str, cycle: dt.datetime) -> None:
         project_data.run(now=cycle, work="snapshot")
     elif name == PROJECT_HOURLY:
         project_data.run(now=cycle, work="hourly")
+    elif name == WEB_QUERY:
+        article_query.run()
     elif name == "newsletter-history":
         newsletter_history.run(now=cycle)
     elif name in {WEBSITE_FETCH, NEWSLETTER}:

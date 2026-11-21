@@ -34,6 +34,43 @@ if TYPE_CHECKING:
     from shared.support.activity import SourcePurpose, SourceScope
 
 
+def title_variant_mappings(
+    site: BaseSite,
+    titles: Iterable[str],
+) -> dict[str, str]:
+    """Read MediaWiki title conversions independently of redirects.
+
+    Pywikibot has no high-level method returning variant mappings for
+    callers that resolve redirects separately.
+
+    Returns:
+        Entered titles mapped to their reported script alternatives.
+    """
+    selected = list(dict.fromkeys(titles))
+    mappings = {}
+    for offset in range(0, len(selected), 50):
+        batch = selected[offset : offset + 50]
+        response = site.simple_request(
+            action="query",
+            prop="info",
+            titles=batch,
+            converttitles=True,
+            formatversion=2,
+        ).submit()
+        query = response.get("query", {})
+        normalized = {
+            item["from"]: item["to"] for item in query.get("normalized", [])
+        }
+        converted = {
+            item["from"]: item["to"] for item in query.get("converted", [])
+        }
+        for entered in batch:
+            key = normalized.get(entered, entered)
+            if key in converted:
+                mappings[entered] = converted[key]
+    return mappings
+
+
 def read_pages(site: BaseSite, titles: Iterable[str]) -> list[pywikibot.Page]:
     """Preload current text and status for a collection of full titles.
 

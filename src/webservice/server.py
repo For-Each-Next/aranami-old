@@ -32,8 +32,10 @@ from django.urls import path as url_path, re_path
 from polars.exceptions import PolarsError
 lazy import uvicorn
 
-from data.articles import quality_pages
+from data.articles import quality_pages, query_index
+from data.articles.article_query import ArticleQuery, QueryOptions
 from data.caching import consistency as consistency_cache
+from data.caching.article_query_checks import TitleChecks
 from data.caching.game_titles import (
     DEFAULT_PATH as GAME_TITLES_PATH,
     read_game_title_labels,
@@ -61,6 +63,7 @@ from data.runtime.status import (
     save_status,
 )
 from data.website import read_snapshot, validate_dashboard_snapshot
+from shared.article_query import QuerySyntaxError, parse
 from shared.config import routine_configuration
 from shared.deployment import project_version, resource_root
 from shared.newsletter import Issue
@@ -126,6 +129,12 @@ if TYPE_CHECKING:
 _ASSETS = resource_root("webservice") / "public_html"
 _MAX_BYTES = 8 * 1024 * 1024
 _MAX_QUERY_BYTES = 4096
+_MAX_DIRECTORY_QUERY_BYTES = 7600
+_ARTICLE_QUERY_PATH = "/article-list/query/"
+_DIRECTORY_RESOURCE = re.compile(
+    r"/article-list/resources/(en|zh-hans|zh-hant)/"
+    r"(0|all)/(current|listed)/(directory-[0-9a-f]{64}\.json)",
+)
 _MAX_QUERY_FIELDS = 12
 _MAX_HEADER_BYTES = 64 * 1024
 _MAX_PORT = 65535
@@ -417,7 +426,13 @@ def _validate_request(request: ASGIRequest) -> HttpResponseBase | None:
         target.scheme
         or target.netloc
         or target.fragment
-        or len(query) > _MAX_QUERY_BYTES
+        or len(query)
+        > (
+            _MAX_DIRECTORY_QUERY_BYTES
+            if target.path == _ARTICLE_QUERY_PATH
+            or _DIRECTORY_RESOURCE.fullmatch(target.path)
+            else _MAX_QUERY_BYTES
+        )
         or query.count(b"&") >= _MAX_QUERY_FIELDS
     ):
         return _error(HTTPStatus.BAD_REQUEST)
@@ -736,6 +751,7 @@ class _PublicViews:
         self._status_cache = StatusReadCache()
         self.chart_lock = BoundedSemaphore(1)
         self.directory_lock = BoundedSemaphore(1)
+        self.article_title_checks = TitleChecks.from_environment(runtime)
         self.socket_clients = 0
         self.live_feed = LiveFeed(
             self._status,
@@ -1488,11 +1504,7 @@ class _PublicViews:
         Returns:
             A page, summary, or error from the requested preset.
         """
-        match = re.fullmatch(
-            r"/article-list/resources/(en|zh-hans|zh-hant)/"
-            r"(0|all)/(current|listed)/(directory-[0-9a-f]{64}\.json)",
-            request.path,
-        )
+        match = _DIRECTORY_RESOURCE.fullmatch(request.path)
         query = request.GET.getlist("q")
         if match is None or set(request.GET) != {"q"} or len(query) != 1:
             status = (
@@ -1511,10 +1523,21 @@ class _PublicViews:
         if not self.directory_lock.acquire(blocking=False):
             return _error(HTTPStatus.TOO_MANY_REQUESTS)
         try:
-            result = read_directory(path, name, locale, query[0])
-        except DirectorySearchError:
+            result = read_directory(
+                path,
+                name,
+                locale,
+                query[0],
+                runtime=self.runtime,
+                checks=self.article_title_checks
+                if request.method == "GET"
+                else None,
+            )
+        except (DirectorySearchError, QuerySyntaxError) as error:
             return _json(
-                {"regex_error": True},
+                {"query_error": str(error), "offset": error.offset}
+                if isinstance(error, QuerySyntaxError)
+                else {"regex_error": True},
                 HTTPStatus.UNPROCESSABLE_CONTENT,
             )
         except LookupError:
@@ -1528,6 +1551,59 @@ class _PublicViews:
         finally:
             self.directory_lock.release()
         return _json(result)
+
+    def article_query(self, request: ASGIRequest) -> HttpResponseBase:
+        """Parse editor text and optionally check referenced titles.
+
+        Returns:
+            A tree, advisory preview, or structured error.
+        """
+        parameters = request.GET
+        if (
+            "expression" not in parameters
+            or set(parameters)
+            - {"expression", "preview", "redirects", "variants"}
+            or any(len(items) != 1 for _, items in parameters.lists())
+            or any(
+                parameters.get(key, "1") not in {"0", "1"}
+                for key in ("preview", "redirects", "variants")
+            )
+        ):
+            return _error(HTTPStatus.BAD_REQUEST)
+        try:
+            tree = parse(parameters["expression"])
+        except QuerySyntaxError as error:
+            return _json(
+                {"query_error": str(error), "offset": error.offset},
+                HTTPStatus.UNPROCESSABLE_CONTENT,
+            )
+        if parameters.get("preview") != "1":
+            return _json({"tree": tree})
+        if not self.directory_lock.acquire(blocking=False):
+            return _error(HTTPStatus.TOO_MANY_REQUESTS)
+        try:
+            index = query_index.load(self.runtime)
+            query = ArticleQuery(
+                tree,
+                index,
+                QueryOptions(
+                    redirects=parameters.get("redirects") != "0",
+                    variants=parameters.get("variants") != "0",
+                ),
+                self.article_title_checks if request.method == "GET" else None,
+            )
+            return _json({
+                "tree": tree,
+                "checks": query.preview(),
+                "generation": index.generation if index is not None else None,
+                "observed_at": index.observed_at
+                if index is not None
+                else None,
+            })
+        except OSError, PolarsError, ValueError:
+            return _error(HTTPStatus.SERVICE_UNAVAILABLE)
+        finally:
+            self.directory_lock.release()
 
     def quality_resource(self, request: ASGIRequest) -> HttpResponseBase:
         """Deliver a saved catalog or standalone author detail.
@@ -2289,6 +2365,7 @@ def create_app(runtime: Path, assets: Path = _ASSETS) -> DjangoWebsite:
     )
     patterns.extend([
         url_path("article-list/charts/", _route(views.quality_charts)),
+        url_path(_ARTICLE_QUERY_PATH.lstrip("/"), _route(views.article_query)),
         url_path("api/live", _route(views.live_api)),
         url_path("api/logs", _route(views.api_logs)),
         re_path(r"^newsletter/charts/[^/]+$", _route(views.newsletter_chart)),

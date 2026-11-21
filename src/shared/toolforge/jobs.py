@@ -32,6 +32,7 @@ PAGEVIEWS_CHECK_CRON = "0 * * * *"
 ARTICLE_STATISTICS = "article-statistics"
 MAINTENANCE = "data-maintenance"
 WEBSITE_FETCH = "website-fetch"
+WEB_QUERY = "web-query"
 FETCH_WORKLOADS = ("newsletter-history", WEBSITE_FETCH)
 REPORT_WORKLOADS = (
     "dyks",
@@ -48,6 +49,7 @@ WORKLOAD_SERVICES = {
     PROJECT_SNAPSHOT: PROJECT_SNAPSHOT,
     PROJECT_HOURLY: DATA_FETCH,
     PAGEVIEWS: PAGEVIEWS,
+    WEB_QUERY: WEB_QUERY,
     **dict.fromkeys(FETCH_WORKLOADS, DATA_FETCH),
     **dict.fromkeys(ARTICLE_WORKLOADS, DATA_FETCH),
     **dict.fromkeys(
@@ -99,6 +101,7 @@ SERVICES = {
     DATA_FETCH: JobAllocation(2, 33, 1280, 1000),
     REPORT_UPDATE: JobAllocation(10, 48, 1536, 1000),
     PAGEVIEWS: JobAllocation(0, None, 2048, 2000),
+    WEB_QUERY: JobAllocation(40, 15, 1280, 750),
 }
 ON_DEMAND = {
     ARTICLE_STATISTICS: {"mem": "1280Mi", "cpu": 0.75, "retry": 2},

@@ -7,7 +7,7 @@ cd "$tool_dir"
 launcher="$tool_dir/app/scripts/toolforge/run-job.sh"
 state=state/toolforge-jobs
 legacy='aranami-assessment-lists aranami-assessment-log aranami-dyks aranami-enwp-key-articles aranami-new-pages aranami-newsletter-daily aranami-newsletter-history aranami-pageviews aranami-pexbot aranami-quality-analysis aranami-quality-authorship aranami-website'
-services='aranami-project-data aranami-data-fetch aranami-report-update aranami-pageviews'
+services='aranami-project-data aranami-data-fetch aranami-report-update aranami-pageviews aranami-web-query'
 
 midnight_clear() {
     case "$(date -u +%H:%M)" in
@@ -35,7 +35,7 @@ finish() {
         set +e
         rm -f "$state/grouped" "$state/active"
         if midnight_clear; then
-            for name in aranami-data-fetch aranami-report-update aranami-pageviews; do
+            for name in aranami-data-fetch aranami-report-update aranami-pageviews aranami-web-query; do
                 toolforge jobs delete "$name" >/dev/null 2>&1
             done
             while IFS= read -r name; do
@@ -59,11 +59,15 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 if [ -f "$state/grouped" ]; then
-    if [ -z "$(kubectl get cronjob aranami-pageviews --ignore-not-found -o name)" ]; then
-        definitions=$(mktemp "$state/.pageviews-XXXXXXXX")
-        sh "$launcher" --manifest > "$definitions"
-        toolforge jobs load --job aranami-pageviews "$definitions"
-    fi
+    for name in aranami-pageviews aranami-web-query; do
+        if [ -z "$(kubectl get cronjob "$name" --ignore-not-found -o name)" ]; then
+            if [ -z "$definitions" ]; then
+                definitions=$(mktemp "$state/.grouped-XXXXXXXX")
+                sh "$launcher" --manifest > "$definitions"
+            fi
+            toolforge jobs load --job "$name" "$definitions"
+        fi
+    done
     record_schedules
     exit 0
 fi

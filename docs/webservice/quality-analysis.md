@@ -184,6 +184,31 @@ time. Native Polars pools default to two threads unless explicitly configured.
 Rendered HTML is bounded to eight MiB per entry and cached by saved generation,
 locale, class preset and attribution basis.
 
+## Advanced query
+
+Open **Advanced query** in the Article List to combine conditions with
+blocks or with `~`, `&`, and `|` in that precedence order. Select
+**Pre-check** to inspect named references and **Run** to apply the expression
+with the current grade matrix and directory filters. Braces match any value
+in a set.
+
+```text
+class("B", project="Video games", site="en") & class({"小作品", "小列表"})
+```
+
+`class()` and `imp()` use the named WikiProject's PageAssessments values.
+`wp()` checks membership and accepts optional class and importance criteria.
+For `cat()`, `tl()`, `link()`, and `backlink()`, the default main-page scope
+can be changed with `on="talk"`. Category depths from zero through five count
+subcategory edges starting from direct members. Use `site="en"` for the
+English counterpart or `has_wiki("en")` to test for one.
+
+Pre-check marks confirmed missing titles in red and leaves Run available.
+The title and its recorded relationships are evaluated independently.
+Auto-fix Chinese titles applies a verified variant lookup and retains the
+entered query text. Follow redirects controls actual redirect aliases.
+Uncached checks can be retried after the next `aranami-web-query` run.
+
 ## Browser pagination
 
 The initial document includes twenty article rows and the figure summaries.

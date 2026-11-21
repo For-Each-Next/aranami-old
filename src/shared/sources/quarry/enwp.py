@@ -491,6 +491,27 @@ def english_counterparts(page_ids: list[int]) -> pl.DataFrame:
     Returns:
         Chinese page IDs with English titles and available grades.
     """
+    links = english_sitelinks(page_ids)
+    if links.is_empty():
+        return pl.DataFrame(schema=_EN_COUNTERPART_SCHEMA)
+    grades = _english_counterpart_grades(links["english_title"].to_list())
+    return links.join(
+        grades,
+        on="english_title",
+        how="left",
+        validate="m:1",
+    ).select(list(_EN_COUNTERPART_SCHEMA))
+
+
+def english_sitelinks(page_ids: list[int]) -> pl.DataFrame:
+    """Join Chinese subject IDs through Wikidata to English sitelinks.
+
+    Returns:
+        Chinese page IDs and exact English sitelink titles.
+    """
+    schema = {"page_id": pl.Int64, "english_title": pl.String}
+    if not page_ids:
+        return pl.DataFrame(schema=schema)
     props = tables.PageProps
     items = (
         Replica("zhwiki")
@@ -515,7 +536,7 @@ def english_counterparts(page_ids: list[int]) -> pl.DataFrame:
         .drop_nulls("item_id")
     )
     if items.is_empty():
-        return pl.DataFrame(schema=_EN_COUNTERPART_SCHEMA)
+        return pl.DataFrame(schema=schema)
     site = tables.WbItemsPerSite
     links = (
         Replica("wikidatawiki")
@@ -531,17 +552,17 @@ def english_counterparts(page_ids: list[int]) -> pl.DataFrame:
         )
         .collect()
     )
-    if links.is_empty():
-        return pl.DataFrame(schema=_EN_COUNTERPART_SCHEMA)
     links = links.with_columns(
         pl.col("english_title").str.replace_all(" ", "_", literal=True),
     )
-    grades = _english_counterpart_grades(links["english_title"].to_list())
-    return (
-        items
-        .join(links, on="item_id", how="inner", validate="m:1")
-        .join(grades, on="english_title", how="left", validate="m:1")
-        .select(list(_EN_COUNTERPART_SCHEMA))
+    return items.join(
+        links,
+        on="item_id",
+        how="inner",
+        validate="m:1",
+    ).select(
+        "page_id",
+        "english_title",
     )
 
 

@@ -25,6 +25,7 @@ from shared.toolforge.jobs import (
     REPORT_UPDATE,
     SERVICES,
     WEB_MEMORY,
+    WEB_QUERY,
     WORKLOAD_SERVICES,
     job_definitions,
     job_name,
@@ -131,6 +132,24 @@ class TestHandoff(TestCase):
             assert acquired
             hourly.run_service(PROJECT_SNAPSHOT)
         self.worker.assert_not_called()
+
+    def test_query_job_defers_during_routine_fetch(self) -> None:
+        """Dispatch the query worker separately from routine fetch."""
+        self.enable()
+        record_fetch(self.runtime, self.cycle, "running")
+        hourly.run_service(WEB_QUERY)
+        self.worker.assert_not_called()
+        assert not completed(self.runtime, WEB_QUERY, self.cycle)
+        record_fetch(self.runtime, self.cycle, "succeeded")
+        hourly.run_service(WEB_QUERY)
+        self.worker.assert_called_once_with(
+            "fetch",
+            WEB_QUERY,
+            self.cycle,
+            mock.ANY,
+        )
+        assert completed(self.runtime, WEB_QUERY, self.cycle)
+        assert fetch_outcome(self.runtime, self.cycle) == "succeeded"
 
     def test_fetch_and_analysis_follow_the_same_hour(self) -> None:
         """Release analysis after the source status commits."""

@@ -155,6 +155,7 @@ toolforge jobs load --job aranami-web state/aranami-jobs.yaml
 | `aranami-data-fetch` | Hourly at :02 | 33 minutes | 1,280 MiB |
 | `aranami-report-update` | Hourly at :10 | 48 minutes | 1,536 MiB |
 | `aranami-pageviews` | Daily at 19:00, hourly retries | — | 2,048 MiB |
+| `aranami-web-query` | Hourly at :40 | 15 minutes | 1,280 MiB |
 
 Fetch checks today's daily snapshot and immediately retries it when missing. It then collects its hourly project observations. The report job
 waits for the fetch status and then checks the inputs for each output. Failed
@@ -166,6 +167,13 @@ job uses two CPU cores. Its hourly launch at minute zero starts the daily
 report at 19:00 UTC and retries incomplete work on the hour. After confirmed
 publication it skips requests until the next daily boundary. A slow request
 batch can continue across hourly launches under the same exclusive lease.
+
+The Article List query job starts after the normal hourly fetch window. It
+reads saved membership, collects from the replicas under its own resource
+allocation, and atomically selects a complete cache generation. The web
+service uses the last published generation during a failed refresh.
+Uncached title pre-checks use the shared Redis credentials below and are
+processed on the next query job pass.
 
 To make a targeted job change, use `toolforge jobs load --job NAME FILE`.
 Refresh the saved schedule and allocation information afterward for About.

@@ -26,6 +26,7 @@ from shared.toolforge.jobs import (
     PROJECT_SNAPSHOT,
     REPORT_WORKLOADS,
     SERVICES,
+    WEB_QUERY,
     WEBSITE_FETCH,
     job_name,
 )
@@ -58,6 +59,7 @@ _WORKLOAD_MINUTES = {
     "enwp_key_articles": 10,
     "pexbot": 6,
     WEBSITE_FETCH: 11,
+    WEB_QUERY: 15,
     "quality-authorship": 11,
 }
 _FETCH_ORDER = (
@@ -385,6 +387,18 @@ def run_service(name: str) -> None:
             elif name == DATA_FETCH:
                 _fetch(runtime, cycle, deadline)
                 record_completion(runtime, name, cycle)
+            elif name == WEB_QUERY:
+                if fetch_outcome(runtime, cycle) == "running":
+                    _LOGGER.info(
+                        "Article query refresh deferred during routine fetch.",
+                    )
+                elif _attempt(runtime, "fetch", name, cycle, deadline):
+                    record_completion(runtime, name, cycle)
+                else:
+                    message = (
+                        "The Article List query index still needs a refresh."
+                    )
+                    raise RuntimeError(message)
             else:
                 _reports(runtime, cycle, deadline)
                 record_completion(runtime, name, cycle)

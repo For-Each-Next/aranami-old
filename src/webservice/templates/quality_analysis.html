@@ -142,7 +142,13 @@
   <div class="analysis-filter-row">
     <button type="button" class="cdx-button cdx-button--action-destructive" data-analysis-reset>{{ t.quality_analysis.reset }}</button>
   </div>
-</div><p role="status" aria-live="polite" data-analysis-result-count></p>
+</div>
+{% if quality_analysis.directory_url %}
+<details class="article-query" data-article-query='{{ t.article_query | tojson }}' hidden>
+  <summary>{{ t.article_query.heading }}</summary>
+</details>
+{% endif %}
+<p role="status" aria-live="polite" data-analysis-result-count></p>
 <div class="ui-table"><div class="ui-table__table-wrapper table-scroll" tabindex="0" role="region" aria-label="{{ t.quality_analysis.articles }}"><table class="ui-table__table quality-data-table quality-article-directory">{{ quality_article_header(t.quality_analysis.articles) }}<tbody>
 {% for article in quality_analysis.articles %}<tr data-analysis-row data-page-id="{{ article.page_id }}" data-coverage-authorship="{{ 1 if article.authorship.available else 0 }}" data-main-authors='{{ article.main_authors | tojson }}' data-main-author-labels='{{ article.main_author_labels | tojson }}' data-significant-authors='{{ article.significant_authors | tojson }}'{% if quality_analysis.matrix and not article.default_selected %} hidden data-cohort="0"{% endif %} data-grade="{{ article.grade }}" data-importance="{{ article.importance }}" data-title="{{ article.title }}"{% if article.details.date_status %} data-assessment-date-status="{{ article.details.date_status }}"{% endif %}{% if article.details.authorship_status %} data-authorship-status="{{ article.details.authorship_status }}"{% endif %}{% if article.details.length_status %} data-length-status="{{ article.details.length_status }}"{% endif %} data-year="{{ article.listed_date[:4] if article.listed_date else '' }}" data-measured="{{ 1 if article.prose_characters is not none else 0 }}">
 {{ quality_article_cells(article, loop.index) }}

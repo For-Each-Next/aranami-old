@@ -2195,6 +2195,7 @@ class PresentationTests(unittest.TestCase):
             *(
                 root / "public_html" / f"{name}.js"
                 for name in (
+                    "article_query",
                     "copy",
                     "datasets",
                     "heading_links",

@@ -65,7 +65,7 @@ export async function requestQualityPage(form, selection, options, signal) {
     url.searchParams.set("q", encoded);
     if (!directoryPages.has(form)) directoryPages.set(form, new Map());
     const cache = directoryPages.get(form);
-    if (cache.has(encoded)) {
+    if (!options.expression && cache.has(encoded)) {
         const saved = cache.get(encoded);
         cache.delete(encoded);
         cache.set(encoded, saved);
@@ -85,15 +85,17 @@ export async function requestQualityPage(form, selection, options, signal) {
     if ((response.url && new URL(response.url).origin !== location.origin) ||
             !response.headers.get("content-type")?.startsWith("application/json"))
         throw new Error("Invalid article directory response");
-    if (response.status === 422) return {regex_error: true};
+    if (response.status === 422) return response.json();
     if (!response.ok) throw new Error("Article directory unavailable");
     const result = await response.json();
     if (options.view !== "summary") {
         if (!Array.isArray(result.rows) || result.rows.length > options.size ||
                 !Number.isInteger(result.page) || !Number.isInteger(result.total))
             throw new Error("Invalid article directory page");
-        cache.set(encoded, result);
-        if (cache.size > 3) cache.delete(cache.keys().next().value);
+        if (!options.expression) {
+            cache.set(encoded, result);
+            if (cache.size > 3) cache.delete(cache.keys().next().value);
+        }
     }
     return result;
 }
@@ -605,11 +607,12 @@ export function catalogRows() {
 }
 
 /** Convert only the returned page into renderable article records. */
-export function directoryRows(data, rows) {
+export function directoryRows(data, rows, counterparts = {}) {
     const grades = new Map(data.grades.map(({value, order}, index) => [value, order ?? index]));
     const importance = new Map(data.importance.map(({value, order}, index) => [value, order ?? index]));
     return rows.map(values => {
         const row = catalogRecord(values, data, grades, importance);
+        row.counterpart = counterparts[row.article.page_id];
         row.dataset.cohort = "1";
         return row;
     });
@@ -649,6 +652,12 @@ export function articleElement(record, includeContributors = false) {
     } else row.cells[4].append(node("span", labels.unknown_listing, "context"));
     renderMainContributors(row.cells[5], article, labels);
     row.cells[1].append(document.createTextNode(" "), articleDetailLink(article, metadata, {includeContributors}));
+    if (record.counterpart) {
+        const counterpart = node("a", record.counterpart.replaceAll("_", " "), "article-query-counterpart");
+        counterpart.href = "https://en.wikipedia.org/wiki/" + encodeURIComponent(record.counterpart);
+        counterpart.lang = "en";
+        row.cells[1].append(counterpart);
+    }
     if (!includeContributors && article.authorship?.available)
         row.cells[5].append(document.createTextNode(" "), articleDetailLink(article, metadata, {more: true}));
     displayProse(row.cells[6], article.prose_characters, labels.words);

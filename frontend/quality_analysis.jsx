@@ -949,6 +949,11 @@ function ArticleDirectory(context) {
                         data-empty={attribute(t.quality_analysis.no_matches)}
                     >
                         {DirectoryFilters(context)}
+                        {quality_analysis.directory_url && t.article_query ? (
+                            <details class="article-query" data-article-query={JSON.stringify(t.article_query)} hidden>
+                                <summary>{t.article_query.heading}</summary>
+                            </details>
+                        ) : null}
                         <p role="status" aria-live="polite" data-analysis-result-count={""}></p>
                         <div class="ui-table">
                             <div

@@ -1,4 +1,5 @@
 /** Filter and sort the complete saved article list without source requests. */
+import { initializeArticleQuery } from "./article_query.js";
 import { groupedNumber } from "./number_format.js";
 import { compareValues, initializeQualityAuthorship, initializeQualityPageInput, updateQualityPageInput } from "./quality_authorship.js";
 import { initializeQualityCoverage } from "./quality_coverage.js";
@@ -176,6 +177,10 @@ export function initializeQualityAnalysis(previous = {}) {
     let page = previous.page || 1;
     let pages = 1;
     let visiblePage = page, pending, debounce;
+    const advanced = remote ? initializeArticleQuery(host, () => {
+        page = 1;
+        render();
+    }) : null;
     const actions = ["first", "prev", "next", "last"].map((name) =>
         host.querySelector(`[data-analysis-${name}]`));
 
@@ -223,14 +228,18 @@ export function initializeQualityAnalysis(previous = {}) {
                 showPage([], 0, form.qualityCoverage?.total ?? qualityMetadata(form).total, options.size);
                 return;
             }
+            if (response.query_error) throw new Error(response.query_error);
             showSuggestions(response.suggestions);
             page = response.page;
-            showPage(directoryRows(qualityMetadata(form), response.rows), response.total, response.cohort, options.size);
+            showPage(directoryRows(qualityMetadata(form), response.rows, response.counterparts),
+                response.total, response.cohort, options.size);
+            advanced?.updated(response.advanced);
         } catch {
             if (!request.signal.aborted && host.isConnected) {
                 page = visiblePage;
                 updateQualityPageInput(pager, page, pages);
                 result.textContent = form.dataset.pageFailed;
+                advanced?.failed();
             }
         } finally {
             if (pending === request) table.removeAttribute("aria-busy");
@@ -258,7 +267,8 @@ export function initializeQualityAnalysis(previous = {}) {
             }
             const options = {view: "articles", page, size: Number(size.value), column, descending,
                 search: search.value, regex: !!regex?.checked, author: author?.value || "", role: roleName,
-                case_sensitive: matching.caseSensitive, script_sensitive: matching.scriptSensitive};
+                case_sensitive: matching.caseSensitive, script_sensitive: matching.scriptSensitive,
+                ...advanced?.options()};
             if (typing) debounce = setTimeout(() => void readPage(options), 180);
             else void readPage(options);
             return;
@@ -304,6 +314,7 @@ export function initializeQualityAnalysis(previous = {}) {
         render();
     }));
     host.querySelector("[data-analysis-reset]").addEventListener("click", () => {
+        advanced?.clear(false);
         search.value = "";
         for (const option of [regex, caseSensitive, scriptSensitive]) if (option) option.checked = false;
         if (author) author.value = "";
