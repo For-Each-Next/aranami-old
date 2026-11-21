@@ -4415,9 +4415,9 @@
     "zh-hant": "尚無已儲存的正文測量結果。"
   },
   "quality_analysis.violin_scale": {
-    "en": "Violin area uses a logarithmic count scale. A group of 10,000 measured articles and lists has 100% reference area, and a group of 1,000 has 90%.",
-    "zh-hans": "小提琴图的面积按有字数记录的条目及列表数量进行对数缩放。10,000 个对应 100% 的参考面积，1,000 个对应 90%。",
-    "zh-hant": "小提琴圖的面積依有字數紀錄的條目及列表數量進行對數縮放。10,000 個對應 100% 的參考面積，1,000 個對應 90%。"
+    "en": "Violin height follows the number of measured articles and lists. The largest group sets the full height, and a group with one tenth as many measurements reaches 90%.",
+    "zh-hans": "小提琴图的高度按有字数记录的条目及列表数量缩放。数量最多的一组为满高，其数量十分之一的一组为满高的90%。",
+    "zh-hant": "小提琴圖的高度依有字數紀錄的條目及列表數量縮放。數量最多的一組為滿高，其數量十分之一的一組為滿高的90%。"
   },
   "quality_analysis.search": {
     "en": "Article title",

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Replace Aranami's individual CronJobs with the three grouped schedules.
+# Replace Aranami's individual CronJobs with the grouped schedules.
 set -eu
 umask 027
 tool_dir=${ARANAMI_TOOL_DIR:-${TOOL_DATA_DIR:-/data/project/aranami}}
@@ -7,7 +7,7 @@ cd "$tool_dir"
 launcher="$tool_dir/app/scripts/toolforge/run-job.sh"
 state=state/toolforge-jobs
 legacy='aranami-assessment-lists aranami-assessment-log aranami-dyks aranami-enwp-key-articles aranami-new-pages aranami-newsletter-daily aranami-newsletter-history aranami-pageviews aranami-pexbot aranami-quality-analysis aranami-quality-authorship aranami-website'
-services='aranami-project-data aranami-data-fetch aranami-report-update'
+services='aranami-project-data aranami-data-fetch aranami-report-update aranami-pageviews'
 
 midnight_clear() {
     case "$(date -u +%H:%M)" in
@@ -25,15 +25,17 @@ midnight_clear
 mkdir -p "$state" deployment-backups
 mkdir deployment.lock || { printf '%s\n' 'A source or job transition is active.' >&2; exit 1; }
 backup=
+definitions=
 changed=false
 finish() {
     result=$?
     trap - 0 HUP INT TERM
+    if [ -n "$definitions" ]; then rm -f "$definitions"; fi
     if [ "$result" -ne 0 ] && [ "$changed" = true ]; then
         set +e
         rm -f "$state/grouped" "$state/active"
         if midnight_clear; then
-            for name in aranami-data-fetch aranami-report-update; do
+            for name in aranami-data-fetch aranami-report-update aranami-pageviews; do
                 toolforge jobs delete "$name" >/dev/null 2>&1
             done
             while IFS= read -r name; do
@@ -56,7 +58,15 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-if [ -f "$state/grouped" ]; then record_schedules; exit 0; fi
+if [ -f "$state/grouped" ]; then
+    if [ -z "$(kubectl get cronjob aranami-pageviews --ignore-not-found -o name)" ]; then
+        definitions=$(mktemp "$state/.pageviews-XXXXXXXX")
+        sh "$launcher" --manifest > "$definitions"
+        toolforge jobs load --job aranami-pageviews "$definitions"
+    fi
+    record_schedules
+    exit 0
+fi
 backup=$(mktemp -d "$tool_dir/deployment-backups/jobs-XXXXXXXX")
 selection=$(readlink app)
 token=${selection#app-staging-}
@@ -101,7 +111,10 @@ for name in $services; do
     kubectl get cronjob "$name" -o name
 done
 while IFS= read -r name; do
-    if [ "$name" != aranami-project-data ]; then toolforge jobs delete "$name"; fi
+    case "$name" in
+        aranami-project-data|aranami-pageviews) ;;
+        *) toolforge jobs delete "$name" ;;
+    esac
 done < "$backup/previous-cronjobs"
 record_schedules
 touch "$state/grouped"

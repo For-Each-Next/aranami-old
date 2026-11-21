@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import datetime as dt
 import re
+from functools import lru_cache
 from pathlib import Path
 from uuid import uuid4
 
@@ -15,6 +16,7 @@ import polars as pl
 
 from data.articles.storage import DEFAULT_ROOT
 from data.reports import ReportResult, ReportStore
+from shared.support.files import file_identity
 
 STAMP = pl.Datetime("us", "UTC")
 KEY = [
@@ -189,6 +191,28 @@ def _read(store: ReportStore, *, locked: bool = False) -> pl.DataFrame:
     return frame
 
 
+@lru_cache(maxsize=2)
+def _cached_frame(root: Path, _identity: tuple) -> pl.DataFrame:
+    """Reuse the immutable inference frame for one selector identity.
+
+    Returns:
+        The validated table under the caller's rating-history lock.
+    """
+    return _read(ReportStore(root), locked=True)
+
+
+def _retained_frame(store: ReportStore) -> pl.DataFrame:
+    """Read current evidence under the same lock used at publication.
+
+    Returns:
+        Current validated inference rows.
+    """
+    identity = tuple(
+        file_identity(store.selection_path(key)) for key in (_KEY, _LEGACY_KEY)
+    )
+    return _cached_frame(store.root, identity)
+
+
 def load(runtime: Path = Path()) -> dict[str, pl.DataFrame]:
     """Read saved range facts without source requests.
 
@@ -198,7 +222,9 @@ def load(runtime: Path = Path()) -> dict[str, pl.DataFrame]:
     Returns:
         Validated inference table, or typed first-use emptiness.
     """
-    return {"inference": _read(ReportStore(runtime / _STORE_ROOT))}
+    store = ReportStore(runtime / _STORE_ROOT)
+    with store.locked(_KEY):
+        return {"inference": _retained_frame(store).clone()}
 
 
 def _valid_parser_migration(value: object) -> bool:
@@ -219,12 +245,13 @@ def _valid_parser_migration(value: object) -> bool:
     )
 
 
-def checkpoint(
+def checkpoint(  # ruff: ignore[too-many-locals]
     runtime: Path,
     *,
     members: pl.DataFrame | None = None,
     update: pl.DataFrame | None = None,
     completed_parser_migration: tuple[str, str] | None = None,
+    persist: bool = True,
 ) -> pl.DataFrame:
     """Atomically retain the cohort or one bounded history attempt.
 
@@ -236,6 +263,7 @@ def checkpoint(
             completed proofs the acquisition owner certifies compatible.
             Only matching cohort identities or newer-head anchors reuse
             those proofs; incomplete progress is never migrated.
+        persist: Publish changes, or prepare the in-memory scan cohort.
 
     Returns:
         Complete selected range state after validation.
@@ -253,7 +281,8 @@ def checkpoint(
         raise ValueError(message)
     store = ReportStore(runtime / _STORE_ROOT)
     with store.locked(_KEY):
-        frame = _read(store, locked=True)
+        previous_frame = _retained_frame(store)
+        frame = previous_frame
         if members is not None:
             previous = frame.select(
                 "page_id",
@@ -331,7 +360,20 @@ def checkpoint(
                 updates.append(expression.otherwise(None).alias(name))
             current = (
                 joined
-                .with_columns(updates)
+                .with_columns(
+                    *updates,
+                    pl
+                    .when(
+                        exact
+                        & pl.col("title").eq_missing(pl.col("old_title"))
+                        & pl.col("talk_title").eq_missing(
+                            pl.col("old_talk_title"),
+                        ),
+                    )
+                    .then(pl.col("old_observed_at"))
+                    .otherwise(pl.col("observed_at"))
+                    .alias("observed_at"),
+                )
                 .select(list(INFERENCE_SCHEMA))
                 .cast(INFERENCE_SCHEMA)
             )
@@ -360,6 +402,11 @@ def checkpoint(
             ])
         frame = frame.sort("page_id")
         _validate(frame)
+        unchanged = frame.equals(previous_frame) and (
+            frame.is_empty() or store.has_data(_KEY)
+        )
+        if not persist or unchanged:
+            return frame
         store.write(
             _KEY,
             ReportResult(family="rating-history", tables={"inference": frame}),

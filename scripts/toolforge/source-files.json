@@ -160,6 +160,7 @@
     "src/shared/support/dates.py",
     "src/shared/support/files.py",
     "src/shared/support/parquet.py",
+    "src/shared/support/parquet_tables.py",
     "src/shared/support/prose.py",
     "src/shared/support/regions.py",
     "src/shared/support/resources.py",

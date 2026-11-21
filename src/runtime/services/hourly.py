@@ -1,4 +1,4 @@
-"""Run the scheduled project, fetch, and report services."""
+"""Run the scheduled project, fetch, report, and pageviews services."""
 
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ from shared.toolforge.jobs import (
     ARTICLE_STATISTICS,
     DATA_FETCH,
     JOB_DEFINITIONS,
+    PAGEVIEWS,
     PROJECT_HOURLY,
     PROJECT_SNAPSHOT,
     REPORT_WORKLOADS,
@@ -54,7 +55,6 @@ _WORKLOAD_MINUTES = {
     "assessment_log": 10,
     "assessment_lists": 9,
     "enwp_key_articles": 10,
-    "pageviews": 12,
     "pexbot": 6,
     WEBSITE_FETCH: 11,
     "quality-authorship": 11,
@@ -87,7 +87,7 @@ def _run_child(
     phase: str,
     name: str,
     cycle: dt.datetime,
-    seconds: float,
+    seconds: float | None,
 ) -> None:
     """Run an isolated workload and reap its descendants.
 
@@ -143,7 +143,7 @@ def _attempt(  # ruff: ignore[too-many-arguments] - Bind the UTC cycle and deadl
     phase: str,
     name: str,
     cycle: dt.datetime,
-    deadline: dt.datetime,
+    deadline: dt.datetime | None,
     *,
     checkpoint: dt.datetime | None = None,
 ) -> bool:
@@ -160,12 +160,15 @@ def _attempt(  # ruff: ignore[too-many-arguments] - Bind the UTC cycle and deadl
     expected = checkpoint or cycle
     if completed(runtime, receipt, expected):
         return True
-    limit = _WORKLOAD_MINUTES.get(name, 4) * 60
-    remaining = min(
-        limit,
-        (deadline - dt.datetime.now(dt.UTC)).total_seconds(),
+    remaining = (
+        min(
+            _WORKLOAD_MINUTES.get(name, 4) * 60,
+            (deadline - dt.datetime.now(dt.UTC)).total_seconds(),
+        )
+        if deadline is not None
+        else None
     )
-    if remaining <= 0 or not enabled(runtime):
+    if not enabled(runtime) or (remaining is not None and remaining <= 0):
         return False
     try:
         _run_child(phase, name, cycle, remaining)
@@ -303,6 +306,20 @@ def _refresh_articles(
             _attempt(runtime, "fetch", "quality-authorship", cycle, deadline)
 
 
+def _pageviews(runtime: Path, cycle: dt.datetime) -> None:
+    """Fetch and publish traffic using frozen daily project snapshots.
+
+    Raises:
+        RuntimeError: A traffic input or publication needs a retry.
+    """
+    if not (
+        _attempt(runtime, "fetch", PAGEVIEWS, cycle, None)
+        and _attempt(runtime, "analyze", PAGEVIEWS, cycle, None)
+    ):
+        message = "The pageview report still needs a retry."
+        raise RuntimeError(message)
+
+
 def run_service(name: str) -> None:
     """Run a scheduled service using shared ownership and UTC receipts.
 
@@ -317,11 +334,6 @@ def run_service(name: str) -> None:
         started = dt.datetime.now(dt.UTC)
         cycle = hour(started)
         checkpoint = midnight(cycle) if name == PROJECT_SNAPSHOT else cycle
-        allocation = SERVICES[name]
-        deadline = min(
-            started + dt.timedelta(minutes=allocation.minutes, seconds=-20),
-            cycle + dt.timedelta(minutes=58),
-        )
         finished = completed(runtime, name, checkpoint) and (
             name != DATA_FETCH
             or completed(runtime, f"fetch-{PROJECT_HOURLY}", cycle)
@@ -330,6 +342,14 @@ def run_service(name: str) -> None:
             return
         with observe_job(runtime, name, started):
             recover_interrupted_runs(before=started)
+            minutes = SERVICES[name].minutes
+            if minutes is None:
+                _pageviews(runtime, cycle)
+                return
+            deadline = min(
+                started + dt.timedelta(minutes=minutes, seconds=-20),
+                cycle + dt.timedelta(minutes=58),
+            )
             if name == PROJECT_SNAPSHOT:
                 if not _attempt(
                     runtime,

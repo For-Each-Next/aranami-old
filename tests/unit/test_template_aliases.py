@@ -105,7 +105,7 @@ class TestTemplateAliasCache(TestCase):
         storage = json.loads(metadata["aranami.storage"])
         assert storage["contract"] == "template-alias-metadata"
         assert storage["written_at"]
-        assert storage["columns"]["aliases"] == "List(String)"
+        assert storage["columns"]["aliases__length"] == "UInt32"
 
     def test_expiry_refreshes_aliases_without_template_revision_change(
         self,
@@ -160,7 +160,7 @@ class TestTemplateAliasCache(TestCase):
         self.populate()
         self.path.write_bytes(b"broken cache")
         self.populate()
-        frame = pl.read_parquet(self.path).with_columns(
+        frame = cache_source._CACHE.read_required(self.path).with_columns(
             pl.lit(_NOW + dt.timedelta(days=1)).alias("checked_at"),
         )
         cache_source._CACHE.write(self.path, frame)
@@ -247,7 +247,7 @@ class TestTemplateAliasCache(TestCase):
             expected = wiki.template_aliases(self.site, title)
             assert wiki.template_aliases(self.site, title) == expected
         source.assert_called_once()
-        files = list((self.directory / "zhwiki").rglob("*.parquet"))
+        files = list((self.directory / "zhwiki").rglob("aliases/*.parquet"))
         assert len(files) == 1
         assert len(files[0].name.encode()) <= 255
 

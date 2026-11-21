@@ -18,6 +18,8 @@ from shared.toolforge.jobs import (
     DATA_FETCH,
     JOB_DEFINITIONS,
     MAINTENANCE,
+    ON_DEMAND,
+    PAGEVIEWS,
     PROJECT_HOURLY,
     PROJECT_SNAPSHOT,
     REPORT_UPDATE,
@@ -45,7 +47,7 @@ class TestJobDefinitions(TestCase):
 
     @staticmethod
     def test_grouped_manifest() -> None:
-        """Check the three schedules and optional definitions."""
+        """Check the grouped schedules and optional definitions."""
         root = Path("/data/project/aranami")
         definitions = job_definitions(root)
         assert {row["name"] for row in definitions} == {
@@ -54,6 +56,15 @@ class TestJobDefinitions(TestCase):
         }
         assert definitions[0]["continuous"] is True
         assert definitions[1]["schedule"] == "0 0 * * *"
+        pageviews = next(
+            row for row in definitions if row["name"] == job_name(PAGEVIEWS)
+        )
+        assert (pageviews["schedule"], pageviews["mem"], pageviews["cpu"]) == (
+            "37 * * * *",
+            "2048Mi",
+            2,
+        )
+        assert "timeout" not in pageviews
         assert JOB_DEFINITIONS.keys() <= WORKLOAD_SERVICES.keys()
         extended = job_definitions(
             root,
@@ -66,13 +77,18 @@ class TestJobDefinitions(TestCase):
         assert extended[-1]["schedule"] == "40 3 * * 0"
 
     @staticmethod
-    def test_promotion_headroom() -> None:
-        """Fit the jobs and setup worker in the live quota."""
+    def test_scheduled_workers_fit_with_backfill() -> None:
+        """Allow a long Pageviews run to overlap the other services."""
         quota_mib = 8192
-        assert (
-            WEB_MEMORY + sum(w.memory for w in SERVICES.values()) + 1536 + 512
-            <= quota_mib
-        )
+        backfill = int(ON_DEMAND[ARTICLE_STATISTICS]["mem"].removesuffix("Mi"))
+        for minute in range(60):
+            scheduled = sum(
+                job.memory
+                for job in SERVICES.values()
+                if job.minutes is None
+                or job.minute <= minute < job.minute + job.minutes
+            )
+            assert WEB_MEMORY + scheduled + backfill <= quota_mib
 
 
 class TestHandoff(TestCase):
@@ -121,6 +137,10 @@ class TestHandoff(TestCase):
         hourly.run_service(DATA_FETCH)
         assert fetch_outcome(self.runtime, self.cycle) == "succeeded"
         hourly.run_service(REPORT_UPDATE)
+        assert mock.call("fetch", PAGEVIEWS, mock.ANY, mock.ANY) not in (
+            self.worker.call_args_list
+        )
+        hourly.run_service(PAGEVIEWS)
         phases = [call.args[:2] for call in self.worker.call_args_list]
         assert phases[0] == ("fetch", PROJECT_SNAPSHOT)
         assert phases[1] == ("fetch", PROJECT_HOURLY)
@@ -129,6 +149,8 @@ class TestHandoff(TestCase):
             "analyze",
             "dyks",
         ))
+        assert phases[-2:] == [("fetch", PAGEVIEWS), ("analyze", PAGEVIEWS)]
+        assert self.worker.call_args.args[-1] is None
         assert completed(self.runtime, REPORT_UPDATE, self.cycle)
 
     def test_hourly_fetch_recovers_a_missing_daily_snapshot(self) -> None:

@@ -14,6 +14,7 @@ from unittest.mock import Mock, patch
 
 import polars as pl
 
+from shared.support.parquet_tables import read_table
 from tasks.articles.history_archive import SCHEMA, DailyHistoryArchive
 
 
@@ -25,6 +26,16 @@ def _title(day: dt.date) -> str:
 def _boundary(day: dt.date) -> dt.datetime:
     """Return the exclusive UTC midnight after a display day."""
     return dt.datetime.combine(day + dt.timedelta(days=1), dt.time(), dt.UTC)
+
+
+def _saved_rows(path: Path) -> pl.DataFrame:
+    """Read the original anniversary observations from a test cache.
+
+    Returns:
+        Original typed rows, redirects, and subjects.
+    """
+    with path.open("rb") as stream:
+        return read_table(path, stream)[0]
 
 
 def _subjects(day: dt.date, game_id: int = 1) -> pl.DataFrame:
@@ -139,7 +150,7 @@ class AnniversaryArchiveTests(unittest.TestCase):  # ruff: ignore[too-many-publi
         original = archive.at(title, boundary)
         assert "Unrelated" in original
         archive.save()
-        stored = pl.read_parquet(self.path)
+        stored = _saved_rows(self.path)
         assert stored.schema == pl.Schema(SCHEMA)
         assert stored["date"].to_list() == [day]
         assert stored["text"].to_list() == [original]
@@ -163,7 +174,7 @@ class AnniversaryArchiveTests(unittest.TestCase):  # ruff: ignore[too-many-publi
         archive.at(_title(day), _boundary(day))
         archive.record_subjects(_subjects(day))
         archive.save()
-        initial = pl.read_parquet(self.path).row(0, named=True)
+        initial = _saved_rows(self.path).row(0, named=True)
         assert initial["subjects"] == [
             {
                 "linked_title": "Game",
@@ -186,7 +197,7 @@ class AnniversaryArchiveTests(unittest.TestCase):  # ruff: ignore[too-many-publi
         assert repeated.at(_title(day), _boundary(day)) == original
         repeated.record_subjects(_subjects(day, 9))
         repeated.save()
-        updated = pl.read_parquet(self.path).row(0, named=True)
+        updated = _saved_rows(self.path).row(0, named=True)
         assert updated["subjects"][0]["target_page_id"] == 9
         assert updated["subjects"][1:] == initial["subjects"][1:]
         assert updated["subjects_observed_at"] == later
@@ -219,7 +230,7 @@ class AnniversaryArchiveTests(unittest.TestCase):  # ruff: ignore[too-many-publi
         older.save()
         assert self.path.read_bytes() == original
         assert (
-            pl.read_parquet(self.path).row(0, named=True)["subjects"][0][
+            _saved_rows(self.path).row(0, named=True)["subjects"][0][
                 "target_page_id"
             ]
             == 9
@@ -236,7 +247,7 @@ class AnniversaryArchiveTests(unittest.TestCase):  # ruff: ignore[too-many-publi
             archive.at(_title(day), _boundary(day))
         archive.record_subjects(_subjects(recent).clear())
         archive.save()
-        stored = pl.read_parquet(self.path)
+        stored = _saved_rows(self.path)
         assert stored["date"].to_list() == [recent]
         assert stored["subjects"].to_list() == [[]]
         assert stored["subjects_observed_at"].to_list() == [self.now]
@@ -259,7 +270,7 @@ class AnniversaryArchiveTests(unittest.TestCase):  # ruff: ignore[too-many-publi
             with self.subTest(frame=invalid), self.assertRaises(ValueError):
                 archive.record_subjects(invalid)
         archive.save()
-        assert pl.read_parquet(self.path)["subjects"].to_list() == [None]
+        assert _saved_rows(self.path)["subjects"].to_list() == [None]
 
     def test_memory_archive_updates_subjects_without_duplicate_dates(
         self,
@@ -283,7 +294,7 @@ class AnniversaryArchiveTests(unittest.TestCase):  # ruff: ignore[too-many-publi
             day = self.now.date() - dt.timedelta(days=age)
             archive.at(_title(day), _boundary(day))
         archive.save()
-        stored = pl.read_parquet(self.path)
+        stored = _saved_rows(self.path)
         assert stored.height == 100
         assert stored["date"].min() == self.now.date() - dt.timedelta(days=100)
         assert stored["date"].max() == self.now.date() - dt.timedelta(days=1)
@@ -293,7 +304,7 @@ class AnniversaryArchiveTests(unittest.TestCase):  # ruff: ignore[too-many-publi
         repeated.at(_title(old), _boundary(old))
         self.read.at.assert_called_once_with(_title(old), _boundary(old))
         repeated.save()
-        assert pl.read_parquet(self.path).equals(stored)
+        assert _saved_rows(self.path).equals(stored)
 
     def test_redirect_chain_preserves_page_ids_and_exact_source_revisions(
         self,
@@ -319,7 +330,7 @@ class AnniversaryArchiveTests(unittest.TestCase):  # ruff: ignore[too-many-publi
             unittest.mock.call(target, boundary),
         ]
         archive.save()
-        stored = pl.read_parquet(self.path).row(0, named=True)
+        stored = _saved_rows(self.path).row(0, named=True)
         assert stored["source_page_id"] == 100
         assert stored["revision_id"] == 10
         assert stored["target_title"] == target
@@ -367,7 +378,7 @@ class AnniversaryArchiveTests(unittest.TestCase):  # ruff: ignore[too-many-publi
             assert archive.at(title, _boundary(current)) == text
             assert set(archive.sources) == {title, target}
         archive.save()
-        stored = pl.read_parquet(self.path)
+        stored = _saved_rows(self.path)
         assert stored["target_page_id"].to_list() == [300, 300]
         assert stored["target_revision_id"].to_list() == [30, 31]
         assert stored["text"].to_list() == ["Day 0", "Day 1"]
@@ -428,7 +439,7 @@ class AnniversaryArchiveTests(unittest.TestCase):  # ruff: ignore[too-many-publi
         archive = DailyHistoryArchive(self.read, self.path, self.now)
         archive.at(title, _boundary(day))
         archive.save()
-        row = pl.read_parquet(self.path).row(0, named=True)
+        row = _saved_rows(self.path).row(0, named=True)
         row["redirects"][0]["text"] = "#REDIRECT [[Wikipedia:Different]]"
         identity = pl.read_parquet_metadata(self.path)["aranami.cache"]
         pl.DataFrame([row], schema=SCHEMA).write_parquet(
@@ -450,7 +461,7 @@ class AnniversaryArchiveTests(unittest.TestCase):  # ruff: ignore[too-many-publi
             unittest.mock.call(target, _boundary(day)),
         ]
         cached.save()
-        row = pl.read_parquet(self.path).row(0, named=True)
+        row = _saved_rows(self.path).row(0, named=True)
         assert row["redirects"][0]["text"] == f"#REDIRECT [[{target}]]"
         self.read.at.reset_mock()
         repeated = DailyHistoryArchive(self.read, self.path, self.now)
@@ -520,7 +531,7 @@ class AnniversaryArchiveTests(unittest.TestCase):  # ruff: ignore[too-many-publi
         )
         advanced.save()
         self.read.at.assert_not_called()
-        assert pl.read_parquet(self.path)["date"].to_list() == [recent]
+        assert _saved_rows(self.path)["date"].to_list() == [recent]
 
     def test_current_day_wrong_source_and_non_midnight_are_rejected(
         self,
@@ -562,7 +573,7 @@ class AnniversaryArchiveTests(unittest.TestCase):  # ruff: ignore[too-many-publi
         later.at(_title(next_day), _boundary(next_day))
         later.save()
         assert self.read.at.call_count == 2
-        assert pl.read_parquet(self.path)["date"].to_list() == [next_day]
+        assert _saved_rows(self.path)["date"].to_list() == [next_day]
 
     def test_corrupt_cache_rebuilds_after_successful_source_read(self) -> None:
         """Rebuild invalid cache bytes from historical sources."""
@@ -580,7 +591,7 @@ class AnniversaryArchiveTests(unittest.TestCase):  # ruff: ignore[too-many-publi
             level="WARNING",
         ):
             archive.save()
-        assert pl.read_parquet(self.path).height == 1
+        assert _saved_rows(self.path).height == 1
 
     def test_missing_provenance_and_failed_write_keep_existing_cache(
         self,

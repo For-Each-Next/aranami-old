@@ -1522,7 +1522,7 @@ async function checkInterface(assetRoot) {
                             sizesUnlinked: !host.querySelector('tbody td:last-child a'),
                             fits: document.documentElement.scrollWidth <= innerWidth + 1};
                     })()`);
-                    assert.deepEqual(metrics, {rows: 20, records: 48, enhanced: true, unknown: true, countsHidden: true, fixedTables: true, from: '2009', firstYear: 2009, pies: 2, footer: true, sizesUnlinked: true, fits: true});
+                    assert.deepEqual(metrics, {rows: 10, records: 48, enhanced: true, unknown: true, countsHidden: true, fixedTables: true, from: '2009', firstYear: 2009, pies: 2, footer: true, sizesUnlinked: true, fits: true});
                     await checkQualityOrdinals();
                     await checkQualityTableLayout(locale);
                     const coverage = await evaluate(`(() => {
@@ -1612,7 +1612,7 @@ async function checkInterface(assetRoot) {
                             const previousRow = host.querySelector('[data-analysis-row]');
                             host.querySelector('[data-analysis-next]').click();
                             const visible = [...host.querySelectorAll('[data-analysis-row]')];
-                            const pagination = visible.length === 20 && visible.every((row,index) => Number(row.cells[0].textContent) === 21 + index);
+                            const pagination = visible.length === 10 && visible.every((row,index) => Number(row.cells[0].textContent) === 11 + index);
                             const rowParity = visible.every(row => JSON.stringify(rowStyles(row)) === JSON.stringify(initialStyles) && row.querySelectorAll('.analysis-assessment-label .analysis-swatch').length === 2 && Boolean(row.querySelector('.analysis-talk')));
                             host.querySelector('[data-analysis-prev]').click();
                             const freshRows = host.querySelector('[data-analysis-row]') !== previousRow;
@@ -1623,9 +1623,9 @@ async function checkInterface(assetRoot) {
                             const oldImportance = host.analysisRows.map(row => row.dataset.importance);
                             host.analysisRows.forEach(row => row.dataset.importance = 'High');
                             document.querySelector('[data-chart-group="importance"][data-chart-value="High"]').dispatchEvent(new MouseEvent('click', {bubbles:true,cancelable:true}));
-                            const firstChartPage = dialog.querySelectorAll('[data-chart-article]').length === 20;
+                            const firstChartPage = dialog.querySelectorAll('[data-chart-article]').length === 10;
                             dialog.querySelector('[data-chart-next]').click();
-                            const chartPagination = firstChartPage && dialog.querySelectorAll('[data-chart-article]').length === 20 && dialog.querySelector('[data-chart-article] td').textContent === '21';
+                            const chartPagination = firstChartPage && dialog.querySelectorAll('[data-chart-article]').length === 10 && dialog.querySelector('[data-chart-article] td').textContent === '11';
                             const chartTable = dialog.querySelector('.analysis-chart-article-table');
                             const chartHeadings = [...chartTable.tHead.rows[0].cells];
                             const initialDate = host.analysisRows.filter(row => row.dataset.cohort === '1').map(row => row.cells[4].dataset.sort).filter(Boolean).sort().at(-1);
@@ -2078,7 +2078,7 @@ async function checkInterface(assetRoot) {
                         quartiles: [...document.querySelectorAll('.analysis-mini-violin')].map(svg => svg.getAttribute('aria-label')),
                         loading: form.dataset.qualityLoadState};
                 })()`);
-                assert.equal(initial.rows, 20, 'initial page must show its prepared first article page before catalog arrival');
+                assert.equal(initial.rows, 10, 'initial page must show its prepared first article page before catalog arrival');
                 assert.equal(initial.pies, 2, 'initial overview must not wait for the catalog');
                 assert.ok(initial.controlsHidden && initial.filtersEnabled && !initial.catalogInline && !initial.authorDialogs);
                 assert.equal(initial.loading, 'loading');
@@ -2227,7 +2227,7 @@ async function checkInterface(assetRoot) {
                         message: Boolean(form.querySelector('[data-quality-load-status]').textContent),
                         controlsHidden: document.querySelector('[data-analysis-controls]').hidden};
                 })()`);
-                assert.deepEqual(failed, {rows: 20, retry: true, message: true, controlsHidden: true}, 'failed catalog reads must preserve native evidence and offer retry');
+                assert.deepEqual(failed, {rows: 10, retry: true, message: true, controlsHidden: true}, 'failed catalog reads must preserve native evidence and offer retry');
                 await evaluate("document.querySelector('[data-quality-retry]').click()");
                 await waitForQuality();
                 assert.equal(await evaluate("document.querySelector('[data-quality-analysis]').analysisRows.length"), 48, 'catalog retry must restore the complete saved selection');
@@ -2423,7 +2423,7 @@ async function checkInterface(assetRoot) {
                             proseGroups: document.querySelectorAll('.analysis-mini-violin').length,
                             pageFits: document.documentElement.scrollWidth <= innerWidth + 1};
                     })()`);
-                    assert.equal(native.rows, 20);
+                    assert.equal(native.rows, 10);
                     assert.equal(native.pies, 2);
                     assert.ok(native.noMethod);
                     assert.ok(native.columns > 0);

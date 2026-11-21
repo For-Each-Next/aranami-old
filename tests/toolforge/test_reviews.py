@@ -23,6 +23,7 @@ from wiki_fixtures import article_url, offline_site
 from data.articles import milestone_store as article_milestones
 from shared.sources.wiki import WikiReader
 from shared.support.cache import latest_cache_path
+from shared.support.parquet_tables import read_table
 from tasks.zhwiki.review_cache import ReviewCache
 from tasks.zhwiki.review_milestones import retain_review_milestones
 from tasks.zhwiki.reviews import (
@@ -39,6 +40,16 @@ if TYPE_CHECKING:
 _NOW = dt.datetime(2026, 10, 25, 12, tzinfo=dt.UTC)
 _START = "2026-10-07T03:04:00+00:00"
 _SIGNATURE = "2026年10月7日 (三) 03:04 (UTC)"
+
+
+def _cached_rows(path: Path) -> pl.DataFrame:
+    """Read test observations with their full logical schema.
+
+    Returns:
+        Original cached review rows and their ordered items.
+    """
+    with path.open("rb") as stream:
+        return read_table(path, stream)[0]
 
 
 def _rewrite_cache(
@@ -751,7 +762,7 @@ class CollectionTests(TestCase):
         first = self._collect()
         path = latest_cache_path(self.cache / "review-sources-anchors")
         assert path is not None
-        frame = pl.read_parquet(path)
+        frame = _cached_rows(path)
         schema = dict(frame.schema)
         schema["items"] = pl.List(
             pl.Struct({
@@ -779,7 +790,7 @@ class CollectionTests(TestCase):
         first = self._collect()
         path = latest_cache_path(self.cache / "review-sources-anchors")
         assert path is not None
-        frame = pl.read_parquet(path)
+        frame = _cached_rows(path)
         rows = frame.to_dicts()
         for row in rows:
             for item in row["items"]:
@@ -799,7 +810,7 @@ class CollectionTests(TestCase):
         assert path is not None
         _rewrite_cache(
             path,
-            pl.read_parquet(path),
+            _cached_rows(path),
             contract="review-sources:1",
         )
         self.site.simple_request.reset_mock()
@@ -840,7 +851,7 @@ class CollectionTests(TestCase):
         assert unquote(row["review_url"]).endswith("候选#臺北狂飆")
         path = latest_cache_path(self.cache / "review-sources-anchors")
         assert path is not None
-        frame = pl.read_parquet(path)
+        frame = _cached_rows(path)
         _rewrite_cache(
             path,
             frame.with_columns(
@@ -999,7 +1010,7 @@ class CollectionTests(TestCase):
         first = self._collect()
         path = latest_cache_path(self.cache / "review-sources-anchors")
         assert path is not None
-        frame = pl.read_parquet(path)
+        frame = _cached_rows(path)
         rows = frame.to_dicts()
         for source in rows:
             for item in source["items"]:

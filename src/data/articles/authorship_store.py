@@ -1,4 +1,4 @@
-"""Retain successful listing-time authorship in bounded Parquet.
+"""Retain listing-time authorship in two tables with one selector.
 
 Save successful batches so historical backfills resume from saved
 listings. Corruption and size overflow preserve the durable evidence.
@@ -11,21 +11,22 @@ supplies the complete denominator after independent recollection.
 
 from __future__ import annotations
 
-import fcntl
-import os
-from pathlib import Path
-from tempfile import NamedTemporaryFile
+import datetime as dt
+from typing import TYPE_CHECKING
+from uuid import uuid4
 
 import polars as pl
 
 from data.articles.scope import retain_active
-from shared.support.dataset_activity import dataset_activity
-from shared.support.files import staging_directory
+from data.paths import flat_root
+from data.reports import ReportResult, ReportStore
 from shared.support.parquet import (
-    parquet_metadata,
     report_parquet_activity,
     validate_parquet_metadata,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 CONTRACT = "wikiwho-zh:listing-range-nonref-bytes-v4"
 FALLBACK_CONTRACT = "wikiwho-zh:listing-range-token-bytes-v1"
@@ -60,6 +61,15 @@ SCHEMA = {
     "fetched_at": pl.Datetime("us", "UTC"),
     "authors": pl.List(pl.String),
     "contributors": pl.List(pl.Struct(CONTRIBUTOR_SCHEMA)),
+}
+LISTING_SCHEMA = {
+    key: dtype
+    for key, dtype in SCHEMA.items()
+    if key not in {"authors", "contributors"}
+}
+LISTING_CONTRIBUTOR_SCHEMA = {
+    **{key: SCHEMA[key] for key in KEY},
+    **CONTRIBUTOR_SCHEMA,
 }
 _MAX_ROWS = 20_000
 _MAX_BYTES = 32 * 1024 * 1024
@@ -116,8 +126,8 @@ def complete_contributor_evidence(frame: pl.DataFrame) -> pl.DataFrame:
     """Select observations with the new contributor measures.
 
     Returns:
-        Results with measured source and prose for significant editors.
-        Fallback token evidence has no exact prose projection.
+        Results with both measures for all significant editors. Partial
+        evidence remains eligible for bounded collection retries.
     """
     contributor = pl.element().struct
     return frame.filter(
@@ -126,10 +136,7 @@ def complete_contributor_evidence(frame: pl.DataFrame) -> pl.DataFrame:
         .list.eval(
             (
                 contributor.field("raw_bytes").is_null()
-                | (
-                    contributor.field("characters").is_not_null()
-                    & contributor.field("prose_characters").is_null()
-                )
+                | contributor.field("prose_characters").is_null()
             )
             & (contributor.field("share") >= SIGNIFICANT_SHARE_THRESHOLD),
         )
@@ -358,7 +365,7 @@ def _validate(frame: pl.DataFrame) -> None:
         raise ValueError(message)
 
 
-def load(path: Path) -> pl.DataFrame:
+def _legacy(path: Path) -> pl.DataFrame:
     """Read retained successes, preserving damaged data for recovery.
 
     Args:
@@ -431,7 +438,152 @@ def load(path: Path) -> pl.DataFrame:
     return frame
 
 
-def save(path: Path, refreshed: pl.DataFrame) -> None:
+def _store(path: Path) -> ReportStore:
+    """Locate the shared listing selector or a caller's custom store.
+
+    Returns:
+        A report store with the listing-evidence namespace.
+    """
+    root = path.parent
+    if (
+        root.name == "parsed"
+        and root.parent.name == "data"
+        and path.name == "article-authorship.parquet"
+    ):
+        return ReportStore(root.parent / "shared")
+    return ReportStore(
+        root,
+        flat_name=path.stem if flat_root(root) == root else None,
+    )
+
+
+def _load(
+    path: Path,
+    store: ReportStore,
+    *,
+    locked: bool = False,
+) -> pl.DataFrame:
+    """Reconstruct the established in-memory view from a selected pair.
+
+    Returns:
+        Validated listings with contributors and their leading authors.
+
+    Raises:
+        ValueError: A selected table or relationship is invalid.
+    """
+    bundle = store.read(path.stem, locked=locked)
+    if bundle is None:
+        return _legacy(path)
+    listings = bundle.tables.get("listings")
+    contributors = bundle.tables.get("contributors")
+    if (
+        listings is None
+        or contributors is None
+        or listings.schema != pl.Schema(LISTING_SCHEMA)
+        or contributors.schema != pl.Schema(LISTING_CONTRIBUTOR_SCHEMA)
+        or not contributors.join(
+            listings.select(KEY),
+            on=KEY,
+            how="anti",
+        ).is_empty()
+    ):
+        message = "Invalid listing authorship tables."
+        raise ValueError(message)
+    names = pl.col("name").filter(pl.col("_score") == pl.col("_score").max())
+    details = (
+        contributors
+        .with_columns(
+            pl
+            .when(pl.col("contract").is_in(_BYTE_CONTRACTS))
+            .then(pl.col("bytes"))
+            .otherwise(pl.col("tokens"))
+            .alias("_score"),
+        )
+        .group_by(KEY, maintain_order=True)
+        .agg(
+            pl.struct(list(CONTRIBUTOR_SCHEMA)).alias("contributors"),
+            names.unique().sort().alias("authors"),
+        )
+        .with_columns(
+            pl.when(
+                ~pl
+                .col("authors")
+                .list.eval(pl.element().is_null())
+                .list.any(),
+            ).then(pl.col("authors")),
+        )
+    )
+    frame = listings.join(
+        details,
+        on=KEY,
+        how="left",
+        validate="1:1",
+        maintain_order="left",
+    ).select(list(SCHEMA))
+    _validate(frame)
+    return frame
+
+
+def load(path: Path) -> pl.DataFrame:
+    """Read the selected authorship generation or its retained original.
+
+    Returns:
+        Validated evidence, or a typed empty frame before first use.
+    """
+    return _load(path, _store(path))
+
+
+def normalize_storage(path: Path) -> bool:
+    """Retain the original observations in a verified scalar generation.
+
+    Returns:
+        Whether the complete legacy file is represented by the selector.
+
+    Raises:
+        ValueError: The selected records differ from the original.
+    """
+    store = _store(path)
+    key = path.stem
+    with store.locked(key):
+        if not path.is_file():
+            return False
+        original = _legacy(path)
+        if not store.has_data(key):
+            _write(store, key, original)
+        if not _load(path, store, locked=True).equals(original):
+            message = (
+                "The selected listing evidence differs from the original."
+            )
+            raise ValueError(message)
+    return True
+
+
+def _write(store: ReportStore, key: str, frame: pl.DataFrame) -> None:
+    """Select a listing and contributor pair under the caller's lock."""
+    tables = {
+        "listings": frame.select(list(LISTING_SCHEMA)),
+        "contributors": (
+            frame
+            .select(*KEY, "contributors")
+            .explode("contributors", empty_as_null=False)
+            .unnest("contributors")
+        ),
+    }
+    store.write(
+        key,
+        ReportResult(family="article-authorship", tables=tables),
+        "",
+        run_id=uuid4().hex,
+        started_at=dt.datetime.now(dt.UTC),
+        target={"site": "zhwiki", "title": "Article listing authorship"},
+        locked=True,
+    )
+
+
+def save(
+    path: Path,
+    refreshed: pl.DataFrame,
+) -> None:
     """Merge successes under a lock and atomically retain every event.
 
     Args:
@@ -440,21 +592,16 @@ def save(path: Path, refreshed: pl.DataFrame) -> None:
 
     Raises:
         OSError: Storage is unsafe or unavailable.
-        ValueError: Evidence or compressed payload exceeds its contract.
-    """
+        ValueError: Evidence exceeds its contract.
+    """  # ruff: ignore[docstring-extraneous-exception]
     _validate(refreshed)
     if path.is_symlink() or path.parent.is_symlink():
         message = "Authorship evidence requires regular paths."
         raise OSError(message)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor = os.open(
-        path.with_name(f".{path.name}.lock"),
-        os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW,
-        0o600,
-    )
-    with os.fdopen(descriptor, "a+b") as lock:
-        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-        previous = load(path)
+    store = _store(path)
+    key = path.stem
+    with store.locked(key):
+        previous = _load(path, store, locked=True)
         refreshed = retain_raw_binding(
             previous,
             refreshed,
@@ -468,31 +615,6 @@ def save(path: Path, refreshed: pl.DataFrame) -> None:
         )
         merged = retain_active(merged, path)
         _validate(merged)
-        dataset_activity("begin", path)
-        with NamedTemporaryFile(
-            dir=staging_directory(path),
-            delete=False,
-        ) as stream:
-            temporary = Path(stream.name)
-        try:
-            merged.write_parquet(
-                temporary,
-                metadata=parquet_metadata(
-                    merged,
-                    contract="article-authorship",
-                ),
-            )
-            if temporary.stat().st_size > _MAX_BYTES:
-                message = "Authorship evidence exceeds its file bound."
-                raise ValueError(message)
-            with temporary.open("rb") as stream:
-                os.fsync(stream.fileno())
-            temporary.replace(path)
-            directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
-            try:
-                os.fsync(directory)
-            finally:
-                os.close(directory)
-            report_parquet_activity(path, "source_written")
-        finally:
-            temporary.unlink(missing_ok=True)
+        if store.has_data(key) and merged.equals(previous):
+            return
+        _write(store, key, merged)

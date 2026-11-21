@@ -23,6 +23,7 @@
     "setup-env.sh",
     "deploy-source.sh",
     "drain-hub.py",
+    "migrate-scalar-parquet.py",
     "run-hub.sh",
     "run-job.sh",
     "run-web.sh",

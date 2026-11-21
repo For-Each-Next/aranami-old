@@ -73,7 +73,7 @@ export function initializeQualityCoverage() {
 
     /** Replace the requested page and retain its navigation controls. */
     function showPage(visible, available) {
-        const limit = Number(size?.value || 50);
+        const limit = Number(size?.value || 10);
         const pages = Math.max(1, Math.ceil(total / limit));
         const start = (page - 1) * limit;
         body.replaceChildren(...visible.map((record, index) => {
@@ -101,7 +101,7 @@ export function initializeQualityCoverage() {
     }
 
     async function render() {
-        const limit = Number(size?.value || 50);
+        const limit = Number(size?.value || 10);
         if (!remote) {
             page = Math.max(1, Math.min(page, Math.ceil(total / limit)));
             const start = (page - 1) * limit;
@@ -148,7 +148,7 @@ export function initializeQualityCoverage() {
         const control = event.target.closest("[data-coverage-page]");
         if (!control) return;
         const target = control.dataset.coveragePage;
-        page = target === "first" ? 1 : target === "last" ? Math.ceil(total / Number(size?.value || 50)) : page + (target === "next" ? 1 : -1);
+        page = target === "first" ? 1 : target === "last" ? Math.ceil(total / Number(size?.value || 10)) : page + (target === "next" ? 1 : -1);
         render();
         dialog.querySelector(".ui-dialog__body")?.scrollTo(0, 0);
     });

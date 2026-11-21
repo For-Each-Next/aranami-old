@@ -6,6 +6,20 @@ complete calculated results. Wiki projections and HTTP views read those saved
 Parquet results without source API/SQL requests or raw revision parsing. Wiki
 publication still verifies and saves its destination through MediaWiki.
 
+## Scalar Parquet tables
+
+Saved Parquet columns are scalar. Repeated values occupy separate tables
+with an explicit parent key and position. A parent without a domain-specific
+key uses `__row_id` within that generation. Its footer binds child files by
+name and hash. Production child tables are grouped by job under `data/jobs/`
+or by shared use under `data/shared/`. The length
+column distinguishes unknown lists from observed empty lists. Fixed records
+are keyed by their parent and retain whether the record was present.
+
+Reader APIs reconstruct the original typed observations when a calculation
+uses lists or records. Under `data/shared/article-authorship/`, the contributors
+table uses the listing key directly. One selector publishes both tables.
+
 ## Runtime tree and retention
 
 This service serves Chinese Wikipedia's Video games project. There are five

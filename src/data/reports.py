@@ -22,8 +22,6 @@ from pathlib import Path
 from threading import RLock
 from typing import TYPE_CHECKING
 
-import polars as pl
-
 from data.paths import (
     artifact_files,
     artifact_path,
@@ -44,9 +42,20 @@ from shared.support.assessment_encoding import (
 from shared.support.dataset_activity import dataset_activity
 from shared.support.files import read_json_object, staging_directory
 from shared.support.parquet import parquet_metadata, validate_parquet_metadata
+from shared.support.parquet_tables import (
+    MAX_BYTES as MAX_TABLE_BYTES,
+    install_table,
+    link_table,
+    open_table,
+    read_table,
+    remove_table,
+    write_table,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
+
+    import polars as pl
 
 _KEY = re.compile(r"[a-z0-9][a-z0-9._-]{0,127}")
 _RUN_ID = re.compile(r"[0-9a-f]{32}")
@@ -234,20 +243,30 @@ def _write_table(path: Path, frame: pl.DataFrame) -> dict[str, object]:
         Verified-row metadata and digest for the encoded storage table.
     """
     frame = encode_assessments(frame)
-    frame.write_parquet(
+    digest = write_table(
         path,
-        metadata=parquet_metadata(frame, contract=f"report-table:{path.stem}"),
+        frame,
+        parquet_metadata(frame, contract=f"report-table:{path.stem}"),
     )
-    with path.open("rb") as stream:
-        os.fsync(stream.fileno())
     return {
         "file": path.name,
         "rows": frame.height,
         "schema": {
             column: str(dtype) for column, dtype in frame.schema.items()
         },
-        "sha256": _digest(path),
+        "sha256": digest,
     }
+
+
+def _install_flat_generation(staged: Path, final: Path) -> None:
+    """Install immutable artifacts before the generation is selected."""
+    for artifact in sorted(staged.iterdir()):
+        if artifact.is_file():
+            destination = artifact_path(final, artifact.name)
+            if artifact.suffix == ".parquet":
+                install_table(artifact, destination)
+            else:
+                artifact.replace(destination)
 
 
 def _read_json(path: Path) -> dict[str, object]:
@@ -497,6 +516,13 @@ class ReportStore:
             runtime = self.root.parent.parent
         if (owner := flat_root(self.root)) is not None:
             runtime = owner.parent.parent
+        for ancestor in (self.root, *self.root.parents):
+            if (
+                ancestor.name in {"jobs", "shared"}
+                and ancestor.parent.name == "data"
+            ):
+                runtime = ancestor.parent.parent
+                break
         self.cache = runtime / "cache" / "report-staging"
         self.lock_root = runtime / "state" / "report-locks"
 
@@ -688,7 +714,10 @@ class ReportStore:
                     old = artifact_path(original, name)
                     new = artifact_path(destination, name)
                     try:
-                        os.link(old, new)
+                        if old.suffix == ".parquet" and not new.exists():
+                            link_table(old, new)
+                        else:
+                            os.link(old, new)
                     except FileExistsError:
                         if _digest(old) != _digest(new):
                             raise
@@ -896,8 +925,7 @@ class ReportStore:
             if flat_root(final) is not None:
                 # Install immutable artifacts before their selector.
                 # A failure leaves the old complete generation selected.
-                for artifact in sorted(temporary.iterdir()):
-                    artifact.replace(artifact_path(final, artifact.name))
+                _install_flat_generation(temporary, final)
             else:
                 temporary.replace(final)
             if self.daily:
@@ -951,7 +979,10 @@ class ReportStore:
                     and _GENERATION.fullmatch(identity)
                     and identity not in retained
                 ):
-                    candidate.unlink()
+                    if candidate.suffix == ".parquet":
+                        remove_table(candidate)
+                    else:
+                        candidate.unlink()
             return
         for candidate in directory.iterdir():
             if (
@@ -1104,13 +1135,12 @@ class ReportStore:
             ):
                 message = "Report table integrity check failed."
                 raise ValueError(message)
-            with artifact.open("rb") as stream:
-                embedded = pl.read_parquet_metadata(stream)
-                stream.seek(0)
-                frame = restore_assessment_schema(
-                    pl.read_parquet(stream),
-                    metadata.get("schema", {}),
-                )
+            with open_table(artifact, MAX_TABLE_BYTES) as stream:
+                frame, embedded = read_table(artifact, stream)
+            frame = restore_assessment_schema(
+                frame,
+                metadata.get("schema", {}),
+            )
             validate_parquet_metadata(
                 embedded,
                 frame,

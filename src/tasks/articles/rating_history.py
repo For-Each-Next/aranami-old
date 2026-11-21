@@ -380,6 +380,7 @@ def refresh_rating_history(  # ruff: ignore[too-many-arguments] - Explicit sourc
             runtime,
             members=members,
             completed_parser_migration=migration,
+            persist=False,
         )
         pending = (
             frame
@@ -411,11 +412,14 @@ def refresh_rating_history(  # ruff: ignore[too-many-arguments] - Explicit sourc
             budget,
             shell_aliases,
         )
-        if rows:
-            store.checkpoint(
-                runtime,
-                update=pl.DataFrame(rows, schema=store.INFERENCE_SCHEMA),
-            )
+        store.checkpoint(
+            runtime,
+            members=members,
+            completed_parser_migration=migration,
+            update=pl.DataFrame(rows, schema=store.INFERENCE_SCHEMA)
+            if rows
+            else None,
+        )
     except Exception as error:  # ruff: ignore[blind-except] - Optional B history preserves newsletter collection.
         _LOG.warning(
             "Rating history collection unavailable (%s).",

@@ -111,8 +111,9 @@ website. Web rollout health is checked after the updater resumes. Deliberately
 paused deployments stay paused. Job definitions, routes, credentials, reports,
 logs and state stay outside selected source.
 
-Keep both the new generation and the last validated recovery generation. Keep
-every generation used by an active job.
+After verifying the rollout, remove superseded staging directories. Keep the
+new generation, the last validated recovery generation, and every generation
+used by an active job.
 
 ## Register grouped jobs
 
@@ -142,14 +143,17 @@ toolforge jobs load --job aranami-web state/aranami-jobs.yaml
 | `aranami-project-data` | Daily at 00:00 | 8 minutes | 1,280 MiB |
 | `aranami-data-fetch` | Hourly at :02 | 33 minutes | 1,280 MiB |
 | `aranami-report-update` | Hourly at :10 | 48 minutes | 1,536 MiB |
+| `aranami-pageviews` | Hourly at :37 | — | 2,048 MiB |
 
 Fetch checks today's daily snapshot and immediately retries it when missing. It then collects its hourly project observations. The report job
 waits for the fetch status and then checks the inputs for each output. Failed
 or unavailable inputs leave their reports due. Other ready reports can finish.
 Both scheduled worker groups get one Toolforge retry. They retain a checkpoint
 for each success, including a UTC-date checkpoint for daily routines. Daily
-work that fails remains due at the next hourly check. Pageviews uses 19:00 UTC
-readiness for yesterday and can retry older missing eligible data.
+work that fails remains due at the next hourly check. The dedicated Pageviews
+job uses two CPU cores. It checks for yesterday's data after 19:00 UTC and
+can retry earlier eligible dates. A slow request batch can continue across
+hourly launches under the same exclusive lease.
 
 To make a targeted job change, use `toolforge jobs load --job NAME FILE`.
 Refresh the saved schedule and allocation information afterward for About.
@@ -170,8 +174,9 @@ toolforge jobs load --job aranami-data-maintenance state/aranami-on-demand.yaml
 
 The Article Statistics job continues across hours and resumes from saved
 revisions, attribution and rating checkpoints. It exits after checking the
-eligible backlog. Unavailable evidence remains identifiable in the coverage
-counts and gets further attempts in the hourly fetch job. The hourly report
+eligible backlog. Its 1,280 MiB allocation fits alongside an overlapping
+Pageviews run within Aranami's 8 GiB quota. Coverage counts identify
+unavailable evidence for further attempts in the hourly fetch. The hourly report
 job generates updated web artifacts from retained inputs throughout.
 
 The completeness check reads seven days of project snapshots, the latest

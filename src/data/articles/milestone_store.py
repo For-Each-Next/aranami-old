@@ -13,8 +13,6 @@ from __future__ import annotations
 import datetime as dt
 import fcntl
 import os
-from pathlib import Path
-from tempfile import NamedTemporaryFile
 from typing import TYPE_CHECKING
 
 import polars as pl
@@ -22,14 +20,21 @@ import polars as pl
 from data.articles.history_store import read_versions
 from data.articles.scope import retain_active
 from shared.support.dataset_activity import dataset_activity
-from shared.support.files import staging_directory
 from shared.support.parquet import (
     parquet_metadata,
     report_parquet_activity,
     validate_parquet_metadata,
 )
+from shared.support.parquet_tables import (
+    install_table,
+    open_table,
+    read_table,
+    stage_table,
+)
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from shared.assessment_profiles import AssessmentProfile
 
 SOURCE_SCHEMA = {"title": pl.String, "revision_id": pl.Int64, "url": pl.String}
@@ -410,10 +415,13 @@ def _read(path: Path) -> pl.DataFrame:
     if not path.is_file() or path.stat().st_size > _MAX_BYTES:
         message = "Recognition data exceeds its file bound."
         raise ValueError(message)
-    with path.open("rb") as stream:
-        metadata = pl.read_parquet_metadata(stream)
-        stream.seek(0)
-        frame = pl.read_parquet(stream, n_rows=_MAX_ROWS + 1)
+    with open_table(path, _MAX_BYTES) as stream:
+        frame, metadata = read_table(
+            path,
+            stream,
+            max_rows=_MAX_ROWS,
+            max_bytes=_MAX_BYTES,
+        )
     validate_parquet_metadata(metadata, frame, contract="article-milestones")
     report_parquet_activity(path, "source_loaded")
     return frame
@@ -553,28 +561,15 @@ def merge_save(path: Path, refreshed: pl.DataFrame) -> pl.DataFrame:
             report_parquet_activity(path, "source_unchanged")
             return previous
         dataset_activity("begin", path)
-        with NamedTemporaryFile(
-            dir=staging_directory(path),
-            delete=False,
-        ) as stream:
-            temporary = Path(stream.name)
-        try:
-            merged.write_parquet(
-                temporary,
-                metadata=parquet_metadata(
-                    merged,
-                    contract="article-milestones",
-                ),
-            )
-            if temporary.stat().st_size > _MAX_BYTES:
-                message = "Recognition data exceeds its file bound."
-                raise ValueError(message)
-            with temporary.open("rb") as stream:
-                os.fsync(stream.fileno())
-            temporary.replace(path)
-            report_parquet_activity(path, "source_written")
-        finally:
-            temporary.unlink(missing_ok=True)
+        metadata = parquet_metadata(merged, contract="article-milestones")
+        with stage_table(
+            path,
+            merged,
+            metadata,
+            max_bytes=_MAX_BYTES,
+        ) as temporary:
+            install_table(temporary, path)
+        report_parquet_activity(path, "source_written")
         return merged
 
 

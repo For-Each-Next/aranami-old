@@ -32,6 +32,7 @@ from shared.identity import configure_pywikibot
 from shared.toolforge.jobs import (
     ARTICLE_WORKLOADS,
     FETCH_WORKLOADS,
+    PAGEVIEWS,
     PROJECT_HOURLY,
     PROJECT_SNAPSHOT,
     REPORT_WORKLOADS,
@@ -51,7 +52,7 @@ _WORKLOADS = {
         *TASK_DEFINITIONS,
         *ARTICLE_WORKLOADS,
     },
-    "analyze": {ARTICLE_OUTPUT, *REPORT_WORKLOADS},
+    "analyze": {ARTICLE_OUTPUT, PAGEVIEWS, *REPORT_WORKLOADS},
 }
 
 

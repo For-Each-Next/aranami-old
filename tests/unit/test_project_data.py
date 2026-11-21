@@ -23,6 +23,7 @@ from runtime.fetch.project_observations import project_cycle
 from shared.sources.quarry import projects
 from shared.support.activity import activity_observer
 from shared.support.assessment_encoding import restore_assessment_schema
+from shared.support.parquet_tables import read_table
 from tasks import project_data as acquisition
 
 if TYPE_CHECKING:
@@ -642,8 +643,8 @@ class TestSavedProjectActivity(_ProjectDataFixture):
     def test_legacy_saved_read_leaves_file_write_time_unknown(self) -> None:
         """Do not invent timestamps for pre-envelope saved files."""
         bundle = self._capture()
-        metadata = pl.read_parquet_metadata(bundle.path)
-        frame = pl.read_parquet(bundle.path)
+        with bundle.path.open("rb") as stream:
+            frame, metadata = read_table(bundle.path, stream)
         frame.write_parquet(
             bundle.path,
             metadata={"aranami": metadata["aranami"]},

@@ -17,15 +17,22 @@ import fcntl
 import hashlib
 import json
 import os
-from pathlib import Path
-from tempfile import NamedTemporaryFile
+from typing import TYPE_CHECKING
 
 import polars as pl
 
 from data.articles.authorship_store import CONTRIBUTOR_SCHEMA
 from data.articles.storage import DEFAULT_ROOT
-from shared.support.files import open_regular, staging_directory
 from shared.support.parquet import parquet_metadata, validate_parquet_metadata
+from shared.support.parquet_tables import (
+    install_table,
+    open_table,
+    read_table,
+    stage_table,
+)
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 DEFAULT_PATH = DEFAULT_ROOT / "authorship-corrections.parquet"
 PROOF_CONTRACT = "wikiwho-zh:reference-cleanup-single-insertion-v1"
@@ -287,10 +294,13 @@ def load(path: Path = DEFAULT_PATH) -> pl.DataFrame:
         ValueError: Existing saved evidence is corrupt or oversized.
     """
     try:
-        with open_regular(path, _MAX_BYTES) as stream:
-            metadata = pl.read_parquet_metadata(stream)
-            stream.seek(0)
-            frame = pl.read_parquet(stream, n_rows=_MAX_ROWS + 1)
+        with open_table(path, _MAX_BYTES) as stream:
+            frame, metadata = read_table(
+                path,
+                stream,
+                max_rows=_MAX_ROWS,
+                max_bytes=_MAX_BYTES,
+            )
     except FileNotFoundError:
         return pl.DataFrame(schema=SCHEMA)
     except pl.exceptions.PolarsError as error:
@@ -383,29 +393,14 @@ def merge_save(path: Path, refreshed: pl.DataFrame) -> pl.DataFrame:
     with os.fdopen(descriptor, "a+b") as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
         merged = _merge(load(path), refreshed)
-        with NamedTemporaryFile(
-            dir=staging_directory(path),
-            delete=False,
-        ) as stream:
-            temporary = Path(stream.name)
-        try:
-            merged.write_parquet(
-                temporary,
-                metadata=parquet_metadata(merged, contract=_CONTRACT),
-            )
-            if temporary.stat().st_size > _MAX_BYTES:
-                message = "Authorship corrections exceed their file bound."
-                raise ValueError(message)
-            with temporary.open("rb") as stream:
-                os.fsync(stream.fileno())
-            temporary.replace(path)
-            descriptor = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
-            try:
-                os.fsync(descriptor)
-            finally:
-                os.close(descriptor)
-        finally:
-            temporary.unlink(missing_ok=True)
+        metadata = parquet_metadata(merged, contract=_CONTRACT)
+        with stage_table(
+            path,
+            merged,
+            metadata,
+            max_bytes=_MAX_BYTES,
+        ) as temporary:
+            install_table(temporary, path)
         return merged
 
 

@@ -669,21 +669,17 @@ test("the original length positions remain fixed", () => {
     assert.equal(position(100000), 1000);
 });
 
-test("bounded violin areas follow a logarithmic count scale on the original length axis", () => {
+test("bounded violins reserve full height for the largest measured cohort", () => {
     const density = [[0, 1], [50, 3], [100, 4], [200, 2], [30000, 1.5], [90000, 1]];
-    const scaleMaximum = 100000;
-    const x = length => context.proseLengthPosition(length, scaleMaximum) / 1000;
+    const maximumMeasured = 10000;
     for (const [measured, maximum, target] of [[10000, 80000, 1], [1000, 210, 0.9], [100, 80000, 0.8]]) {
-        const bounded = context.violinAreaDensity({density, measured, minimum: 40, maximum}, scaleMaximum);
+        const bounded = context.violinHeightDensity({density, minimum: 40, maximum});
+        const height = context.violinHeight(measured, maximumMeasured);
         assert.equal(bounded[0][0], 40);
         assert.ok(bounded[0][1] > 0);
         assert.equal(bounded.at(-1)[0], maximum);
         assert.ok(bounded.at(-1)[1] > 0);
-        const area = bounded.slice(1).reduce((sum, [right, y], index) => {
-            const [left, height] = bounded[index];
-            return sum + (y + height) * (x(right) - x(left)) / 2;
-        }, 0);
-        assert.ok(Math.abs(area - target) < 1e-10);
+        assert.equal(Math.max(...bounded.map(([, peak]) => peak)) * height, target);
     }
 });
 

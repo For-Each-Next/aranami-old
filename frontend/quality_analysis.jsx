@@ -3,6 +3,8 @@ import { jsx, iconHref, attribute, display, format, hasContent, OptionalLink } f
 import { Fragment } from "@vue/runtime-dom";
 import { popup, table_labels, article_table } from "./shared.jsx";
 
+const pageSizes = [10, 20, 50, 100];
+
 export function DistributionPanel(context, rows, dimension, caption) {
     const { quality_analysis, t } = context;
     return (
@@ -425,8 +427,8 @@ function QualityOverview(context) {
                             >
                                 <label class="ui-table-pager__start">
                                     {t.reports.page_size}{" "}
-                                    <select value={50}>
-                                        {[20, 50, 100].map(count => (
+                                    <select>
+                                        {pageSizes.map(count => (
                                             <option key={count} value={count}>{format(t.reports.rows, { count })}</option>
                                         ))}
                                     </select>
@@ -616,7 +618,9 @@ function DirectoryFilters({ quality_analysis, t }) {
                         ))}
                     </select>
                 </label>
-                <button type="button" class="cdx-button cdx-button--weight-quiet" data-analysis-reset="">
+            </div>
+            <div class="analysis-filter-row">
+                <button type="button" class="cdx-button cdx-button--action-destructive" data-analysis-reset="">
                     {labels.reset}
                 </button>
             </div>
@@ -974,9 +978,7 @@ function ArticleDirectory(context) {
                             <label class="ui-table-pager__start">
                                 {t.reports.page_size}
                                 <select data-analysis-size={""}>
-                                    <option value="20">{"20"}</option>
-                                    <option value="50">{"50"}</option>
-                                    <option value="100">{"100"}</option>
+                                    {pageSizes.map(count => <option key={count} value={count}>{count}</option>)}
                                     {!quality_analysis.directory_url && <option value="all">{display(t.quality_analysis.all_rows)}</option>}
                                 </select>
                             </label>
@@ -1041,9 +1043,7 @@ function ArticleDirectory(context) {
                                 <label class="ui-table-pager__start">
                                     {t.reports.page_size}
                                     <select data-chart-size={""}>
-                                        <option value="20">{"20"}</option>
-                                        <option value="50">{"50"}</option>
-                                        <option value="100">{"100"}</option>
+                                        {pageSizes.map(count => <option key={count} value={count}>{count}</option>)}
                                     </select>
                                 </label>
                                 <span class="ui-table-pager__center" data-chart-page-status={""}></span>

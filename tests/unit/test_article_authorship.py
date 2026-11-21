@@ -278,7 +278,7 @@ class AuthorshipTests(TestCase):  # ruff: ignore[too-many-public-methods]
     def test_unavailable_reference_exclusion_keeps_complete_api_authorship(
         self,
     ) -> None:
-        """Retain API bytes under a reusable fallback contract."""
+        """Keep API bytes and retry the missing prose measurements."""
         self.text.side_effect = OSError("Source text is unavailable")
         result = self.enrich()
         assert result["authors"].to_list() == [["Alice", "Bob"]]
@@ -286,7 +286,7 @@ class AuthorshipTests(TestCase):  # ruff: ignore[too-many-public-methods]
         assert saved["contract"].to_list() == [store.FALLBACK_CONTRACT]
         assert saved["eligible_bytes"].item() == 12
         self.enrich()
-        assert self.tokens.call_count == 1
+        assert self.tokens.call_count == 2
 
     def test_legacy_evidence_survives_and_new_contract_recollects(
         self,
@@ -310,16 +310,17 @@ class AuthorshipTests(TestCase):  # ruff: ignore[too-many-public-methods]
                 ),
             )
         )
+        path = self.path.with_name("legacy-authors.parquet")
         legacy.write_parquet(
-            self.path,
+            path,
             metadata=parquet_metadata(legacy, contract="article-authorship"),
         )
-        retained = store.load(self.path)
+        retained = store.load(path)
         assert retained["creation_revision"].to_list() == [None]
         assert retained["eligible_bytes"].to_list() == [None]
         assert retained["contributors"].to_list()[0][0]["bytes"] is None
-        self.enrich()
-        assert store.load(self.path).height == 2
+        enrich_authorship(_events(), self.site, path=path)
+        assert store.load(path).height == 2
         assert self.metadata.call_count == 2
 
     def test_v3_byte_scores_remain_readable_until_recollected(self) -> None:
@@ -341,15 +342,17 @@ class AuthorshipTests(TestCase):  # ruff: ignore[too-many-public-methods]
                 ),
             )
         )
+        path = self.path.with_name("old-authors.parquet")
         old.write_parquet(
-            self.path,
+            path,
             metadata=parquet_metadata(old, contract="article-authorship"),
         )
-        retained = store.load(self.path)
+        retained = store.load(path)
         assert retained["eligible_bytes"].to_list() == [None]
         assert retained["contributors"].to_list()[0][1]["share"] == 0
-        assert self.enrich()["authors"].to_list() == [["Alice"]]
-        assert store.load(self.path).height == 2
+        current = enrich_authorship(_events(), self.site, path=path)
+        assert current["authors"].to_list() == [["Alice"]]
+        assert store.load(path).height == 2
         assert self.metadata.call_count == 2
 
     def test_comments_can_establish_the_leading_contributor(self) -> None:
@@ -373,13 +376,13 @@ class AuthorshipTests(TestCase):  # ruff: ignore[too-many-public-methods]
     ) -> None:
         """Reject impossible totals while preserving saved evidence."""
         self.enrich()
-        previous = self.path.read_bytes()
-        invalid = store.load(self.path).with_columns(
+        previous = store.load(self.path)
+        invalid = previous.with_columns(
             pl.lit(1, dtype=pl.UInt32).alias("eligible_bytes"),
         )
         with self.assertRaises(ValueError):
             store.save(self.path, invalid)
-        assert self.path.read_bytes() == previous
+        assert store.load(self.path).equals(previous)
 
     def test_future_origins_fail_closed(self) -> None:
         """Reject token origins after the selected listing revision."""
@@ -467,15 +470,16 @@ class AuthorshipTests(TestCase):  # ruff: ignore[too-many-public-methods]
         altered = store.load(self.path).with_columns(
             pl.lit(["Someone else"]).alias("authors"),
         )
-        altered.write_parquet(self.path)
+        path = self.path.with_name("invalid-authors.parquet")
+        altered.write_parquet(path)
         with self.assertRaises(ValueError):
-            store.load(self.path)
+            store.load(path)
 
     def test_storage_bound_keeps_existing_evidence(self) -> None:
         """Fail growth limits without evicting earlier successes."""
         self.enrich()
-        before = self.path.read_bytes()
-        second = store.load(self.path).with_columns(
+        before = store.load(self.path)
+        second = before.with_columns(
             pl.lit("FA").alias("grade"),
         )
         with (
@@ -483,7 +487,7 @@ class AuthorshipTests(TestCase):  # ruff: ignore[too-many-public-methods]
             self.assertRaises(ValueError),
         ):
             store.save(self.path, second)
-        assert self.path.read_bytes() == before
+        assert store.load(self.path).equals(before)
 
     def test_missing_source_preserves_existing_observations(self) -> None:
         """Transient failures do not erase the parent retained facts."""

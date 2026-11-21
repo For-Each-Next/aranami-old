@@ -19,9 +19,11 @@ from data.prepared import read_values, values_path
 from shared.support.files import atomic_json, encode_json, file_identity
 
 MAX_BYTES = 16 * 1024 * 1024
+AUTHOR_DETAIL_NAME = re.compile(r"author-[1-9][0-9]{0,9}\.html")
 _RESOURCE_NAME = re.compile(
     r"(?:(?:catalog|directory)-[0-9a-f]{64}\.json|"
-    r"author-quality-author-[1-9][0-9]*-[0-9a-f]{64}\.html)",
+    r"author-quality-author-[1-9][0-9]*-[0-9a-f]{64}\.html|"
+    rf"{AUTHOR_DETAIL_NAME.pattern})",
 )
 
 
@@ -110,7 +112,7 @@ def _read_bundle(path: Path) -> dict | None:
 
 
 def read_resource(path: Path, name: str) -> str | None:
-    """Read a resource with its exact saved content digest.
+    """Read a resource by its exact digest or current account identity.
 
     Returns:
         A matching catalog or detail page, or None for an expired URL.
@@ -124,6 +126,8 @@ def read_resource(path: Path, name: str) -> str | None:
     if value is None:
         return None
     content = value.get("resources", {}).get(name)
+    if AUTHOR_DETAIL_NAME.fullmatch(name):
+        return content
     if content is None:
         content = value.get("previous_resources", {}).get(name)
     if content is not None:
@@ -161,7 +165,11 @@ def save(
             value["previous_resources"] = (
                 previous.get("previous_resources", {})
                 if old_resources == resources
-                else old_resources
+                else {
+                    name: content
+                    for name, content in old_resources.items()
+                    if not AUTHOR_DETAIL_NAME.fullmatch(name)
+                }
             )
             if len(encode_json(value)) > MAX_BYTES:
                 value.pop("previous_resources")

@@ -181,6 +181,7 @@ def quality_authorship_context(
         authors.append({
             "number": index,
             "name": source["name"],
+            "user_id": source.get("user_id"),
             "url": title_url(f"User:{source['name']}"),
             "talk_url": title_url(f"User talk:{source['name']}"),
             "contributions_url": title_url(

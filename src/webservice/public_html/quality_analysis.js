@@ -309,7 +309,8 @@ export function initializeQualityAnalysis(previous = {}) {
     host.querySelector("[data-analysis-controls]").hidden = false;
     if (remote && !Object.keys(previous).length) {
         const {total} = qualityMetadata(form);
-        showPage(rows, total, total, Number(size.value));
+        const limit = Number(size.value);
+        showPage(rows.slice(0, limit), total, total, limit);
     } else render();
 }
 

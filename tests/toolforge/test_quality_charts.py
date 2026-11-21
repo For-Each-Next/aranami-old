@@ -107,7 +107,7 @@ class MatplotlibChartTests(TestCase):
             for element in statistics.values()
         )
         assert "lengths collected for 4 articles" in svg.get("aria-label")
-        assert "#9c3e32" in result["lengths"]["grade:FA"]
+        assert "#161616" in result["lengths"]["grade:FA"]
         for serialized in [
             result["grades_svg"],
             result["importance_svg"],
@@ -126,9 +126,9 @@ class MatplotlibChartTests(TestCase):
             )
 
     @staticmethod
-    def test_violin_area_uses_log_count_on_the_display_axis() -> None:
+    def test_violin_height_uses_the_largest_measured_cohort() -> None:
         """Keep observed endpoints and scale the heights only."""
-        maximum = 100_000
+        maximum = 10_000
         for count, target in ((100, 0.8), (1000, 0.9), (10_000, 1.0)):
             values = (10,) * (count // 2) + (80_000,) * (count // 2)
             positions, heights = np.asarray(
@@ -137,8 +137,8 @@ class MatplotlibChartTests(TestCase):
             assert positions[0] == 10
             assert positions[-1] == 80_000
             assert np.isclose(
-                np.trapezoid(heights, charts._scale(positions, maximum)),
-                target,
+                heights.max(),
+                0.5 * target,
             )
 
     @staticmethod

@@ -13,14 +13,11 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
-import io
 import json
-import os
 from copy import deepcopy
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from time import monotonic
 from typing import TYPE_CHECKING
 
@@ -39,11 +36,16 @@ from shared.support.assessment_encoding import (
 )
 from shared.support.cache import FileReadCache
 from shared.support.dataset_activity import dataset_activity
-from shared.support.files import staging_directory
 from shared.support.parquet import (
     parquet_metadata,
     report_parquet_activity,
     validate_parquet_metadata,
+)
+from shared.support.parquet_tables import (
+    install_table,
+    read_table,
+    remove_table,
+    stage_table,
 )
 
 if TYPE_CHECKING:
@@ -130,7 +132,7 @@ def stored_members(frame: pl.DataFrame) -> pl.DataFrame:
     """Expose requested project columns in the saved Parquet model.
 
     Returns:
-        Canonical on-disk table with taskforce membership lists.
+        Canonical observations before splitting taskforce memberships.
     """
     return (
         frame
@@ -382,7 +384,7 @@ def _digest(frame: pl.DataFrame) -> str:
     return hashlib.sha256(frame.write_json().encode()).hexdigest()
 
 
-def _manifest(payload: bytes) -> dict:
+def _manifest(metadata: dict[str, str]) -> dict:
     """Decode the bounded embedded manifest.
 
     Returns:
@@ -391,11 +393,7 @@ def _manifest(payload: bytes) -> dict:
     Raises:
         ValueError: The manifest is absent, oversized, or malformed.
     """
-    try:
-        encoded = pl.read_parquet_metadata(io.BytesIO(payload)).get("aranami")
-    except pl.exceptions.PolarsError:
-        message = "Invalid daily project Parquet metadata."
-        raise ValueError(message) from None
+    encoded = metadata.get("aranami")
     if (
         not isinstance(encoded, str)
         or len(encoded.encode()) > _MAX_METADATA_BYTES
@@ -450,21 +448,22 @@ def _decode_snapshot(
     Raises:
         ValueError: Saved metadata or rows violate their contract.
     """
-    payload = stream.read(_MAX_BYTES + 1)
-    if len(payload) > _MAX_BYTES:
-        message = "Daily project snapshot exceeds its size bound."
-        raise ValueError(message)
-    manifest = _manifest(payload)
     try:
+        encoded, embedded = read_table(
+            path,
+            stream,
+            max_rows=_MAX_ROWS,
+            max_bytes=_MAX_BYTES,
+        )
+        manifest = _manifest(embedded)
         started = dt.datetime.fromisoformat(manifest.get("started_at"))
         finished = dt.datetime.fromisoformat(manifest.get("finished_at"))
-        encoded = pl.read_parquet(io.BytesIO(payload), n_rows=_MAX_ROWS + 1)
         encoded = restore_assessment_schema(encoded, manifest.get("columns"))
     except TypeError, ValueError, pl.exceptions.PolarsError:
         message = "Invalid daily project data or observation timestamps."
         raise ValueError(message) from None
     storage = validate_parquet_metadata(
-        pl.read_parquet_metadata(io.BytesIO(payload)),
+        embedded,
         encoded,
         contract="daily-project-data",
     )
@@ -817,32 +816,20 @@ def _save(  # ruff: ignore[too-many-arguments]
         name: str(dtype) for name, dtype in encoded.schema.items()
     }
     path.parent.mkdir(parents=True, exist_ok=True)
-    with NamedTemporaryFile(
-        dir=staging_directory(path),
-        delete=False,
-    ) as stream:
-        temporary = Path(stream.name)
-    try:
-        encoded.write_parquet(
-            temporary,
-            metadata=parquet_metadata(
-                encoded,
-                contract="daily-project-data",
-                metadata={"aranami": json.dumps(manifest, ensure_ascii=False)},
-            ),
-        )
+    metadata = parquet_metadata(
+        encoded,
+        contract="daily-project-data",
+        metadata={"aranami": json.dumps(manifest, ensure_ascii=False)},
+    )
+    with stage_table(
+        path,
+        encoded,
+        metadata,
+        max_bytes=_MAX_BYTES,
+    ) as temporary:
         _read(temporary, site_name, project, boundary_date)
-        with temporary.open("rb") as stream:
-            os.fsync(stream.fileno())
-        temporary.replace(path)
-        descriptor = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
-        try:
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
-        report_parquet_activity(path, "source_written")
-    finally:
-        temporary.unlink(missing_ok=True)
+        install_table(temporary, path)
+    report_parquet_activity(path, "source_written")
     saved = _read(path, site_name, project, boundary_date)
     if saved is None:
         message = "Committed daily project snapshot is missing."
@@ -864,7 +851,7 @@ def _prune_source_lists(path: Path, site_name: str, project: str) -> None:
         reverse=True,
     )
     for item in candidates[2:]:
-        item.unlink()
+        remove_table(item)
 
 
 def ensure_snapshot(  # ruff: ignore[too-many-arguments]

@@ -41,6 +41,7 @@ their saved facts; delayed drafts can continue improving.
 | Project snapshot | Daily at 00:00 | Commits the durable completed-day project snapshot |
 | Data fetch | Hourly at :02 | Recovers today's snapshot if needed, reads hourly observations and commits structured inputs |
 | Data analysis and report updates | Hourly at :10 | Waits for the fetch result and uses saved inputs to calculate, publish wiki reports and prepare website data |
+| Pageviews | Hourly at :37 | Collects and publishes eligible traffic reports |
 | Article Statistics backfill | On demand | Runs successive batches until the pending cohort has been checked |
 | Data completeness check | On demand or Sundays at 03:40 | Audits saved snapshots, report freshness and article coverage |
 

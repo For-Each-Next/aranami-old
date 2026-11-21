@@ -17,7 +17,12 @@ import regex
 from data.articles import quality_pages
 from data.articles.quality_selection import quartiles
 from webservice.presentation import Interface, display_title
-from webservice.quality_analysis import catalog_article, contributor_names
+from webservice.quality_analysis import (
+    ARTICLE_PAGE_SIZE,
+    ARTICLE_PAGE_SIZES,
+    catalog_article,
+    contributor_names,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -121,7 +126,7 @@ def _decode(encoded: str) -> dict:
         raise ValueError(message)
     if (
         not 1 <= value.get("page", 1) <= _MAX_PAGE
-        or value.get("size", 20) not in {20, 50, 100}
+        or value.get("size", ARTICLE_PAGE_SIZE) not in ARTICLE_PAGE_SIZES
         or not 1 <= value.get("column", 4) < len(_COLUMNS)
     ):
         message = "Invalid article directory controls."
@@ -386,7 +391,7 @@ def _chart_articles(rows: list[dict], query: dict, saved: dict) -> list[dict]:
 
 def _page(rows: list, query: dict) -> dict:
     """Return one valid result page and the total row count."""
-    size = query.get("size", 20)
+    size = query.get("size", ARTICLE_PAGE_SIZE)
     page = min(query.get("page", 1), max(1, (len(rows) + size - 1) // size))
     start = (page - 1) * size
     return {

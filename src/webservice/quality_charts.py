@@ -260,11 +260,11 @@ def _pie(rows: tuple, dimension: str, caption: str) -> str:
     )
 
 
-def _violin_density(values: tuple, maximum: float) -> tuple:
-    """Scale the bounded density to its logarithmic count area.
+def _violin_density(values: tuple, maximum_measured: int) -> tuple:
+    """Scale bounded density by count relative to the largest group.
 
     Returns:
-        Observed lengths paired with heights on the displayed axis.
+        Observed lengths paired with heights on the common axis.
     """
     if not values or values[0] == values[-1]:
         return ()
@@ -274,8 +274,8 @@ def _violin_density(values: tuple, maximum: float) -> tuple:
     density = np.exp(-0.5 * ((grid[:, None] - samples) / bandwidth) ** 2).mean(
         axis=1,
     )
-    target = 1 + math.log10(len(values) / 10_000) / 10
-    density *= target / np.trapezoid(density, _scale(grid, maximum))
+    height = 0.5 * (1 + math.log10(len(values) / maximum_measured) / 10)
+    density *= height / density.max()
     return tuple(zip(grid, density, strict=True))
 
 
@@ -360,7 +360,7 @@ def _violin(  # ruff: ignore[too-many-arguments,too-many-locals] - Explicit char
         ),
     )
     axes.set_xlim(0, maximum)
-    axes.set_ylim(-0.65, 0.65)
+    axes.set_ylim(-0.55, 0.55)
     axes.axhline(0, color="#dce6e7", linewidth=0.7)
     annotations = {
         "figure_1": {
@@ -394,9 +394,9 @@ def _violin(  # ruff: ignore[too-many-arguments,too-many-locals] - Explicit char
                 [value],
                 [0],
                 marker="x",
-                color="#9c3e32",
-                markersize=7,
-                markeredgewidth=1.4,
+                color="#161616",
+                markersize=4,
+                markeredgewidth=0.8,
                 linestyle="none",
             )[0]
             attributes = {
@@ -405,33 +405,24 @@ def _violin(  # ruff: ignore[too-many-arguments,too-many-locals] - Explicit char
                     float(_scale(np.asarray(value), maximum)) * 1000,
                 ),
             }
-        elif kind in {"p25", "p75"}:
-            artist = axes.plot(
-                [value],
-                [0],
-                marker="o",
-                color="#163c41",
-                markersize=3.5,
-                linestyle="none",
-            )[0]
-            attributes = {
-                "class": "analysis-violin-quartile",
-                "data-percentile": kind[1:],
-            }
         else:
+            mark_class, half_height, width = {
+                "p25": ("quartile", 0.08, 0.7),
+                "p50": ("median", 0.14, 0.7),
+                "p75": ("quartile", 0.08, 0.7),
+                "length": ("single", 0.2, 1.2),
+            }.get(kind, ("extreme", 0.2, 1.2))
             artist = axes.vlines(
                 value,
-                -0.3,
-                0.3,
-                colors="#163c41",
-                linewidth=1.2,
-            )
-            mark_class = {"length": "single", "p50": "median"}.get(
-                kind,
-                "extreme",
+                -half_height,
+                half_height,
+                colors="#161616",
+                linewidth=width,
             )
             attributes = {"class": f"analysis-violin-{mark_class}"}
-            if mark_class == "extreme":
+            if mark_class == "quartile":
+                attributes["data-percentile"] = kind[1:]
+            elif mark_class == "extreme":
                 attributes["data-extreme"] = kind
         artist.set_gid(identifier)
         annotations[identifier] = {
@@ -544,8 +535,8 @@ def _year_bounds(articles: list[dict], data: dict) -> tuple[int, int]:
     return first, last
 
 
-def _length_profiles(articles: list, options: dict, maximum: float) -> dict:
-    """Use one vertical display scale for the area-weighted shapes.
+def _length_profiles(articles: list, options: dict) -> dict:
+    """Use one measured-count reference across both distributions.
 
     Returns:
         Measured values and scaled density for every assessment group.
@@ -562,22 +553,9 @@ def _length_profiles(articles: list, options: dict, maximum: float) -> dict:
         for dimension, choices in options.items()
         for code, _, _ in choices
     }
-    densities = {
-        key: _violin_density(values, maximum)
-        for key, values in observed.items()
-    }
-    peak = max(
-        (height for points in densities.values() for _, height in points),
-        default=1,
-    )
+    maximum_measured = max(map(len, observed.values()), default=0)
     return {
-        key: (
-            values,
-            tuple(
-                (length, 0.5 * height / peak)
-                for length, height in densities[key]
-            ),
-        )
+        key: (values, _violin_density(values, maximum_measured))
         for key, values in observed.items()
     }
 
@@ -638,7 +616,7 @@ def render_charts(data: dict, interface: Interface) -> dict:
         interface.text(f"quality_analysis.violin_{kind}")
         for kind in _VIOLIN_LABELS
     )
-    profiles = _length_profiles(articles, options, maximum)
+    profiles = _length_profiles(articles, options)
     result = {"lengths": {}}
     with (
         _LOCK,

@@ -20,6 +20,7 @@ from shared.config import PROJECT_DATA_TASKFORCES
 from shared.sources.quarry import freshness
 from shared.support.activity import activity_observer
 from shared.support.assessment_encoding import decode_assessments
+from shared.support.parquet_tables import read_table
 from tasks.project_data import capture
 
 _NOW = dt.datetime(2026, 11, 14, tzinfo=dt.UTC)
@@ -113,8 +114,11 @@ class TestDataLayout(TestCase):
             )
             assert bundle.path == root / "data/archive/20261113.parquet"
             physical = pl.read_parquet(bundle.path)
-            assert physical["pa_taskforces"].to_list() == [["Games/A"], []]
-            assert isinstance(physical.schema["pa_taskforces"].inner, pl.Enum)
+            assert physical["pa_taskforces__length"].to_list() == [1, 0]
+            with bundle.path.open("rb") as stream:
+                logical, _ = read_table(bundle.path, stream)
+            assert logical["pa_taskforces"].to_list() == [["Games/A"], []]
+            assert isinstance(logical.schema["pa_taskforces"].inner, pl.Enum)
             assert physical.schema["page_is_redirect"] == pl.Boolean
             assert physical["page_rev_latest"].to_list() == [10, 30]
             assert physical["talk_page_latest"].to_list() == [20, None]
@@ -160,9 +164,10 @@ class TestDataLayout(TestCase):
                 observed_at=_NOW,
                 load_members=lambda _: source,
             )
+            with current.path.open("rb") as stream:
+                logical, _ = read_table(current.path, stream)
             encoded = (
-                pl
-                .read_parquet(current.path)
+                logical
                 .drop(
                     "pa_taskforces",
                     "page_rev_timestamp",

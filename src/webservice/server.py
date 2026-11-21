@@ -1532,13 +1532,14 @@ class _PublicViews:
         """Deliver a saved catalog or standalone author detail.
 
         Returns:
-            Immutable bytes, a conditional response, or a missing URL.
+            Saved bytes, a conditional response, or a missing URL.
         """
         match = re.fullmatch(
             r"/quality-analysis/resources/(en|zh-hans|zh-hant)/"
             r"(0|all)/(current|listed)/"
             r"((?:catalog-[0-9a-f]{64}\.json|"
-            r"author-quality-author-[1-9][0-9]*-[0-9a-f]{64}\.html))",
+            r"author-quality-author-[1-9][0-9]*-[0-9a-f]{64}\.html|"
+            rf"{quality_pages.AUTHOR_DETAIL_NAME.pattern}))",
             request.path,
         )
         if match is None or request.scope.get("query_string"):
@@ -1557,7 +1558,9 @@ class _PublicViews:
         if asset is None:
             return _error(HTTPStatus.NOT_FOUND)
         headers = {
-            "Cache-Control": "public, max-age=31536000, immutable",
+            "Cache-Control": "public, max-age=0, must-revalidate"
+            if quality_pages.AUTHOR_DETAIL_NAME.fullmatch(name)
+            else "public, max-age=31536000, immutable",
             "Content-Language": locale,
             "ETag": asset.etag,
             "Vary": "Accept-Encoding",

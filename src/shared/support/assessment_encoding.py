@@ -124,7 +124,6 @@ def restore_assessment_schema(
             continue
         if (
             dtype != pl.String
-            or _categories(name) is None
             or not isinstance(declared, str)
             or not declared.startswith("Enum(categories=")
         ):

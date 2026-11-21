@@ -298,33 +298,24 @@ function densityAt(points, position) {
     return low + fraction * (high - low);
 }
 
-/** Clip to measured bounds and scale the area on the displayed length axis. */
-export function violinAreaDensity({density, minimum, maximum, measured}, scaleMaximum) {
-    if (!density.length || !measured || minimum == null || maximum <= minimum) return [];
+/** Clip to measured bounds and normalize each shape to unit peak height. */
+export function violinHeightDensity({density, minimum, maximum}) {
+    if (!density.length || minimum == null || maximum <= minimum) return [];
     const support = [
         [minimum, densityAt(density, minimum)],
         ...density.filter(([length]) => length > minimum && length < maximum),
         [maximum, densityAt(density, maximum)],
     ];
-    const x = length => proseLengthPosition(length, scaleMaximum) / 1000;
-    const integral = support.slice(1).reduce((area, [value, height], index) => {
-        const [previous, previousHeight] = support[index];
-        return area + (height + previousHeight) * (x(value) - x(previous)) / 2;
-    }, 0);
-    const area = 1 + Math.log10(measured / 10000) / 10;
-    return integral > 0 ? support.map(([value, height]) => [value, height * area / integral]) : [];
+    const peak = Math.max(...support.map(([, height]) => height));
+    return peak > 0 ? support.map(([value, height]) => [value, height / peak]) : [];
 }
 
-/** Use one pixel-per-density scale across both breakdowns. */
-function violinScale(summaries) {
-    let peak = 0;
-    for (const {density} of summaries) {
-        for (const [, height] of density) peak = Math.max(peak, height);
-    }
-    return peak ? 18 / peak : 0;
+/** Give the largest measured group the full height, losing 10% per decade. */
+export function violinHeight(measured, maximumMeasured) {
+    return measured > 0 ? 1 + Math.log10(measured / maximumMeasured) / 10 : 0;
 }
 
-/** Draw symmetric curves with flat end caps and exact trapezoidal areas. */
+/** Draw symmetric curves with flat end caps inside the observed range. */
 export function violinDensityPath(density, maximum, scale = 18) {
     const points = density.map(([value, height]) => [10 + proseLengthPosition(value, maximum), scale * height]);
     if (points.length < 2) return "";
@@ -347,7 +338,7 @@ export function violinDensityPath(density, maximum, scale = 18) {
 }
 
 /** Draw measured lengths and show one bar for a single distinct value. */
-function violinFigure(summary, group, option, labels, maximum, scale) {
+function violinFigure(summary, group, option, labels, maximum, maximumMeasured) {
     const description = violinSummary(summary, labels.violin_summary, labels);
     const caption = option.label + " · " + description;
     const svg = svgNode("svg", {
@@ -358,7 +349,8 @@ function violinFigure(summary, group, option, labels, maximum, scale) {
     const plot = svgNode("g");
     const x = value => 10 + proseLengthPosition(value, maximum);
     plot.append(svgNode("line", {x1: 10, x2: 1010, y1: 22, y2: 22, class: "analysis-violin-track"}));
-    const outline = violinDensityPath(summary.density, maximum, scale);
+    const height = 18 * violinHeight(summary.measured, maximumMeasured);
+    const outline = violinDensityPath(summary.density, maximum, height);
     if (outline) {
         plot.append(svgNode("path", {
             d: outline,
@@ -383,18 +375,18 @@ function violinFigure(summary, group, option, labels, maximum, scale) {
                 "data-mean-x": proseLengthPosition(value, maximum),
             });
             for (const direction of [-1, 1]) {
-                mark.append(svgNode("line", {x1: position - 14, x2: position + 14, y1: 22 - 6 * direction, y2: 22 + 6 * direction}));
+                mark.append(svgNode("line", {x1: position - 8, x2: position + 8, y1: 22 - 3 * direction, y2: 22 + 3 * direction}));
             }
         } else if (kind === "p25" || kind === "p75") {
             mark = svgNode("line", {
                 ...attributes, class: "analysis-violin-quartile", "data-percentile": kind.slice(1),
-                x1: position, x2: position, y1: 22, y2: 22,
+                x1: position, x2: position, y1: 19, y2: 25,
             });
         } else {
             mark = svgNode("line", {
                 ...attributes, class: kind === "length" ? "analysis-violin-single"
                     : kind === "p50" ? "analysis-violin-median" : "analysis-violin-extreme",
-                x1: position, x2: position, y1: 15, y2: 29,
+                x1: position, x2: position, y1: kind === "p50" ? 17 : 15, y2: kind === "p50" ? 27 : 29,
                 ...(kind === "minimum" || kind === "maximum" ? {"data-extreme": kind} : {}),
             });
         }
@@ -451,7 +443,7 @@ function annualFigure(years, grades, caption) {
 }
 
 /** Read exact saved marks and compute the display density. */
-function savedViolin(saved, scaleMaximum) {
+function savedViolin(saved) {
     const summary = {
         pages: saved.pages, measured: saved.measured,
         minimum: saved.extrema.find(mark => mark.kind === "minimum")?.value ?? null,
@@ -461,7 +453,7 @@ function savedViolin(saved, scaleMaximum) {
             saved.quartiles.find(mark => mark.percentile === percentile)?.value ?? null),
         density: (saved.density || []).map(({position, density}) => [position, density]),
     };
-    return {...summary, density: violinAreaDensity(summary, scaleMaximum)};
+    return {...summary, density: violinHeightDensity(summary)};
 }
 
 /** Draw the default figures directly from the prepared overview. */
@@ -472,8 +464,8 @@ export function initializeQualityFigures(form) {
     const maximum = analysis.length_scale_maximum;
     const summaries = new Map([...analysis.grades, ...analysis.importance_totals]
         .filter(row => row.length)
-        .map(row => [row.length, savedViolin(row.length, maximum)]));
-    const scale = violinScale(summaries.values());
+        .map(row => [row.length, savedViolin(row.length)]));
+    const maximumMeasured = Math.max(0, ...Array.from(summaries.values(), summary => summary.measured));
     for (const [kind, group, rows] of [
         ["grades", "grade", analysis.grades],
         ["importance", "importance", analysis.importance_totals],
@@ -493,7 +485,7 @@ export function initializeQualityFigures(form) {
             if (!saved) continue;
             const summary = summaries.get(saved);
             const option = {value, label: saved.label, color: saved.color};
-            cell.replaceChildren(violinFigure(summary, group, option, labels, maximum, scale));
+            cell.replaceChildren(violinFigure(summary, group, option, labels, maximum, maximumMeasured));
         }
     }
     const host = document.querySelector('[data-quality-chart="years"]');
@@ -805,12 +797,12 @@ export function initializeQualityMatrix() {
                 quartiles: [null, null], quantiles: [null, null, null], density: [],
                 ...lengths[option.value],
             } : combineCells(cells);
-            entries.push({option, summary: {...summary, density: violinAreaDensity(summary, maximum)}});
+            entries.push({option, summary: {...summary, density: violinHeightDensity(summary)}});
         }
         return entries;
     }
 
-    function renderDistribution(host, group, entries, total, scale) {
+    function renderDistribution(host, group, entries, total, maximumMeasured) {
         if (!host) return;
         const body = host.closest("figure").querySelector("tbody");
         const tableRows = entries.map(({option, summary}) => {
@@ -825,7 +817,7 @@ export function initializeQualityMatrix() {
             countCell.append(count);
             const length = node("td", undefined, "analysis-mini-cell");
             length.dataset.qualityLength = key(group, option.value);
-            length.append(violinFigure(summary, group, option, data.labels, maximum, scale));
+            length.append(violinFigure(summary, group, option, data.labels, maximum, maximumMeasured));
             row.append(heading, countCell, length);
             return row;
         });
@@ -878,9 +870,9 @@ export function initializeQualityMatrix() {
         const total = selected.reduce((sum, cell) => sum + cell.pages, 0);
         const gradeEntries = distributionEntries("grade", distributionGrades, selected, summary?.lengths.grade);
         const importanceEntries = distributionEntries("importance", data.importance, selected, summary?.lengths.importance);
-        const scale = violinScale([...gradeEntries, ...importanceEntries].map(entry => entry.summary));
-        renderDistribution(gradeHost, "grade", gradeEntries, total, scale);
-        renderDistribution(importanceHost, "importance", importanceEntries, total, scale);
+        const maximumMeasured = Math.max(0, ...[...gradeEntries, ...importanceEntries].map(({summary}) => summary.measured));
+        renderDistribution(gradeHost, "grade", gradeEntries, total, maximumMeasured);
+        renderDistribution(importanceHost, "importance", importanceEntries, total, maximumMeasured);
         renderYears(selected, grades.filter(grade => selection.grades.has(grade.value)), selection.firstYear, selection.lastYear);
         const undated = summary?.undated ?? data.cells.reduce((count, cell) =>
             count + (cell.year === null && selection.chosen.has(key(cell.grade, cell.importance)) ? cell.pages : 0), 0);

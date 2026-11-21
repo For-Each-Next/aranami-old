@@ -23,9 +23,10 @@ from data.paths import read_storage_path, storage_key
 from data.project_data import snapshot_path
 from shared.support.assessment_encoding import restore_assessment_schema
 from shared.support.parquet import validate_parquet_metadata
+from shared.support.parquet_tables import RELATIONS
 
-PAGE_SIZE = 50
-PAGE_SIZES = (20, PAGE_SIZE, 100)
+PAGE_SIZE = 10
+PAGE_SIZES = (PAGE_SIZE, 20, 50, 100)
 _MAX_FILE_BYTES = 1024 * 1024 * 1024
 _MAX_PAGE_BYTES = 8 * 1024 * 1024
 _MAX_COLUMNS = 256
@@ -65,7 +66,13 @@ def preview_path(filename: str) -> PurePosixPath:
         or not (
             path.parts[0] == "cache"
             or path.parts[:2]
-            in {("data", "archive"), ("data", "raw"), ("data", "parsed")}
+            in {
+                ("data", "archive"),
+                ("data", "jobs"),
+                ("data", "parsed"),
+                ("data", "raw"),
+                ("data", "shared"),
+            }
         )
     ):
         message = "Choose one canonical public Parquet file."
@@ -302,7 +309,7 @@ def read_preview(  # ruff: ignore[too-many-locals]
         page = min(page, page_count)
         frame = scan.slice((page - 1) * page_size, page_size).collect()
         frame = _restore_columns(frame, metadata)
-        if manifest is not None:
+        if manifest is not None and RELATIONS not in metadata:
             frame = restore_assessment_schema(frame, manifest["columns"])
             if manifest.get("rows") != row_count or manifest["columns"] != {
                 name: str(dtype) for name, dtype in frame.schema.items()

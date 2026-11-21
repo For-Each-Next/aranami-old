@@ -8,6 +8,7 @@ preset; HTTP never prepares or writes resources.
 from __future__ import annotations
 
 from collections import OrderedDict
+from hashlib import sha256
 from threading import Lock
 from typing import TYPE_CHECKING
 
@@ -56,7 +57,9 @@ class QualityResourceCache:
                 identity,
                 raw,
                 compressed,
-                name.rsplit("-", 1)[1].split(".", 1)[0],
+                sha256(raw).hexdigest()
+                if quality_pages.AUTHOR_DETAIL_NAME.fullmatch(name)
+                else name.rsplit("-", 1)[1].split(".", 1)[0],
                 "Content-Encoding" in headers,
             )
             if entry.size <= _MAX_BYTES:

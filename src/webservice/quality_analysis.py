@@ -9,9 +9,11 @@ presentation values without acquiring sources or recalculating metrics.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from ipaddress import ip_address
 from math import floor, log, log10
 from operator import itemgetter
+from re import fullmatch
 from urllib.parse import quote
 
 from data.articles.authorship_store import (
@@ -31,6 +33,8 @@ from webservice.presentation import (
 )
 from webservice.quality_authorship import grade_label, review_url
 
+ARTICLE_PAGE_SIZE = 10
+ARTICLE_PAGE_SIZES = (ARTICLE_PAGE_SIZE, 20, 50, 100)
 _PROFILE = assessment_profile("zhwiki", "电子游戏")
 _GRADES = tuple(
     label.code
@@ -571,6 +575,9 @@ def _editor(source: dict, interface: Interface) -> dict:
         or interface.text("quality_analysis.unknown_editor", editor=identity),
         "url": url,
         "anonymous": identity.startswith("0|"),
+        "user_id": identity
+        if fullmatch(r"[1-9][0-9]{0,9}", identity)
+        else None,
         "share": source["share"],
         "character_floor": character_floor,
         "share_label": f"{source['share'] * 100:.1f}%",
@@ -582,14 +589,28 @@ def _editor(source: dict, interface: Interface) -> dict:
     }
 
 
-def _main_contributors(proof: dict, interface: Interface) -> list[dict]:
+def _main_editors(proof: dict) -> list[dict]:
     """Require a share above 33% and 500 attributed characters.
+
+    Returns:
+        Saved editor observations that meet both thresholds.
+    """
+    if not proof["available"]:
+        return []
+    return [
+        editor
+        for editor in proof["editors"]
+        if editor["share"] > MAIN_SHARE_THRESHOLD
+        and editor["character_floor"] >= MAIN_MIN_CHARACTERS
+    ]
+
+
+def _main_contributors(proof: dict, interface: Interface) -> list[dict]:
+    """Describe the authors of each article.
 
     Returns:
         Raw filter identities and separate display labels and links.
     """
-    if not proof["available"]:
-        return []
     return [
         {
             "name": editor["name"],
@@ -598,9 +619,7 @@ def _main_contributors(proof: dict, interface: Interface) -> list[dict]:
             else editor["name"],
             "url": None if editor["anonymous"] else editor["url"],
         }
-        for editor in proof["editors"]
-        if editor["share"] > MAIN_SHARE_THRESHOLD
-        and editor["character_floor"] >= MAIN_MIN_CHARACTERS
+        for editor in _main_editors(proof)
     ]
 
 
@@ -672,17 +691,20 @@ def main_author_directory(
         Author records containing only articles meeting both thresholds.
     """
     interface = Interface("en")
-    qualified = {
-        row["page_id"]: {
-            author["name"]
-            for author in _main_contributors(
-                _authorship(row, interface),
-                interface,
-            )
-            if author["url"] is not None
-        }
-        for row in articles
-    }
+    qualified = {}
+    identities = defaultdict(set)
+    names = defaultdict(set)
+    for row in articles:
+        editors = [
+            author
+            for author in _main_editors(_authorship(row, interface))
+            if author["url"] is not None and not author["anonymous"]
+        ]
+        qualified[row["page_id"]] = {author["name"] for author in editors}
+        for author in editors:
+            if user_id := author["user_id"]:
+                identities[author["name"]].add(user_id)
+                names[user_id].add(author["name"])
     output = []
     for author in authors:
         selected = [
@@ -698,8 +720,11 @@ def main_author_directory(
             if author["name"] in qualified.get(article.get("page_id"), set())
         ]
         if selected:
+            ids = identities[author["name"]]
+            user_id = next(iter(ids)) if len(ids) == 1 else None
             output.append({
                 **author,
+                "user_id": user_id if len(names[user_id]) == 1 else None,
                 "articles": selected,
                 "credit": len(selected),
                 "grades": {
@@ -840,14 +865,17 @@ def quality_analysis_context(
                 reverse=True,
             )
             positions = {
-                row["page_id"]: index for index, row in enumerate(ordered[:20])
+                row["page_id"]: index
+                for index, row in enumerate(ordered[:ARTICLE_PAGE_SIZE])
             }
             shown = sorted(
                 (row for row in shown if row["page_id"] in positions),
                 key=lambda row: positions[row["page_id"]],
             )
         else:
-            default_ids = {row["page_id"] for row in ordered[:20]}
+            default_ids = {
+                row["page_id"] for row in ordered[:ARTICLE_PAGE_SIZE]
+            }
             shown = [row for row in shown if row["page_id"] in default_ids]
     if selection:
         codes = [
@@ -949,6 +977,7 @@ def quality_analysis_context(
     return {
         "quality_analysis": {
             "available": bool(data.get("available")),
+            "page_sizes": ARTICLE_PAGE_SIZES,
             "matrix": matrix,
             "grade_groups": _matrix_grade_groups(matrix["grades"], interface)
             if matrix

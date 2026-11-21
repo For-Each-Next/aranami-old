@@ -18,9 +18,9 @@ import os
 import re
 from collections import OrderedDict
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from shutil import rmtree
-from tempfile import NamedTemporaryFile
 from threading import Lock
 from types import MappingProxyType
 from typing import TYPE_CHECKING
@@ -31,11 +31,19 @@ from shared.support.assessment_encoding import (
     restore_assessment_schema,
 )
 from shared.support.dataset_activity import dataset_activity
-from shared.support.files import open_regular, stat_identity
+from shared.support.files import stat_identity
 from shared.support.parquet import (
     parquet_metadata,
     report_parquet_activity,
     validate_parquet_metadata,
+)
+from shared.support.parquet_tables import (
+    MAX_BYTES as MAX_TABLE_BYTES,
+    install_table,
+    open_table,
+    read_table,
+    remove_table,
+    stage_table,
 )
 
 if TYPE_CHECKING:
@@ -84,7 +92,7 @@ class FileReadCache[T]:
             The successfully decoded value from the opened file.
         """
         key = path.absolute(), variant
-        with self._lock, open_regular(path, bound) as stream:
+        with self._lock, open_table(path, bound) as stream:
             identity = stat_identity(os.fstat(stream.fileno()))
             previous = self._entries.pop(key, None)
             if previous is not None:
@@ -304,12 +312,12 @@ class ParquetCache:
                     self.max_bytes,
                     tuple(self.schema.items()),
                 ),
-                self._decode,
+                partial(self._decode, path=path),
             ).clone()
-        with open_regular(path, self.max_bytes) as stream:
-            return self._decode(stream)
+        with open_table(path, self.max_bytes) as stream:
+            return self._decode(stream, path=path)
 
-    def _decode(self, stream: BinaryIO) -> pl.DataFrame:
+    def _decode(self, stream: BinaryIO, *, path: Path) -> pl.DataFrame:
         """Validate and decode metadata and records from one open file.
 
         Returns:
@@ -318,7 +326,12 @@ class ParquetCache:
         Raises:
             ValueError: The stored contract does not match this reader.
         """
-        metadata = pl.read_parquet_metadata(stream)
+        frame, metadata = read_table(
+            path,
+            stream,
+            max_rows=self.max_rows,
+            max_bytes=self.max_bytes,
+        )
         identity = json.loads(metadata.get(_METADATA_KEY, "null"))
         if (
             not isinstance(identity, dict)
@@ -327,8 +340,6 @@ class ParquetCache:
         ):
             message = "Cache metadata does not match its contract."
             raise ValueError(message)
-        stream.seek(0)
-        frame = pl.read_parquet(stream, n_rows=self.max_rows + 1)
         declarations = json.loads(metadata.get("aranami.storage", "{}"))
         if declarations.get("columns"):
             frame = restore_assessment_schema(frame, declarations["columns"])
@@ -420,7 +431,7 @@ class ParquetCache:
             for previous in directory.iterdir():
                 if _TIMESTAMP.fullmatch(previous.name) and previous < path:
                     try:
-                        previous.unlink(missing_ok=True)
+                        remove_table(previous)
                     except OSError:
                         _LOGGER.warning(
                             "Could not remove old cache: %s",
@@ -465,34 +476,17 @@ def write_parquet_cache(  # ruff: ignore[too-many-arguments]
     if observe:
         dataset_activity("begin", path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with NamedTemporaryFile(
-        dir=path.parent,
-        prefix=f".{path.stem}-",
-        suffix=".tmp",
-        delete=False,
-    ) as stream:
-        temporary = Path(stream.name)
-    try:
-        frame.write_parquet(
-            temporary,
-            metadata=parquet_metadata(
-                frame,
-                contract=contract,
-                metadata=metadata,
-            ),
-        )
-        if max_bytes is not None and temporary.stat().st_size > max_bytes:
-            message = "The compressed cache exceeds its size limit."
-            raise ValueError(message)
-        temporary.chmod(mode)
-        temporary.replace(path)
-        if observe:
-            report_parquet_activity(path, "source_written")
-    finally:
-        try:
-            temporary.unlink(missing_ok=True)
-        except OSError:
-            _LOGGER.warning("Could not remove temporary cache: %s", temporary)
+    with stage_table(
+        path,
+        frame,
+        parquet_metadata(frame, contract=contract, metadata=metadata),
+        max_bytes=MAX_TABLE_BYTES if max_bytes is None else max_bytes,
+        mode=mode,
+        staging=path.parent,
+    ) as temporary:
+        install_table(temporary, path)
+    if observe:
+        report_parquet_activity(path, "source_written")
 
 
 def clear_runtime_cache() -> None:

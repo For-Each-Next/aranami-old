@@ -26,6 +26,7 @@ PROJECT_SNAPSHOT = "project-data"
 PROJECT_HOURLY = "project-hourly"
 DATA_FETCH = "data-fetch"
 REPORT_UPDATE = "report-update"
+PAGEVIEWS = "pageviews"
 ARTICLE_STATISTICS = "article-statistics"
 MAINTENANCE = "data-maintenance"
 WEBSITE_FETCH = "website-fetch"
@@ -38,19 +39,20 @@ REPORT_WORKLOADS = (
     "assessment_lists",
     "enwp_key_articles",
     "new_pages",
-    "pageviews",
     "pexbot",
 )
 ARTICLE_WORKLOADS = ("quality-analysis", "quality-authorship")
 WORKLOAD_SERVICES = {
     PROJECT_SNAPSHOT: PROJECT_SNAPSHOT,
     PROJECT_HOURLY: DATA_FETCH,
+    PAGEVIEWS: PAGEVIEWS,
     **dict.fromkeys(FETCH_WORKLOADS, DATA_FETCH),
     **dict.fromkeys(ARTICLE_WORKLOADS, DATA_FETCH),
     **dict.fromkeys(
         (f"fetch-{name}" for name in (*TASK_DEFINITIONS, "newsletter-daily")),
         DATA_FETCH,
     ),
+    f"fetch-{PAGEVIEWS}": PAGEVIEWS,
     **dict.fromkeys(
         (*REPORT_WORKLOADS, "article-statistics-output"),
         REPORT_UPDATE,
@@ -75,14 +77,14 @@ class JobAllocation:
 
     Attributes:
         minute: UTC launch minute after the nominal source boundary.
-        minutes: Maximum wall time, including waits and retries.
+        minutes: Maximum wall time in minutes, or none for an open run.
         memory: Container memory limit in MiB.
         cpu: Container CPU limit in millicores.
         hour: Cron hour, or a wildcard for hourly runs.
     """
 
     minute: int
-    minutes: int
+    minutes: int | None
     memory: int
     cpu: int
     hour: str = "*"
@@ -94,9 +96,10 @@ SERVICES = {
     PROJECT_SNAPSHOT: JobAllocation(0, 8, 1280, 500, hour="0"),
     DATA_FETCH: JobAllocation(2, 33, 1280, 1000),
     REPORT_UPDATE: JobAllocation(10, 48, 1536, 1000),
+    PAGEVIEWS: JobAllocation(37, None, 2048, 2000),
 }
 ON_DEMAND = {
-    ARTICLE_STATISTICS: {"mem": "1536Mi", "cpu": 0.75, "retry": 2},
+    ARTICLE_STATISTICS: {"mem": "1280Mi", "cpu": 0.75, "retry": 2},
     MAINTENANCE: {"mem": "512Mi", "cpu": 0.25, "retry": 0},
 }
 MAINTENANCE_CRON = "40 3 * * 0"
@@ -180,7 +183,11 @@ def job_definitions(
             {
                 **launcher(name),
                 "schedule": f"{allocation.minute} {allocation.hour} * * *",
-                "timeout": allocation.minutes * 60,
+                **(
+                    {"timeout": allocation.minutes * 60}
+                    if allocation.minutes is not None
+                    else {}
+                ),
                 "retry": 1,
                 "mem": f"{allocation.memory}Mi",
                 "cpu": allocation.cpu / 1000,

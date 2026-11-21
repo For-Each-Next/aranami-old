@@ -21,7 +21,7 @@ function attachPager(table, labels) {
     const caption = table.caption?.textContent.trim() || table.parentElement.getAttribute("aria-label");
     nav.setAttribute("aria-label", caption || labels.size);
     const size = document.createElement("select");
-    for (const count of [20, 50, 100]) {
+    for (const count of [10, 20, 50, 100]) {
         const option = document.createElement("option");
         option.value = String(count);
         option.textContent = String(count);

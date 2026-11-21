@@ -23,6 +23,7 @@ from data import parquet_preview, project_data
 from data.caching.project_observations import link_daily_archive
 from data.paths import storage_key
 from shared.support.cache import ParquetCache
+from shared.support.parquet_tables import read_table
 from webservice.datasets import DatasetSelectionError, read_dataset
 from webservice.pages import render_dataset
 from webservice.server import create_app
@@ -164,7 +165,7 @@ class TestDatasetViewer(TestCase):
     def test_data_help_and_preview_preserve_locale_and_original_facts(
         self,
     ) -> None:
-        """Show original metadata and fifty rows without acquisition."""
+        """Show original metadata and ten rows without acquisition."""
         original = self.bundle.path.read_bytes()
         for locale in ("en", "zh-hans", "zh-hant"):
             with (
@@ -184,8 +185,8 @@ class TestDatasetViewer(TestCase):
             assert "20261102.parquet" in response.text
             assert "2026-11-03 00:01:00" in response.text
             assert "Member 00" in response.text
-            assert "Member 49" in response.text
-            assert "Member 50" not in response.text
+            assert "Member 09" in response.text
+            assert "Member 10" not in response.text
             note = response.text.split('id="dataset-preview"', 1)[1].split(
                 "</p>",
                 1,
@@ -208,8 +209,8 @@ class TestDatasetViewer(TestCase):
 
     def test_legacy_file_write_time_remains_unknown(self) -> None:
         """Keep absent file-write metadata explicitly unknown."""
-        frame = pl.read_parquet(self.bundle.path)
-        metadata = pl.read_parquet_metadata(self.bundle.path)
+        with self.bundle.path.open("rb") as stream:
+            frame, metadata = read_table(self.bundle.path, stream)
         frame.write_parquet(
             self.bundle.path,
             metadata={"aranami": metadata["aranami"]},
@@ -273,8 +274,8 @@ class TestDatasetViewer(TestCase):
         """Retain exact storage schema, nulls and source generation."""
         value = read_dataset(self.filename, self.runtime)
         assert value["row_count"] == _ROWS
-        assert len(value["rows"]) == 50
-        assert [row["page_id"] for row in value["rows"]] == list(range(1, 51))
+        assert len(value["rows"]) == 10
+        assert [row["page_id"] for row in value["rows"]] == list(range(1, 11))
         assert value["rows"][0]["page_length"] == 0
         assert value["rows"][0]["talk_page_latest"] is None
         assert value["storage"]["rows"] == _ROWS
@@ -325,7 +326,7 @@ class TestDatasetViewer(TestCase):
         original = saved.path.read_bytes()
         for filename in (current, legacy):
             with self.subTest(filename=filename):
-                value = read_dataset(filename, self.runtime, 2)
+                value = read_dataset(filename, self.runtime, 2, 50)
                 assert value["wiki"] == "enwiki"
                 assert value["project"] == project
                 assert value["manifest"] == saved.manifest
@@ -434,7 +435,7 @@ class TestDatasetViewer(TestCase):
     def test_pages_keep_saved_order(
         self,
     ) -> None:
-        """Read fifty-row pages without using eager file readers."""
+        """Read ten-row pages without using eager file readers."""
         filename = "cache/example/20261110T152000.parquet"
         path = self.runtime / filename
         frame = pl.DataFrame({
@@ -485,13 +486,13 @@ class TestDatasetViewer(TestCase):
             first = read_dataset(filename, self.runtime)
             second = read_dataset(filename, self.runtime, 2)
             last = read_dataset(filename, self.runtime, 99)
-            project = read_dataset(self.filename, self.runtime, 2)
-        assert [row["number"] for row in first["rows"]] == list(range(50))
+            project = read_dataset(self.filename, self.runtime, 6)
+        assert [row["number"] for row in first["rows"]] == list(range(10))
         assert [row["number"] for row in second["rows"]] == list(
-            range(50, 100),
+            range(10, 20),
         )
         assert [row["number"] for row in last["rows"]] == [100, 101, 102]
-        assert last["page"] == last["page_count"] == 3
+        assert last["page"] == last["page_count"] == 11
         assert [row["page_id"] for row in project["rows"]] == [51, 52, 53]
         assert first["rows"][0]["value"] is None
         assert first["rows"][1]["value"] == ""  # ruff: ignore[compare-to-empty-string]
@@ -503,7 +504,7 @@ class TestDatasetViewer(TestCase):
         assert "&lt;script&gt;alert(1)&lt;/script&gt;" in response.text
         assert "preview-fixture" in response.text
         assert "page=2" in response.text
-        assert "Page 1 of 3" in response.text
+        assert "Page 1 of 11" in response.text
         assert "Last page" in response.text
         assert "Columns" in response.text
         assert path.read_bytes() == original

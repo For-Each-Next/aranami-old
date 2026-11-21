@@ -19,8 +19,6 @@ import hashlib
 import json
 import os
 import stat
-from pathlib import Path
-from tempfile import NamedTemporaryFile
 from typing import TYPE_CHECKING
 
 import polars as pl
@@ -28,10 +26,16 @@ import polars as pl
 from data.articles import homepage_data
 from data.articles.scope import retain_active
 from shared.deployment import project_version
-from shared.support.files import open_regular, staging_directory
 from shared.support.parquet import parquet_metadata, validate_parquet_metadata
+from shared.support.parquet_tables import (
+    install_table,
+    open_table,
+    read_table,
+    stage_table,
+)
 
 if TYPE_CHECKING:
+    from pathlib import Path
     from typing import BinaryIO
 
 EVENT_SCHEMA = {
@@ -396,10 +400,13 @@ def _read(path: Path) -> pl.DataFrame:
     if not path.exists():
         return pl.DataFrame(schema=SCHEMA)
     try:
-        with open_regular(path, _MAX_BYTES) as stream:
-            metadata = pl.read_parquet_metadata(stream)
-            stream.seek(0)
-            frame = pl.read_parquet(stream, n_rows=_MAX_FILE_ROWS + 1)
+        with open_table(path, _MAX_BYTES) as stream:
+            frame, metadata = read_table(
+                path,
+                stream,
+                max_rows=_MAX_FILE_ROWS,
+                max_bytes=_MAX_BYTES,
+            )
     except pl.exceptions.PolarsError as error:
         message = "Newsletter history is not readable Parquet."
         raise ValueError(message) from error
@@ -436,15 +443,18 @@ def read_homepage(path: Path) -> pl.DataFrame:
     return _homepage_rows(_canonical(_read(path)))
 
 
-def _validated_digest(stream: BinaryIO) -> str:
+def _validated_digest(path: Path, stream: BinaryIO) -> str:
     """Hash the exact open generation after validating its contents.
 
     Returns:
         SHA-256 of the complete validated file bytes.
     """
-    metadata = pl.read_parquet_metadata(stream)
-    stream.seek(0)
-    frame = pl.read_parquet(stream, n_rows=_MAX_FILE_ROWS + 1)
+    frame, metadata = read_table(
+        path,
+        stream,
+        max_rows=_MAX_FILE_ROWS,
+        max_bytes=_MAX_BYTES,
+    )
     _validate_metadata(metadata, frame)
     _canonical(frame)
     stream.seek(0)
@@ -466,8 +476,8 @@ def content_digest(path: Path) -> str | None:
     """
     _safe_path(path)
     try:
-        with open_regular(path, _MAX_BYTES) as stream:
-            return _validated_digest(stream)
+        with open_table(path, _MAX_BYTES) as stream:
+            return _validated_digest(path, stream)
     except FileNotFoundError:
         return None
     except pl.exceptions.PolarsError as error:
@@ -514,52 +524,22 @@ def _write(path: Path, frame: pl.DataFrame) -> None:
         ValueError: The compressed payload exceeds its storage bound.
     """
     _safe_path(path)
-    with NamedTemporaryFile(
-        dir=staging_directory(path),
-        prefix=f".{path.stem}-",
-        suffix=".parquet",
-        delete=False,
-    ) as stream:
-        temporary = Path(stream.name)
-    try:
-        frame.write_parquet(
-            temporary,
-            metadata=parquet_metadata(
-                frame,
-                contract="article-history",
-                metadata={
-                    "aranami": json.dumps(
-                        {
-                            "schema": _STORAGE_SCHEMA,
-                            "family": "article-history",
-                            "version": project_version(),
-                            "written_at": dt.datetime.now(dt.UTC).isoformat(),
-                            "row_count": frame.height,
-                            "columns": {
-                                name: str(dtype)
-                                for name, dtype in _FILE_SCHEMA.items()
-                            },
-                            "record_kinds": ["talk", "homepage"],
-                        },
-                        ensure_ascii=False,
-                    ),
-                },
-            ),
-        )
-        if temporary.stat().st_size > _MAX_BYTES:
-            message = "Newsletter history exceeds its file size limit."
-            raise ValueError(message)
-        temporary.chmod(0o600)
-        with temporary.open("rb") as stream:
-            os.fsync(stream.fileno())
-        temporary.replace(path)
-        directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
-        try:
-            os.fsync(directory)
-        finally:
-            os.close(directory)
-    finally:
-        temporary.unlink(missing_ok=True)
+    manifest = {
+        "schema": _STORAGE_SCHEMA,
+        "family": "article-history",
+        "version": project_version(),
+        "written_at": dt.datetime.now(dt.UTC).isoformat(),
+        "row_count": frame.height,
+        "columns": {name: str(dtype) for name, dtype in _FILE_SCHEMA.items()},
+        "record_kinds": ["talk", "homepage"],
+    }
+    metadata = parquet_metadata(
+        frame,
+        contract="article-history",
+        metadata={"aranami": json.dumps(manifest, ensure_ascii=False)},
+    )
+    with stage_table(path, frame, metadata, max_bytes=_MAX_BYTES) as temporary:
+        install_table(temporary, path)
 
 
 def merge_save(path: Path, refreshed: pl.DataFrame) -> pl.DataFrame:

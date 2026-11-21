@@ -274,11 +274,7 @@ class QualityResourcePresentationTests(unittest.TestCase):
                 _NOW,
                 resources=resources,
             )
-            detail = next(
-                content
-                for name, content in resources.items()
-                if name.startswith("author-quality-author-1-")
-            )
+            detail = resources["author-1.html"]
             legacy = render_quality_authorship(
                 data["authorship"],
                 None,
@@ -302,7 +298,7 @@ class QualityResourcePresentationTests(unittest.TestCase):
 
     @staticmethod
     def test_catalog_and_author_details_leave_the_initial_document() -> None:
-        """Retain twenty rows and native links in every locale."""
+        """Retain ten rows and native links in every locale."""
         data = _catalog_fixture()
         for locale in ("en", "zh-hans", "zh-hant"):
             resources = {}
@@ -326,10 +322,10 @@ class QualityResourcePresentationTests(unittest.TestCase):
             assert len(output.encode()) < len(legacy.encode())
             assert "data-metadata='" not in output
             assert f'data-metadata-url="{prefix}catalog-' in output
-            assert output.count("<tr data-analysis-row ") == 20
+            assert output.count("<tr data-analysis-row ") == 10
             assert "Catalog-only article 100 " not in output
-            assert '<dialog id="quality-author-1"' not in output
-            assert 'data-quality-detail="quality-author-1"' in output
+            assert '<dialog id="quality-author-user-1"' not in output
+            assert 'data-quality-detail="quality-author-user-1"' in output
             assert "data-page-ids='[1, 2]'" in output
             assert "data-quality-load-status" in output
             catalog = next(
@@ -337,16 +333,12 @@ class QualityResourcePresentationTests(unittest.TestCase):
                 for name, content in resources.items()
                 if name.endswith(".json")
             )
-            assert len(catalog["extra"]) == 80
+            assert len(catalog["extra"]) == 90
             assert catalog["extra"][-1][0] == 100
-            detail_name, detail = next(
-                (name, content)
-                for name, content in resources.items()
-                if name.startswith("author-quality-author-1-")
-            )
-            assert f"{prefix}{detail_name}#quality-author-1" in output
-            assert '<dialog id="quality-author-1"' in detail
-            assert 'aria-labelledby="quality-author-1-heading" open>' in detail
+            detail = resources["author-1.html"]
+            assert f"{prefix}author-1.html#quality-author-user-1" in output
+            assert '<dialog id="quality-author-user-1"' in detail
+            assert 'aria-labelledby="quality-author-user-1-heading"' in detail
             assert "Game &lt;script&gt; &amp; title" in detail
             assert 'href="/quality-analysis/?lang=' in detail
             assert '#quality-authors"' in detail
@@ -377,11 +369,7 @@ class QualityResourcePresentationTests(unittest.TestCase):
         assert 'data-sort="1"><a href="/quality-analysis/resources/' in output
         assert ">1 article</a>" in output
         assert 'data-matrix-author="Unknown activity"' not in output
-        detail = next(
-            content
-            for name, content in resources.items()
-            if name.startswith("author-quality-author-1-")
-        )
+        detail = resources["author-1.html"]
         assert 'data-matrix-page="2" hidden data-cohort="0"' in detail
         assert 'data-matrix-page="1"><td' in detail
 
@@ -522,7 +510,7 @@ class QualityResourcePresentationTests(unittest.TestCase):
                 for name, content in resources.items()
                 if name.endswith(".json")
             )
-            extra = catalog["extra"][0]
+            extra = next(row for row in catalog["extra"] if row[0] == 21)
             assert extra[8] == ["Main author"]
             assert extra[11]["available"]
             assert [editor["name"] for editor in extra[11]["editors"]] == [
@@ -1183,7 +1171,7 @@ class QualityResourceHTTPTests(unittest.TestCase):
         catalog = next(
             name for name in resources if name.startswith("catalog-")
         )
-        assert native.count("<tr data-analysis-row ") == 20
+        assert native.count("<tr data-analysis-row ") == 10
         assert "data-page-ids=" not in native
         assert "selected_page_ids" not in browser
         assert "超級馬力歐" not in browser
@@ -1233,7 +1221,7 @@ class QualityResourceHTTPTests(unittest.TestCase):
                     == HTTPStatus.BAD_REQUEST
                 )
                 page = client.get(query(page=2)).json()
-                assert [row[0] for row in page["rows"]] == list(range(21, 41))
+                assert [row[0] for row in page["rows"]] == list(range(11, 21))
                 assert page["total"] == 100
                 assert page["page"] == 2
                 for search in (
@@ -1255,7 +1243,7 @@ class QualityResourceHTTPTests(unittest.TestCase):
                 ):
                     result = client.get(url).json()
                     assert result["total"] == expected
-                    assert len(result["rows"]) == 20
+                    assert len(result["rows"]) == 10
                 author = data["authorship"]["authors"][0]["name"]
                 result = client.get(query(author=author)).json()
                 assert [row[0] for row in result["rows"]] == [1, 2]

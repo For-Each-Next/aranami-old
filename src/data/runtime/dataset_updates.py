@@ -12,19 +12,23 @@ import datetime as dt
 import fcntl
 import hashlib
 import json
-import os
 import re
 import shutil
 import stat
 from pathlib import Path
 from threading import RLock
+from typing import TYPE_CHECKING
 
 import polars as pl
 
 from shared.support.files import atomic_json, encode_json, read_json_object
+from shared.support.parquet_tables import RELATIONS, link_table
 lazy from data.caching.project_observations import cache, category_cache
 lazy from data.project_data import snapshot_path
 lazy from shared.config import COLLECTION_DEFINITIONS, PROJECT_DATA_SCOPES
+
+if TYPE_CHECKING:
+    import os
 
 STATE_PATH = Path("state/observability/dataset-updates.json")
 MAX_FILES = 2048
@@ -68,8 +72,10 @@ def public_path(
         return None
     public_root = relative.parts[:2] in {
         ("data", "archive"),
+        ("data", "jobs"),
         ("data", "raw"),
         ("data", "parsed"),
+        ("data", "shared"),
     } or relative.parts[:1] == ("cache",)
     checked = {} if checked is None else checked
     if (
@@ -135,6 +141,7 @@ def baseline_evidence(
         Prior metadata with a retained link, or no known baseline.
 
     Raises:
+        OSError: The complete baseline could not be copied.
         ValueError: The baseline identity or destination is unsafe.
     """
     evidence = file_evidence(path, runtime)
@@ -155,9 +162,12 @@ def baseline_evidence(
     target.parent.mkdir(parents=True, exist_ok=True)
     if not target.exists():
         try:
-            os.link(runtime / evidence["filename"], target)
+            link_table(runtime / evidence["filename"], target)
         except OSError:
-            shutil.copyfile(runtime / evidence["filename"], target)
+            source = runtime / evidence["filename"]
+            if RELATIONS in pl.read_parquet_metadata(source):
+                raise
+            shutil.copyfile(source, target)
     return {
         **evidence,
         "original_filename": evidence["filename"],

@@ -1790,12 +1790,17 @@ def _quality_author_resources(
                 else "quality_authorship.articles",
                 count=visible,
             )
+        user_id = author["user_id"]
+        if user_id:
+            author["popup_id"] = f"quality-author-user-{user_id}"
         content = _render(
             "quality_detail.html",
             {**context, "author": author, "return_url": return_url},
         )
         name = (
-            f"author-{author['popup_id']}-"
+            f"author-{user_id}.html"
+            if user_id
+            else f"author-{author['popup_id']}-"
             f"{sha256(content.encode()).hexdigest()}.html"
         )
         resources[name] = content
