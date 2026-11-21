@@ -807,11 +807,11 @@ function ArticleAuthorshipDialog(context, article, returnTo) {
                         ) : null}
                     </p>
                     <div class="table-scroll" tabindex="0" role="region" aria-label={attribute(title)}>
-                        <table class="analysis-editor-table">
+                        <table class="analysis-editor-table" data-no-pagination="">
                             <thead>
                                 <tr>
                                     <th scope="col">{"#"}</th>
-                                    <th scope="col">{display(t.quality_authorship.user)}</th>
+                                    <th scope="col">{display(t.quality_analysis.significant_contributors)}</th>
                                     <th scope="col" title={attribute(t.quality_analysis.editor_characters_hint)}>
                                         {display(t.quality_analysis.editor_characters)}
                                     </th>

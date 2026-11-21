@@ -388,7 +388,7 @@ class DatasetUpdateContextTests(TestCase):
                     "job_name": "aranami-project-data",
                     "state": "scheduled",
                     "next_run_at": (_NOW + dt.timedelta(hours=1)).isoformat(),
-                    "cron": "0 * * * *",
+                    "cron": "0 0 * * *",
                     "memory_limit_bytes": 1024**3,
                     "cpu_limit": 1,
                 },
@@ -403,6 +403,18 @@ class DatasetUpdateContextTests(TestCase):
                     "cron": "0 * * * *",
                     "memory_limit_bytes": 2 * 1024**3,
                     "cpu_limit": 2,
+                },
+                "data-fetch": {
+                    "job_name": "aranami-data-fetch",
+                    "state": "scheduled",
+                    "next_run_at": None,
+                    "cron": "2 * * * *",
+                },
+                "data-maintenance": {
+                    "job_name": "aranami-data-maintenance",
+                    "state": "scheduled",
+                    "next_run_at": None,
+                    "cron": "40 3 * * 0",
                 },
             },
         }
@@ -434,8 +446,21 @@ class DatasetUpdateContextTests(TestCase):
             assert 'title="网页服务">aranami-web</th>' in output
             assert ">aranami-project-data</th>" in output
             assert ">aranami-article-statistics</th>" in output
-            assert '<td title="0 * * * *">每小时第 00 分</td>' in output
+            assert '<td title="2 * * * *">每小时第 02 分</td>' in output
+            assert "每天 00:00，失败后尽快重试" in output
             assert "每天 19:00，失败后每小时重试" in output
+            positions = [
+                output.index(f">aranami-{name}</th>")
+                for name in (
+                    "web",
+                    "project-data",
+                    "pageviews",
+                    "data-fetch",
+                    "data-maintenance",
+                    "article-statistics",
+                )
+            ]
+            assert positions == sorted(positions)
             assert "<td>一次性</td>" in output
             assert "已运行 10秒" in output
             assert "已等待 3分0秒" in output

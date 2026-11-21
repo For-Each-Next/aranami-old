@@ -1302,3 +1302,25 @@ class QualityResourceHTTPTests(unittest.TestCase):
                 length = summary["lengths"]["grade"]["FA"]
                 assert length["quartiles"] == [1000, 1000]
                 assert length["density"] == []
+
+    @staticmethod
+    def test_author_html_fits_the_saved_report_budget() -> None:
+        """Retain complete author pages within the file budget."""
+        author = "<tr><td>贡献正文</td><td>1,000</td></tr>" * 300
+        names = ["author-1.html", "author-1-significant.html"]
+        with (
+            TemporaryDirectory() as temporary,
+            patch.object(quality_pages, "MAX_BYTES", 24_000),
+        ):
+            path = Path(temporary) / "report.json"
+            quality_pages.save(
+                path,
+                "<main>Articles</main>",
+                (),
+                resources=dict.fromkeys(names, author),
+            )
+            assert path.read_bytes().count(b'"zlib:') == len(names)
+            assert all(
+                quality_pages.read_resource(path, name) == author
+                for name in names
+            )

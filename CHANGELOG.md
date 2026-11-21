@@ -5,7 +5,7 @@ v0.8.8 was consolidated into the v0.9.2 release.
 
 ## Until 0.11
 
-### 0.10.0.dev10 (2026-11-21 09:37 UTC)
+### 0.10.0.dev11 (2026-11-21 10:06 UTC)
 
 Overview: Separated source acquisition from analysis and publication while
 consolidating Toolforge services, standardizing saved tables, and refining
@@ -27,9 +27,11 @@ Article Statistics and Parquet previews.
 - Scaled violin height against the largest measured cohort and standardized
   percentile ticks, mean crosses, and label alignment.
 - Matched browser violin shapes to Matplotlib's default density settings.
+- Used solid fills in native and browser length-distribution charts.
 - Displayed Toolforge job names, types, status durations, RAM, and CPU in the
   server status table.
 - Shortened Toolforge schedule labels by omitting the time zone.
+- Ordered jobs by run frequency and showed the midnight snapshot's retry plan.
 - Refreshed the running-job elapsed display every 110 ms in the browser.
 - Gave the destructive filter reset its own row and set table pages to ten.
 - Linked registered contributors by their saved Wikipedia IDs and retried
@@ -44,6 +46,7 @@ Article Statistics and Parquet previews.
 - Linked assessment dates to reviews and expanded author dialogs with article
   statistics and significant-contributor details.
 - Summed saved prose and size measurements for significant contributions.
+- Stored author detail pages compressed within the prepared report size limit.
 - Harmonized article tables and added editable page numbers between pager buttons.
 - Filled the available Parquet preview width and retained scroll position while
   paging. Displayed file metadata and schema without pagination.

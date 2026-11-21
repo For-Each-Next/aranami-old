@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import hashlib
 import re
+import zlib
+from base64 import b64decode, b64encode
+from binascii import Error as Base64Error
 from typing import TYPE_CHECKING
 
 from polars.exceptions import PolarsError
@@ -25,6 +28,7 @@ AUTHOR_DETAIL_NAME = re.compile(
 HASHED_AUTHOR_DETAIL_NAME = re.compile(
     r"author-quality-author-[1-9][0-9]*(?:-significant)?-[0-9a-f]{64}\.html",
 )
+_PACKED_AUTHOR_PREFIX = "zlib:"
 _RESOURCE_NAME = re.compile(
     r"(?:(?:catalog|directory)-[0-9a-f]{64}\.json|"
     rf"{HASHED_AUTHOR_DETAIL_NAME.pattern}|"
@@ -131,16 +135,69 @@ def read_resource(path: Path, name: str) -> str | None:
     if value is None:
         return None
     content = value.get("resources", {}).get(name)
-    if AUTHOR_DETAIL_NAME.fullmatch(name):
-        return content
-    if content is None:
+    current_author = bool(AUTHOR_DETAIL_NAME.fullmatch(name))
+    if content is None and not current_author:
         content = value.get("previous_resources", {}).get(name)
     if content is not None:
+        if content.startswith(_PACKED_AUTHOR_PREFIX) and (
+            current_author or HASHED_AUTHOR_DETAIL_NAME.fullmatch(name)
+        ):
+            content = _unpack_author(content)
+        if current_author:
+            return content
         expected = name.rsplit("-", 1)[1].split(".", 1)[0]
         if hashlib.sha256(content.encode()).hexdigest() != expected:
             message = "Prepared quality resource digest mismatch."
             raise ValueError(message)
     return content
+
+
+def _unpack_author(content: str) -> str:
+    """Decode a compressed author page within the resource bound.
+
+    Returns:
+        The original UTF-8 HTML.
+
+    Raises:
+        ValueError: The resource cannot be decoded within its bound.
+    """
+    message = "Invalid compressed quality author detail."
+    try:
+        encoded = b64decode(
+            content.removeprefix(_PACKED_AUTHOR_PREFIX),
+            validate=True,
+        )
+        stream = zlib.decompressobj()
+        raw = stream.decompress(encoded, MAX_BYTES + 1)
+        if len(raw) > MAX_BYTES or not stream.eof or stream.unused_data:
+            raise ValueError(message)
+        return raw.decode()
+    except (Base64Error, zlib.error, UnicodeDecodeError) as error:
+        raise ValueError(message) from error
+
+
+def _pack_resource(name: str, content: str) -> str:
+    """Compress repetitive author tables without changing catalog bytes.
+
+    Returns:
+        Compressed author HTML when smaller, or the original resource.
+
+    Raises:
+        ValueError: The author HTML exceeds the bounded resource size.
+    """
+    if not (
+        AUTHOR_DETAIL_NAME.fullmatch(name)
+        or HASHED_AUTHOR_DETAIL_NAME.fullmatch(name)
+    ):
+        return content
+    raw = content.encode()
+    if len(raw) > MAX_BYTES:
+        message = "The quality author detail exceeds its size limit."
+        raise ValueError(message)
+    packed = _PACKED_AUTHOR_PREFIX + b64encode(
+        zlib.compress(raw, level=1),
+    ).decode("ascii")
+    return packed if len(packed) < len(raw) else content
 
 
 def save(
@@ -160,6 +217,10 @@ def save(
     if browser is not None:
         value["browser"] = browser
     if resources is not None:
+        resources = {
+            name: _pack_resource(name, content)
+            for name, content in resources.items()
+        }
         value.update(schema=2, resources=resources)
         try:
             previous = _read_bundle(path)

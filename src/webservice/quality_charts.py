@@ -378,7 +378,7 @@ def _violin(  # ruff: ignore[too-many-arguments,too-many-locals] - Explicit char
             heights,
             facecolor=color,
             edgecolor="#52797e",
-            alpha=0.75,
+            alpha=1.0,
             linewidth=0.7,
         )
         body.set_gid("density")

@@ -687,9 +687,10 @@ export function renderAuthorshipDetails(body, proof, labels) {
     }
     if (boundary.childNodes.length) body.append(boundary);
     const table = node("table", undefined, "analysis-editor-table");
+    table.setAttribute("data-no-pagination", "");
     const head = node("thead"), headRow = node("tr"), tbody = node("tbody");
     for (const [label, hint] of [
-        ["#"], [labels.user || labels.contributors],
+        ["#"], [labels.significant_contributors || "Significant contributors"],
         [labels.editor_characters, labels.editor_characters_hint],
         [labels.editor_bytes, labels.editor_bytes_hint],
         [labels.editor_share],

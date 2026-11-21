@@ -28,7 +28,12 @@ from opencc import OpenCC
 
 from shared.assessment_profiles import assessment_profile
 from shared.config import PAGEVIEWS_START_HOUR
-from shared.toolforge.jobs import PAGEVIEWS, PAGEVIEWS_CHECK_CRON, job_name
+from shared.toolforge.jobs import (
+    PAGEVIEWS,
+    PAGEVIEWS_CHECK_CRON,
+    PROJECT_SNAPSHOT,
+    job_name,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
@@ -440,11 +445,13 @@ def job_schedule(interface: Interface, schedule: Mapping) -> str:
     cron = schedule.get("cron")
     if cron is None:
         return interface.text("server.job_temporary")
-    if cron == PAGEVIEWS_CHECK_CRON and schedule.get("job_name") == job_name(
-        PAGEVIEWS,
-    ):
+    special = {
+        (job_name(PROJECT_SNAPSHOT), "0 0 * * *"): "server.job_snapshot",
+        (job_name(PAGEVIEWS), PAGEVIEWS_CHECK_CRON): "server.job_pageviews",
+    }.get((schedule.get("job_name"), cron))
+    if special:
         return interface.text(
-            "server.job_pageviews",
+            special,
             time=f"{PAGEVIEWS_START_HOUR:02d}:00",
         )
     fields = cron.split()

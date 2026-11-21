@@ -475,6 +475,7 @@ test("saved qualifying contributors retain their exact labels and optional evide
         editors: [{name: "Qualifying editor", url: "https://example.org/user", share_label: "10.1%", bytes_label: "101"}],
     }, view.labels);
     assert.match(view.body.textContent, /Qualifying editor10110.1%/);
+    assert.equal(view.body.childNodes[1].getAttribute("data-no-pagination"), "");
     assert.doesNotMatch(view.body.textContent, /Data not acquired|no editor contributed/);
     assert.equal(view.body.childNodes[0].childNodes[0].href, "https://example.org/evidence");
 });

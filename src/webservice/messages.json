@@ -78,6 +78,11 @@
     "zh-hans": "每天 {time}，失败后每小时重试",
     "zh-hant": "每天 {time}，失敗後每小時重試"
   },
+  "server.job_snapshot": {
+    "en": "Daily at 00:00, retrying as soon as possible after failure",
+    "zh-hans": "每天 00:00，失败后尽快重试",
+    "zh-hant": "每天 00:00，失敗後儘快重試"
+  },
   "server.job_weekly": {
     "en": "{day}s at {time}",
     "zh-hans": "每周{day} {time}",

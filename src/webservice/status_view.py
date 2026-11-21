@@ -10,7 +10,13 @@ import datetime as dt
 import operator
 from typing import TYPE_CHECKING
 
-from shared.toolforge.jobs import ON_DEMAND, job_name
+from shared.config import PAGEVIEWS_START_HOUR
+from shared.toolforge.jobs import (
+    ON_DEMAND,
+    PAGEVIEWS,
+    PAGEVIEWS_CHECK_CRON,
+    job_name,
+)
 from webservice.dataset_updates import (
     dataset_updates_context,
     native_executions,
@@ -747,6 +753,35 @@ def _scheduled_job_row(
     }
 
 
+def _toolforge_schedule_order(
+    item: tuple[str, Record],
+) -> tuple[int, int, int, str]:
+    """Order daily, hourly, weekly and on-demand jobs by schedule.
+
+    Returns:
+        The schedule group, hour, minute and stable job name.
+    """
+    task, schedule = item
+    name = schedule["job_name"]
+    cron = schedule["cron"]
+    if cron is None:
+        return 3, 0, 0, name
+    if task == PAGEVIEWS and cron == PAGEVIEWS_CHECK_CRON:
+        return 0, PAGEVIEWS_START_HOUR, 0, name
+    fields = cron.split()
+    if (
+        len(fields) == 5  # ruff: ignore[magic-value-comparison] - Cron fields.
+        and fields[2:] == ["*", "*", "*"]
+        and fields[0].isdigit()
+    ):
+        minute, hour = fields[:2]
+        if hour.isdigit():
+            return 0, int(hour), int(minute), name
+        if hour == "*":
+            return 1, 0, int(minute), name
+    return 2, 0, 0, name
+
+
 def _toolforge_rows(
     interface: Interface,
     status: Record,
@@ -811,7 +846,7 @@ def _toolforge_rows(
         }
     for task, schedule in sorted(
         schedules.items(),
-        key=lambda item: (item[1]["cron"] is None, item[1]["job_name"]),
+        key=_toolforge_schedule_order,
     ):
         rows.append({
             **_scheduled_job_row(

@@ -1032,6 +1032,7 @@ def quality_analysis_context(
                         "no_top_editors",
                         "unknown_listing",
                         "contributors",
+                        "significant_contributors",
                         "authorship_note",
                         "editor_share",
                         "editor_bytes",
@@ -1056,7 +1057,6 @@ def quality_analysis_context(
                     )
                 },
                 "talk": interface.text("quality_authorship.talk"),
-                "user": interface.text("quality_authorship.user"),
                 "unknown": interface.text("data.unknown"),
                 "parenthesis_open": interface.text(
                     "quality_authorship.parenthesis_open",
