@@ -352,6 +352,7 @@ class TestSourcePayload(TestCase):
                     "datasets",
                     "heading_links",
                     "history",
+                    "number_format",
                     "quality_authorship",
                     "quality_analysis",
                     "quality_chart_controls",

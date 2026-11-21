@@ -25,6 +25,7 @@ from webservice.presentation import (
     catalog,
     duration,
     failure_description,
+    grouped_number,
     local_url,
     timestamp,
     title_url,
@@ -812,7 +813,7 @@ def _elapsed_duration(seconds: float, interface: Interface) -> str:
     hours, remaining = divmod(round(seconds * 100), 360_000)
     minutes, hundredths = divmod(remaining, 6000)
     pieces = [
-        interface.text("reports.elapsed.hours", count=f"{hours:,}")
+        interface.text("reports.elapsed.hours", count=grouped_number(hours))
         if hours
         else "",
         interface.text("reports.elapsed.minutes", count=minutes)
@@ -1111,8 +1112,8 @@ def _progress(progress: Record | None, interface: Interface) -> str | None:
             interface,
             "progress.count",
             phase=phase.rstrip(".。…"),
-            current=f"{current:,}",
-            total=f"{total:,}",
+            current=grouped_number(current),
+            total=grouped_number(total),
         )
         if current is not None and total is not None
         else phase

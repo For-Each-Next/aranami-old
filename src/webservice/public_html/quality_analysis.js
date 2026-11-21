@@ -1,4 +1,5 @@
 /** Filter and sort the complete saved article list without source requests. */
+import { groupedNumber } from "./number_format.js";
 import { compareValues, initializeQualityAuthorship } from "./quality_authorship.js";
 import { initializeQualityCoverage } from "./quality_coverage.js";
 import { initializeQualityChartControls } from "./quality_chart_controls.js";
@@ -179,11 +180,11 @@ export function initializeQualityAnalysis(previous = {}) {
             return row;
         }));
         result.textContent = host.dataset.resultCount
-            .replace("{count}", String(count)).replace("{total}", String(total));
+            .replace("{count}", groupedNumber(count)).replace("{total}", groupedNumber(total));
         pageStatus.textContent = host.dataset.pageStatus
-            .replace("{start}", String(count ? start + 1 : 0))
-            .replace("{end}", String(start + records.length))
-            .replace("{total}", String(count));
+            .replace("{start}", groupedNumber(count ? start + 1 : 0))
+            .replace("{end}", groupedNumber(start + records.length))
+            .replace("{total}", groupedNumber(count));
         empty.hidden = count !== 0;
         pager.hidden = false;
         actions[0].disabled = actions[1].disabled = page <= 1;
@@ -357,14 +358,14 @@ function initializeChartArticles(rows, form) {
             return row;
         }));
         pager.querySelector("[data-chart-page-status]").textContent = pager.dataset.pageStatus
-            .replace("{start}", String(total ? start + 1 : 0))
-            .replace("{end}", String(start + ordered.length))
-            .replace("{total}", String(total));
+            .replace("{start}", groupedNumber(total ? start + 1 : 0))
+            .replace("{end}", groupedNumber(start + ordered.length))
+            .replace("{total}", groupedNumber(total));
         for (const key of Object.keys(actions)) pager.querySelector(`[data-chart-${key}]`).disabled = ["first", "prev"].includes(key) ? page === 1 : page === pages;
         headings.forEach((heading, index) => {
             if (index) heading.setAttribute("aria-sort", index === column ? (descending ? "descending" : "ascending") : "none");
         });
-        count.textContent = count.dataset.label.replace("{count}", String(total));
+        count.textContent = count.dataset.label.replace("{count}", groupedNumber(total));
     }
     async function render() {
         const size = Number(sizeControl.value);

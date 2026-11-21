@@ -1642,6 +1642,11 @@
     "zh-hans": "复制",
     "zh-hant": "複製"
   },
+  "newsletter.chart_source": {
+    "en": "Source code",
+    "zh-hans": "源代码",
+    "zh-hant": "原始碼"
+  },
   "newsletter.view_page": {
     "en": "View page",
     "zh-hans": "查看页面",
@@ -4493,26 +4498,26 @@
     "zh-hant": "貢獻比例"
   },
   "quality_analysis.editor_bytes": {
-    "en": "Attributed bytes",
-    "zh-hans": "归属字节",
-    "zh-hant": "歸屬位元組"
+    "en": "Attributed source",
+    "zh-hans": "归属源代码",
+    "zh-hant": "歸屬原始碼"
   },
   "quality_analysis.editor_characters": {
-    "en": "Attributed characters",
-    "zh-hans": "归属字数",
-    "zh-hant": "歸屬字數"
+    "en": "Attributed prose",
+    "zh-hans": "归属正文",
+    "zh-hant": "歸屬正文"
   },
   "quality_analysis.regex": {"en": "Use regular expressions", "zh-hans": "使用正则表达式", "zh-hant": "使用正規表示式"},
   "quality_analysis.regex_error": {"en": "Invalid regular expression", "zh-hans": "正则表达式无效", "zh-hant": "正規表示式無效"},
   "quality_analysis.editor_bytes_hint": {
-    "en": "Includes reference text",
-    "zh-hans": "包括参考资料",
-    "zh-hant": "包含參考資料"
+    "en": "Attributed wikitext in UTF-8 bytes, including references",
+    "zh-hans": "归属的维基源代码字节数（UTF-8，含参考资料）",
+    "zh-hant": "歸屬的維基原始碼位元組數（UTF-8，含參考資料）"
   },
   "quality_analysis.editor_characters_hint": {
-    "en": "Excludes reference text",
-    "zh-hans": "不包括参考资料",
-    "zh-hant": "不含參考資料"
+    "en": "Counted from prose at the attributed revision, using the article table’s counting rules",
+    "zh-hans": "按条目列表的正文计数规则计算归属版本的正文",
+    "zh-hant": "按條目列表的正文計數規則計算歸屬版本的正文"
   },
   "quality_analysis.authorship_unavailable": {
     "en": "Authorship data has not been obtained for this revision.",

@@ -94,7 +94,13 @@ def score_revision_content(
             event["page_id"],
             revision_id,
         )
-        return score_tokens(tokens, text), eligible_bytes(text), store.CONTRACT
+        scored = score_tokens(
+            tokens,
+            text,
+            site=site,
+            include_template_values=event.get("grade") in {"FL", "AL", "BL"},
+        )
+        return scored, eligible_bytes(text), store.CONTRACT
     except Exception as error:
         if text is not None and "".join(text.lower().split()) != "".join(
             "".join(tokens["text"].to_list()).split(),
@@ -110,6 +116,7 @@ def score_revision_content(
         pl.col("text").str.len_bytes().cast(pl.UInt32).alias("bytes"),
         pl.col("text").str.len_bytes().cast(pl.UInt32).alias("raw_bytes"),
         pl.lit(None, dtype=pl.UInt32).alias("characters"),
+        pl.lit(None, dtype=pl.UInt32).alias("prose_characters"),
     )
     return scored, int(scored["bytes"].sum()), store.FALLBACK_CONTRACT
 
@@ -204,6 +211,10 @@ def _collect(event: dict, site: BaseSite) -> dict:
             .when(pl.col("characters").count() > 0)
             .then(pl.col("characters").sum())
             .alias("characters"),
+            pl
+            .when(pl.col("prose_characters").count() > 0)
+            .then(pl.col("prose_characters").sum())
+            .alias("prose_characters"),
         )
         .sort("editor")
     )
@@ -262,7 +273,11 @@ def _attempt(
         [evidence],
         schema=store.SCHEMA | dict.fromkeys(instants, pl.String),
     ).with_columns(pl.col(instants).str.to_datetime(time_zone="UTC"))
-    return refreshed, "complete"
+    return refreshed, (
+        "unavailable"
+        if store.complete_contributor_evidence(refreshed).is_empty()
+        else "complete"
+    )
 
 
 def enrich_authorship(  # ruff: ignore[complex-structure,too-many-arguments,too-many-branches] - Keep batch outcomes and admission together.

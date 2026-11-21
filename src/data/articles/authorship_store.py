@@ -42,6 +42,7 @@ CONTRIBUTOR_SCHEMA = {
     "tokens": pl.UInt32,
     "bytes": pl.UInt32,
     "characters": pl.UInt32,
+    "prose_characters": pl.UInt32,
     "raw_bytes": pl.UInt32,
     "share": pl.Float64,
 }
@@ -75,11 +76,20 @@ def restore_contributor_characters(frame: pl.DataFrame) -> pl.DataFrame:
     Returns:
         The updated frame if its contributor type matched.
     """
+    previous = pl.List(
+        pl.Struct({
+            key: dtype
+            for key, dtype in CONTRIBUTOR_SCHEMA.items()
+            if key != "prose_characters"
+        }),
+    )
+    if frame.schema.get("contributors") == previous:
+        return frame.cast({"contributors": SCHEMA["contributors"]})
     old = pl.List(
         pl.Struct({
             key: dtype
             for key, dtype in CONTRIBUTOR_SCHEMA.items()
-            if key not in {"characters", "raw_bytes"}
+            if key not in {"characters", "prose_characters", "raw_bytes"}
         }),
     )
     if frame.schema.get("contributors") != old:
@@ -106,19 +116,72 @@ def complete_contributor_evidence(frame: pl.DataFrame) -> pl.DataFrame:
     """Select observations with the new contributor measures.
 
     Returns:
-        Results with raw-byte measures for significant contributors.
+        Results with measured source and prose for significant editors.
+        Fallback token evidence has no exact prose projection.
     """
+    contributor = pl.element().struct
     return frame.filter(
         ~pl
         .col("contributors")
         .list.eval(
-            pl.element().struct.field("raw_bytes").is_null()
-            & (
-                pl.element().struct.field("share")
-                >= SIGNIFICANT_SHARE_THRESHOLD
-            ),
+            (
+                contributor.field("raw_bytes").is_null()
+                | (
+                    contributor.field("characters").is_not_null()
+                    & contributor.field("prose_characters").is_null()
+                )
+            )
+            & (contributor.field("share") >= SIGNIFICANT_SHARE_THRESHOLD),
         )
         .list.any(),
+    )
+
+
+def retain_raw_binding(
+    previous: pl.DataFrame,
+    refreshed: pl.DataFrame,
+    keys: list[str],
+) -> pl.DataFrame:
+    """Keep the existing byte-proof identity when adding prose counts.
+
+    Returns:
+        Refreshed evidence using the original byte observation time
+        when the retained raw facts agree.
+    """
+    raw = pl.col("contributors").list.eval(
+        pl.element().struct.with_fields(
+            pl.lit(None, dtype=pl.UInt32).alias("prose_characters"),
+        ),
+    )
+    saved = previous.select(
+        *keys,
+        raw.alias("_prior_raw"),
+        pl.col("fetched_at").alias("_prior_at"),
+        pl.col("contributors").alias("_prior_contributors"),
+    )
+    same_source = raw.eq_missing(pl.col("_prior_raw"))
+    prose_missing = (
+        pl
+        .col("contributors")
+        .list.eval(pl.element().struct.field("prose_characters").is_null())
+        .list.all()
+    )
+    return (
+        refreshed
+        .join(saved, on=keys, how="left", validate="m:1", nulls_equal=True)
+        .with_columns(
+            pl
+            .when(same_source)
+            .then(pl.col("_prior_at"))
+            .otherwise(pl.col("fetched_at"))
+            .alias("fetched_at"),
+            pl
+            .when(same_source & prose_missing)
+            .then(pl.col("_prior_contributors"))
+            .otherwise(pl.col("contributors"))
+            .alias("contributors"),
+        )
+        .select(refreshed.columns)
     )
 
 
@@ -340,7 +403,8 @@ def load(path: Path) -> pl.DataFrame:
         pl.Struct({
             name: dtype
             for name, dtype in CONTRIBUTOR_SCHEMA.items()
-            if name not in {"bytes", "characters", "raw_bytes"}
+            if name
+            not in {"bytes", "characters", "prose_characters", "raw_bytes"}
         }),
     )
     if frame.schema == pl.Schema(legacy):
@@ -390,10 +454,16 @@ def save(path: Path, refreshed: pl.DataFrame) -> None:
     )
     with os.fdopen(descriptor, "a+b") as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        previous = load(path)
+        refreshed = retain_raw_binding(
+            previous,
+            refreshed,
+            [*KEY, "listing_revision", "eligible_bytes"],
+        )
         merged = (
             pl
-            .concat([load(path), refreshed])
-            .sort("fetched_at")
+            .concat([previous, refreshed])
+            .sort("fetched_at", maintain_order=True)
             .unique(subset=KEY, keep="last", maintain_order=True)
         )
         merged = retain_active(merged, path)

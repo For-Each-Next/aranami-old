@@ -142,6 +142,7 @@ def _evidence(
                         "tokens": 1,
                         "bytes": count,
                         "characters": count,
+                        "prose_characters": count,
                         "raw_bytes": count,
                         "share": count / total,
                     }

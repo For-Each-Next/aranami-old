@@ -16,6 +16,7 @@ from unittest import TestCase
 from unittest.mock import Mock, patch
 
 import polars as pl
+from wiki_fixtures import OfflineSite
 
 from data.articles import authorship_store as store, quality_authors
 from data.caching import authorship as attempt_cache
@@ -66,7 +67,7 @@ class AuthorshipTests(TestCase):  # ruff: ignore[too-many-public-methods]
         self.addCleanup(temporary.cleanup)
         self.path = Path(temporary.name) / "authors.parquet"
         self.attempt_path = Path(temporary.name) / "attempts"
-        self.site = SimpleNamespace()
+        self.site = OfflineSite("zh", "wikipedia")
         self.enterContext(
             patch.object(
                 wikiwho,
@@ -154,6 +155,7 @@ class AuthorshipTests(TestCase):  # ruff: ignore[too-many-public-methods]
                 "tokens": 2,
                 "bytes": 6,
                 "characters": 6,
+                "prose_characters": 4,
                 "raw_bytes": 6,
                 "share": 0.4,
             },
@@ -163,6 +165,7 @@ class AuthorshipTests(TestCase):  # ruff: ignore[too-many-public-methods]
                 "tokens": 2,
                 "bytes": 6,
                 "characters": 6,
+                "prose_characters": 4,
                 "raw_bytes": 6,
                 "share": 0.4,
             },
@@ -256,6 +259,7 @@ class AuthorshipTests(TestCase):  # ruff: ignore[too-many-public-methods]
                 "tokens": 1,
                 "bytes": 6,
                 "characters": 2,
+                "prose_characters": 2,
                 "raw_bytes": 6,
                 "share": 1.0,
             },
@@ -265,6 +269,7 @@ class AuthorshipTests(TestCase):  # ruff: ignore[too-many-public-methods]
                 "tokens": 3,
                 "bytes": 0,
                 "characters": 0,
+                "prose_characters": 2,
                 "raw_bytes": len("<ref>citationinformation</ref>"),
                 "share": 0.0,
             },

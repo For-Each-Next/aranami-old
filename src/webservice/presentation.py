@@ -108,6 +108,16 @@ _LIST_GROUPS = {
 }
 
 
+def grouped_number(value: float, *, decimals: int | None = None) -> str:
+    """Group displayed numbers by thousands with thin spaces.
+
+    Returns:
+        The formatted number, with a fixed precision when specified.
+    """
+    specifier = "," if decimals is None else f",.{decimals}f"
+    return format(value, specifier).replace(",", "\N{THIN SPACE}")
+
+
 def failure_description(event: Record, interface: Interface) -> str | None:
     """Translate safe failure facts into an explanation for readers.
 
@@ -126,8 +136,8 @@ def failure_description(event: Record, interface: Interface) -> str | None:
     if reason == "PageviewsUnavailableError" and isinstance(context, dict):
         return interface.text(
             "failure.pageviews_missing",
-            missing=f"{context['missing']:,}",
-            total=f"{context['total']:,}",
+            missing=grouped_number(context["missing"]),
+            total=grouped_number(context["total"]),
         )
     if isinstance(reason, str) and re.fullmatch(r"HTTP[1-5][0-9]{2}", reason):
         status = int(reason[4:])
@@ -267,6 +277,9 @@ class Interface:
         translations = catalog()[key]
         locale = self.message_locale
         message = translations.get(locale, translations["en"])
+        for name in ("count", "total", "start", "end"):
+            if type(parameters.get(name)) is int:
+                parameters[name] = grouped_number(parameters[name])
         return re.sub(
             r"\{([a-z_][a-z0-9_]*)\}",
             lambda match: str(parameters.get(match[1], match[0])),

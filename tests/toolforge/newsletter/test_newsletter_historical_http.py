@@ -237,3 +237,21 @@ class HistoricalNewsletterRequests(TestCase):
                 assert status == HTTPStatus.OK
                 assert "Feature Graph 2" in text
                 assert _UNKNOWN not in text
+        prepare_newsletter_charts(self.runtime, data)
+        charts = available_charts(
+            self.runtime,
+            _ISSUE,
+            with_canonical_dyk_series(self.runtime, _review(), 2026),
+        )
+        chart = next(item for item in charts if item["language"] == "zh-hk")
+        source = self.client.get(chart["source_url"])
+        assert source.status_code == HTTPStatus.OK
+        assert source.headers["Content-Type"] == "text/plain; charset=utf-8"
+        assert "Content-Disposition" not in source.headers
+        assert "python -m pip install matplotlib" in source.text
+        assert "newsletter-font.otf" in source.text
+        assert chart["filename"] in source.text
+        compile(source.text, "figure.py", "exec")
+        font = self.client.get("/newsletter/charts/newsletter-font.otf")
+        assert font.status_code == HTTPStatus.OK
+        assert font.content.startswith(b"OTTO")

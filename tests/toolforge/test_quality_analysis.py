@@ -225,7 +225,7 @@ class QualityAnalysisPresentationTests(unittest.TestCase):
         context = quality_analysis_context(source, Interface("en"))[
             "quality_analysis"
         ]
-        assert context["median"] == "9,876"
+        assert context["median"] == "9\N{THIN SPACE}876"
         assert context["articles"][1]["characters_label"] == "—"
         assert context["articles"][2]["characters_label"] == "0"
         assert context["articles"][1]["date_label"] is None

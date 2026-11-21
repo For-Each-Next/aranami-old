@@ -1,4 +1,5 @@
 /** Sort and paginate saved editor tables without replacing their native cells. */
+import { groupedNumber } from "./number_format.js";
 import { matchesQualitySelection } from "./quality_matrix.js";
 
 let detailHandlersInstalled = false;
@@ -41,6 +42,7 @@ export function loadQualityDetail(value, id) {
                 credentials: "same-origin", redirect: "error", signal: controller.signal,
                 headers: {Accept: "text/html"},
             });
+            if (response.status === 404) return null;
             if (!response.ok || (response.url && new URL(response.url).origin !== location.origin) ||
                     !response.headers.get("content-type")?.startsWith("text/html"))
                 throw new Error("Quality detail unavailable");
@@ -57,6 +59,36 @@ export function loadQualityDetail(value, id) {
     detailRequests.set(key, request);
     request.then(() => detailRequests.delete(key), () => detailRequests.delete(key));
     return request;
+}
+
+/** Resolve an expired detail by finding the same author in the latest report. */
+async function refreshQualityDetail(link, expiredUrl) {
+    const author = link.closest("[data-matrix-author]")?.dataset.matrixAuthor;
+    if (!author || location.pathname !== "/quality-analysis/") return null;
+    const reportUrl = new URL(location.href);
+    reportUrl.hash = "";
+    reportUrl.searchParams.set("render", "html");
+    const response = await fetch(reportUrl, {
+        credentials: "same-origin", redirect: "error", cache: "no-store",
+        signal: AbortSignal.timeout(15000), headers: {Accept: "text/html"},
+    });
+    if (!response.ok || !response.headers.get("content-type")?.startsWith("text/html")) return null;
+    if (!link.isConnected) return null;
+    const page = new DOMParser().parseFromString(await response.text(), "text/html");
+    const row = [...page.querySelectorAll("[data-matrix-author]")]
+        .find(candidate => candidate.dataset.matrixAuthor === author);
+    const fresh = row?.querySelector("a[data-quality-detail]");
+    if (!fresh) return null;
+    const href = new URL(fresh.getAttribute("href"), reportUrl);
+    if (href.href === expiredUrl) return null;
+    const id = fresh.dataset.qualityDetail;
+    const dialog = await loadQualityDetail(href.href, id);
+    if (dialog && link.isConnected) {
+        link.href = href.href;
+        link.dataset.qualityDetail = id;
+        link.setAttribute("aria-controls", id);
+    }
+    return dialog;
 }
 
 /** Enhance native detail links while retaining modified-click navigation. */
@@ -112,9 +144,10 @@ export function initializeQualityDetails() {
         pendingIndicator = {link, status, request};
         let opened = false;
         try {
-            const incoming = await loadQualityDetail(url.href, id);
+            const incoming = await loadQualityDetail(url.href, id) ?? await refreshQualityDetail(link, url.href);
+            if (!incoming) throw new Error("Quality detail unavailable");
             if (request !== intent || !link.isConnected) return;
-            let dialog = document.getElementById(id);
+            let dialog = document.getElementById(incoming.id);
             if (dialog !== incoming) {
                 dialog?.close();
                 dialog?.remove();
@@ -201,7 +234,7 @@ export function initializeQualityAuthorship(root = document) {
             const option = document.createElement("option");
             option.value = String(count);
             option.textContent =
-                host.dataset.rows?.replace("{count}", String(count)) ||
+                host.dataset.rows?.replace("{count}", groupedNumber(count)) ||
                 String(count);
             select.append(option);
         }
@@ -278,12 +311,12 @@ export function initializeQualityAuthorship(root = document) {
             }
             status.textContent =
                 host.dataset.pageStatus
-                    ?.replace("{start}", String(rows.length ? start + 1 : 0))
+                    ?.replace("{start}", groupedNumber(rows.length ? start + 1 : 0))
                     .replace(
                         "{end}",
                         String(Math.min(start + size, rows.length)),
                     )
-                    .replace("{total}", String(rows.length)) || "";
+                    .replace("{total}", groupedNumber(rows.length)) || "";
             actions[0].disabled = actions[1].disabled = page <= 1;
             actions[2].disabled = actions[3].disabled =
                 start + size >= rows.length;

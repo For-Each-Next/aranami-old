@@ -5,6 +5,20 @@ v0.8.8 was consolidated into the v0.9.2 release.
 
 ## Until 0.10
 
+### 0.9.24 (2026-11-21 03:39 UTC)
+
+Overview: Refined newsletter figures and improved article statistics and
+table presentation.
+
+- Put announcements above quality content and used wiki charts with
+  commented PNG alternatives in January drafts.
+- Offered reproducible Python sources, input data, and font instructions
+  with each localized annual figure.
+- Grouped displayed counts with thin spaces, narrowed oversized first
+  columns, and refined violin curves and integer year-chart ticks.
+- Recovered expired contributor detail links and measured attributable
+  prose with the same counting rules as the article list.
+
 ### 0.9.23 (2026-11-21 02:42 UTC)
 
 Overview: Added permanent newsletter news links and localized annual figures.

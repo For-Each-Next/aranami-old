@@ -572,7 +572,8 @@ class NewsletterRouteTests(unittest.TestCase):
                     re.DOTALL,
                 )
             ]
-            assert texts == [page["text"] for page in rendered["pages"]]
+            pages = rendered["pages"]
+            assert texts == [pages[i]["text"] for i in (0, 2, 1, 3)]
             assert len(texts) == len(Issue.parse("2027-01").draft_suffixes)
             assert "2026年年終回顧" in texts[-1]
             assert "待核對" not in texts[-1]
@@ -777,13 +778,8 @@ class NewsletterRouteTests(unittest.TestCase):
                 re.DOTALL,
             )
         ]
-        assert texts == [
-            page["text"]
-            for page in render_issue(
-                Issue.parse("2027-01"),
-                entry["facts"],
-            )["pages"]
-        ]
+        pages = render_issue(Issue.parse("2027-01"), entry["facts"])["pages"]
+        assert texts == [pages[i]["text"] for i in (0, 2, 1, 3)]
         assert "14,000篇條目" not in response.text
 
     def test_durable_pointer_invalidates_same_timestamp_page(self) -> None:

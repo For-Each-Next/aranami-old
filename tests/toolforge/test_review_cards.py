@@ -111,7 +111,7 @@ class ReviewCardTests(TestCase):
                 assert (
                     interface.text(
                         "reviews.section_size",
-                        bytes="35,000",
+                        bytes="35\N{THIN SPACE}000",
                     )
                     in section
                 )

@@ -19,7 +19,7 @@ from shared.newsletter import Issue
 from tasks.zhwiki.newsletter.annual import prepare_quality_year_ends
 from tasks.zhwiki.newsletter.collection import collect_source_facts
 from updater.services.newsletter_editorial import render_annual_feature
-from webservice import newsletter_charts
+from webservice import newsletter_png
 
 
 def _events() -> pl.DataFrame:
@@ -230,11 +230,16 @@ class NewsletterQualityYearTests(TestCase):
             "#8CFF66",
         )
         text = render_annual_feature(Issue(2027, 1), review)
-        (picture,) = [
+        code = mwparserfromhell.parse(text)
+        chart = next(
             template
-            for template in mwparserfromhell.parse(text).filter_templates()
-            if template.name.matches("File2")
-        ]
+            for template in code.filter_templates()
+            if template.name.matches("Graph:Chart")
+        )
+        assert chart.get("type").value.strip() == "stackedrect"
+        picture = mwparserfromhell.parse(
+            code.filter_comments()[0].contents,
+        ).filter_templates()[0]
         for variant in ("zh-cn", "zh-hk", "zh-tw"):
             assert picture.get(variant).value == (
                 f"WPVG Newsletter 202701 Feature Graph 1 ({variant}).png"
@@ -259,7 +264,7 @@ class NewsletterQualityYearTests(TestCase):
         }
         chart = annual_figures(review, 2026)[1]
         figure = Figure()
-        newsletter_charts._quality_history(  # ruff: ignore[private-member-access]
+        newsletter_png._quality_history(  # ruff: ignore[private-member-access]
             figure,
             chart,
             OpenCC("t2s"),

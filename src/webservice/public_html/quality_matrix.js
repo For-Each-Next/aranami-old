@@ -1,4 +1,5 @@
 /** Combine saved matrix statistics and keep every report view in one cohort. */
+import { groupedNumber } from "./number_format.js";
 
 const metadataRequests = new WeakMap();
 const directoryPages = new WeakMap();
@@ -173,7 +174,7 @@ export function proseLengthPosition(characters, maximum) {
 function proseLengthLabel(value) {
     if (value === null) return "—";
     const step = value > 0 ? 10 ** Math.max(0, Math.floor(Math.log10(value)) - 1) : 1;
-    return (Math.round(value / step) * step).toLocaleString("en-US", {maximumFractionDigits: 0});
+    return groupedNumber(Math.round(value / step) * step);
 }
 
 /** Give each percentile mark its own localized native tooltip. */
@@ -186,7 +187,7 @@ export function violinMarkerTitle(kind, value, labels) {
 /** Keep article counts exact while rounding the five length statistics for display. */
 export function violinSummary(statistics, template) {
     const values = {
-        pages: statistics.pages.toLocaleString("en-US"), measured: statistics.measured.toLocaleString("en-US"),
+        pages: groupedNumber(statistics.pages), measured: groupedNumber(statistics.measured),
         minimum: proseLengthLabel(statistics.minimum), maximum: proseLengthLabel(statistics.maximum),
         p25: proseLengthLabel(statistics.quartiles[0]), p50: proseLengthLabel(statistics.quantiles[2]), p75: proseLengthLabel(statistics.quartiles[1]),
     };
@@ -238,7 +239,7 @@ function chartLink(group, value, label, year, svg = false) {
     if (year !== undefined) link.dataset.chartYear = String(year);
     return link;
 }
-const format = value => value === null ? "—" : Math.round(value).toLocaleString(document.documentElement.lang);
+const format = value => value === null ? "—" : groupedNumber(value);
 
 /** Label an interactive mark and make it open its exact article cohort. */
 function plotLink(group, option, mark, description, year) {
@@ -276,6 +277,35 @@ function pieFigure(entries, group, total, caption) {
     return svg;
 }
 
+/** Interpolate the density with a mirrored outline bounded by its samples. */
+export function violinDensityPath(density, maximum) {
+    const points = density.map(([value, fraction]) => [10 + proseLengthPosition(value, maximum), 18 * fraction])
+        .filter(([x], index, all) => index === 0 || x > all[index - 1][0]);
+    if (points.length < 2) return "";
+    const intervals = points.slice(1).map(([x], index) => x - points[index][0]);
+    const slopes = intervals.map((interval, index) => (points[index + 1][1] - points[index][1]) / interval);
+    const tangents = points.map((_, index) => {
+        if (index === 0) return slopes[0];
+        if (index === points.length - 1) return slopes.at(-1);
+        const before = slopes[index - 1], after = slopes[index];
+        if (before * after <= 0) return 0;
+        const left = intervals[index - 1], right = intervals[index];
+        const leftWeight = left + 2 * right, rightWeight = 2 * left + right;
+        return (leftWeight + rightWeight) / (leftWeight / before + rightWeight / after);
+    });
+    const segments = intervals.map((interval, index) => {
+        const [x0, y0] = points[index], [x1, y1] = points[index + 1];
+        const width = interval / 3;
+        const bound = y => Math.max(Math.min(y0, y1), Math.min(Math.max(y0, y1), y));
+        return [points[index], [x0 + width, bound(y0 + width * tangents[index])],
+            [x1 - width, bound(y1 - width * tangents[index + 1])], points[index + 1]];
+    });
+    const coordinate = ([x, height], side) => `${x.toFixed(2)} ${(22 + side * height).toFixed(2)}`;
+    const upper = segments.map(segment => "C " + segment.slice(1).map(point => coordinate(point, -1)).join(" "));
+    const lower = segments.toReversed().map(segment => "C " + segment.slice(0, 3).reverse().map(point => coordinate(point, 1)).join(" "));
+    return [`M ${coordinate(points[0], -1)}`, ...upper, `L ${coordinate(points.at(-1), 1)}`, ...lower, "Z"].join(" ");
+}
+
 /** Draw the saved density with exact extrema, quartiles, median and mean. */
 function violinFigure(summary, group, option, labels, maximum) {
     const caption = option.label + " · " + violinSummary(summary, labels.violin_summary);
@@ -287,11 +317,10 @@ function violinFigure(summary, group, option, labels, maximum) {
     const plot = svgNode("g");
     const x = value => 10 + proseLengthPosition(value, maximum);
     plot.append(svgNode("line", {x1: 10, x2: 1010, y1: 22, y2: 22, class: "analysis-violin-track"}));
-    const points = [...summary.density.map(([value, density]) => [x(value), 22 - 18 * density]),
-        ...summary.density.toReversed().map(([value, density]) => [x(value), 22 + 18 * density])];
-    if (points.length) {
-        plot.append(svgNode("polygon", {
-            points: points.map(point => point.join(",")).join(" "),
+    const outline = violinDensityPath(summary.density, maximum);
+    if (outline) {
+        plot.append(svgNode("path", {
+            d: outline,
             class: "analysis-violin-density", fill: option.color,
         }));
     }
@@ -332,6 +361,15 @@ function violinFigure(summary, group, option, labels, maximum) {
     return svg;
 }
 
+/** Place ticks at whole numbers on a rounded annual-count scale. */
+export function annualCountTicks(maximum) {
+    const approximate = Math.max(1, maximum / 5);
+    const magnitude = 10 ** Math.floor(Math.log10(approximate));
+    const interval = [1, 2, 5, 10].map(step => step * magnitude).find(step => step >= approximate);
+    const count = Math.max(1, Math.ceil(maximum / interval));
+    return Array.from({length: count + 1}, (_, index) => index * interval);
+}
+
 /** Draw summed annual counts and link each stacked bar to its articles. */
 function annualFigure(years, grades, caption) {
     const width = Math.max(420, 54 + years.length * 44);
@@ -340,12 +378,13 @@ function annualFigure(years, grades, caption) {
         role: "group", "aria-label": caption, "data-chart-renderer": "browser",
     });
     const base = 260, left = 48, step = (width - left - 6) / years.length;
-    const interval = Math.max(1, Math.ceil(Math.max(0, ...years.map(year => year.pages)) / 5));
-    const height = count => 216 * count / (interval * 5);
-    for (let tick = 0; tick <= 5; tick++) {
-        const count = tick * interval, y = base - height(count);
+    const ticks = annualCountTicks(Math.max(0, ...years.map(year => year.pages)));
+    const height = count => 216 * count / ticks.at(-1);
+    for (const count of ticks) {
+        const y = base - height(count);
         svg.append(svgNode("line", {x1: left, x2: width - 6, y1: y, y2: y, class: "analysis-year-grid"}),
-            svgNode("text", {x: left - 6, y, "text-anchor": "end", "dominant-baseline": "middle", class: "analysis-axis-label"}, format(count)));
+            svgNode("text", {x: left - 6, y, "text-anchor": "end", "dominant-baseline": "middle",
+                class: "analysis-axis-label analysis-year-count-label"}, count));
     }
     for (const [index, year] of years.entries()) {
         const x = left + step * (index + .5);
@@ -527,8 +566,8 @@ export function articleElement(record) {
         });
         row.cells[5].append(document.createTextNode(" "), details);
     }
-    row.cells[6].textContent = article.prose_characters === null ? "—" : Math.round(article.prose_characters).toLocaleString("en-US");
-    row.cells[7].textContent = article.source_bytes === null ? "—" : (article.source_bytes / 1000).toLocaleString("en-US", {minimumFractionDigits: 1, maximumFractionDigits: 1});
+    row.cells[6].textContent = article.prose_characters === null ? "—" : groupedNumber(article.prose_characters);
+    row.cells[7].textContent = article.source_bytes === null ? "—" : groupedNumber(article.source_bytes / 1000, true);
     for (const column of [0, 6, 7]) row.cells[column].classList.add("analysis-number");
     if (article.prose_characters !== null) {if (document.documentElement.lang === "en") row.cells[6].append(document.createTextNode(" ")); row.cells[6].append(node("small", metadata.labels.words));}
     if (article.source_bytes !== null) row.cells[7].append(document.createTextNode(" "), node("small", "kB"));
@@ -595,7 +634,9 @@ export function renderAuthorshipDetails(body, proof, labels) {
             link.href = editor.url;
             name.append(link);
         } else name.textContent = editor.name;
-        line.append(name, node("td", editor.share_label), node("td", editor.characters_label), node("td", editor.bytes_label));
+        const source = node("td", editor.bytes_label);
+        if (editor.bytes_title) source.title = editor.bytes_title;
+        line.append(name, node("td", editor.share_label), node("td", editor.characters_label), source);
         tbody.append(line);
     }
     if (!proof.editors.length) {
@@ -684,7 +725,7 @@ export function initializeQualityMatrix() {
         const link = row.cells[2].querySelector("a");
         return {
             row, link,
-            label: link.textContent.replace(/[\d,]+/, "{count}"),
+            label: link.textContent.replace(/\d+(?:[,\u2009\u202f]\d{3})*/, "{count}"),
             pages: row.dataset.pageIds ? JSON.parse(row.dataset.pageIds).map(String) : null,
         };
     });
@@ -805,7 +846,7 @@ export function initializeQualityMatrix() {
                     dialog?.querySelectorAll('[data-matrix-page][data-cohort="1"]').length ?? 0);
             row.dataset.cohort = count ? "1" : "0";
             row.cells[2].dataset.sort = String(count);
-            link.textContent = label.replace("{count}", String(count));
+            link.textContent = label.replace("{count}", groupedNumber(count));
         }
         const totalNode = document.querySelector("[data-matrix-total]");
         if (totalNode) totalNode.textContent = format(total);

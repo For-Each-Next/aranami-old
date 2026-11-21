@@ -1,4 +1,5 @@
 /** Show evidence coverage and bounded lists for the selected article cohort. */
+import { groupedNumber } from "./number_format.js";
 import { qualityMetadata, requestQualityPage } from "./quality_matrix.js";
 
 let cohortListenerInstalled = false;
@@ -46,7 +47,6 @@ export function initializeQualityCoverage() {
     const form = document.querySelector("[data-quality-matrix]");
     const remote = Boolean(form?.dataset.directoryUrl);
     let selected = [], page = 1, total = 0, kind, opener, pending;
-    const number = value => value.toLocaleString(document.documentElement.lang);
     const records = () => document.querySelector("[data-quality-analysis]")?.analysisRows || [];
     const metadata = () => qualityMetadata();
     const comparison = () => metadata()?.assessment_comparison ||
@@ -83,7 +83,7 @@ export function initializeQualityCoverage() {
             const link = node("a", label);
             link.href = `https://zh.wikipedia.org/wiki/${encodeURIComponent(title.replaceAll(" ", "_"))}`;
             titleCell.append(link);
-            row.append(node("td", number(start + index + 1)), titleCell);
+            row.append(node("td", groupedNumber(start + index + 1)), titleCell);
             if (kind === "total") row.append(
                 node("td", record.category_grades.map(gradeLabel).join(" / ") || "—"),
                 node("td", gradeLabel(record.pageassessments_grade)),
@@ -94,8 +94,8 @@ export function initializeQualityCoverage() {
         empty.hidden = total > 0;
         empty.textContent = kind === "total" && !available ? labels.comparison_unavailable : labels.no_missing;
         table.hidden = total === 0;
-        status.textContent = status.dataset.template.replace("{start}", number(total ? start + 1 : 0))
-            .replace("{end}", number(start + visible.length)).replace("{total}", number(total));
+        status.textContent = status.dataset.template.replace("{start}", groupedNumber(total ? start + 1 : 0))
+            .replace("{end}", groupedNumber(start + visible.length)).replace("{total}", groupedNumber(total));
         for (const button of dialog.querySelectorAll("[data-coverage-page]")) button.disabled =
             ["first", "previous"].includes(button.dataset.coveragePage) ? page === 1 : page === pages;
     }
@@ -128,7 +128,7 @@ export function initializeQualityCoverage() {
     host.coverageRefresh = () => {
         const counts = remote ? form.qualityCoverage : coverageSummary(records());
         if (counts) {
-            for (const element of host.querySelectorAll("[data-coverage-count]")) element.textContent = number(counts[element.dataset.coverageCount]);
+            for (const element of host.querySelectorAll("[data-coverage-count]")) element.textContent = groupedNumber(counts[element.dataset.coverageCount]);
         }
         if (dialog.open) {chooseRows(); page = 1; render();}
     };

@@ -51,6 +51,7 @@ def _observation(tokens: pl.DataFrame) -> pl.DataFrame:
         .agg(
             pl.len().cast(pl.UInt32).alias("tokens"),
             pl.col("bytes", "characters", "raw_bytes").sum(),
+            pl.lit(None, dtype=pl.UInt32).alias("prose_characters"),
         )
         .with_columns(
             pl.lit("Cleanup").alias("name"),

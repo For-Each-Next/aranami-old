@@ -9,6 +9,7 @@ import unittest
 
 import polars as pl
 from polars.testing import assert_frame_equal
+from wiki_fixtures import OfflineSite
 
 from tasks.articles.authorship_text import eligible_bytes, score_tokens
 
@@ -35,13 +36,38 @@ class AuthorshipTextTests(unittest.TestCase):
         tokens = _tokens("a", "中", "文", "ü")
         result = score_tokens(tokens, "A \t中文\nÜ")
         assert_frame_equal(
-            result.drop("bytes", "characters", "raw_bytes"),
+            result.drop(
+                "bytes",
+                "characters",
+                "raw_bytes",
+                "prose_characters",
+            ),
             tokens,
         )
         assert result["bytes"].dtype == pl.UInt32
         assert result["bytes"].to_list() == [1, 3, 3, 2]
         assert result["raw_bytes"].to_list() == [1, 3, 3, 2]
         assert result["characters"].to_list() == [1, 1, 1, 1]
+
+    @staticmethod
+    def test_prose_units_are_attributed_after_using_article_rules() -> None:
+        """Count each visible word once and attribute its start."""
+        site = OfflineSite("zh", "wikipedia")
+        parts = (
+            "\n前文",
+            "[[隱藏標題|顯示]]",
+            "alpha",
+            "bet",
+            "<ref>{{cite web|title=顯示}}</ref>",
+            "{{Episode list|ShortSummary=劇情|Title=名稱}}",
+            "\n== 參考資料 ==\n末尾",
+        )
+        result = score_tokens(
+            _tokens(*(part.lower() for part in parts)),
+            "".join(parts),
+            site=site,
+        )
+        assert result["prose_characters"].to_list() == [2, 2, 2, 0, 0, 2, 0]
 
     @staticmethod
     def test_repeated_reference_and_body_strings_remain_distinct() -> None:

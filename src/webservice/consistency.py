@@ -14,7 +14,12 @@ import polars as pl
 
 from data.consistency import review_repair
 from webservice.consistency_review import repair_links
-from webservice.presentation import display_title, title_url, wiki_link
+from webservice.presentation import (
+    display_title,
+    grouped_number,
+    title_url,
+    wiki_link,
+)
 
 if TYPE_CHECKING:
     from webservice.presentation import Interface, Record
@@ -234,7 +239,7 @@ def _finding_detail(finding: Record, interface: Interface) -> Record:
                 "label": interface.text(f"consistency.metrics.{metric}"),
                 "value": interface.text("consistency.unknown")
                 if finding["suggested_values"].get(metric) is None
-                else f"{finding['suggested_values'][metric]:,}"
+                else grouped_number(finding["suggested_values"][metric])
                 + ("%" if metric == "start_percentage" else ""),
                 "unknown": finding["suggested_values"].get(metric) is None,
             }

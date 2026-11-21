@@ -49,6 +49,7 @@ def _contributors(
             "tokens": size,
             "bytes": size * 100,
             "characters": size * 40,
+            "prose_characters": size * 40,
             "raw_bytes": size * 100 + 100,
             "share": size / 100,
         }
@@ -487,7 +488,7 @@ class CurrentQualityTests(TestCase):
             popup = popup.split("</dialog>", 1)[0]
             assert ">Boundary</a>" in popup
             assert ">10.0%</td>" in popup
-            assert ">1,100</td>" in popup
+            assert 'title="1\N{THIN SPACE}100">1.1 kB</td>' in popup
             assert ">400</td>" in popup
             assert ">Minor</a>" not in popup
 

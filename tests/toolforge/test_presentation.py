@@ -1255,9 +1255,9 @@ class PresentationTests(unittest.TestCase):
             "measured": 3,
             "minimum": "0",
             "p25": "0",
-            "p50": "1,234.5",
+            "p50": "1\N{THIN SPACE}234.5",
             "p75": "—",
-            "maximum": "9,876",
+            "maximum": "9\N{THIN SPACE}876",
         }
         key = "quality_analysis.violin_summary"
         for locale in ("en", "zh-hans", "zh-hant"):
@@ -1834,7 +1834,7 @@ class PresentationTests(unittest.TestCase):
             (14, "14th"),
             (21, "21st"),
             (111, "111th"),
-            (1000, "1,000th"),
+            (1000, "1\N{THIN SPACE}000th"),
         ):
             item["site_rank"] = rank
             item["views"] = 1 if rank == 1 else 10_110
@@ -1850,7 +1850,9 @@ class PresentationTests(unittest.TestCase):
                 output,
             )
             assert views is not None
-            assert views[1] == ("1 view" if rank == 1 else "10,110 views")
+            assert views[1] == (
+                "1 view" if rank == 1 else "10\N{THIN SPACE}110 views"
+            )
 
     def _assert_highlight_icons(self) -> None:
         """Keep appearance icons independent of current assessment."""
@@ -1938,19 +1940,19 @@ class PresentationTests(unittest.TestCase):
             (
                 "en",
                 "Oct 31",
-                "10,110 views",
+                "10\N{THIN SPACE}110 views",
                 "14th site-wide",
             ),
             (
                 "zh-hans",
                 "10月31日",
-                "10,110次浏览",
+                "10\N{THIN SPACE}110次浏览",
                 "全站第14名",
             ),
             (
                 "zh-hant",
                 "10月31日",
-                "10,110次瀏覽",
+                "10\N{THIN SPACE}110次瀏覽",
                 "全站第14名",
             ),
         ):
@@ -2167,6 +2169,7 @@ class PresentationTests(unittest.TestCase):
                     "datasets",
                     "heading_links",
                     "history",
+                    "number_format",
                     "quality_authorship",
                     "quality_analysis",
                     "quality_chart_controls",

@@ -25,6 +25,7 @@ from shared.assessment_profiles import assessment_profile
 from webservice.presentation import (
     Interface,
     display_title,
+    grouped_number,
     title_url,
     utc_time,
 )
@@ -99,7 +100,16 @@ def _number(value: float | None) -> str:
     Returns:
         A grouped whole number or the shared unknown marker.
     """
-    return "—" if value is None else f"{value:,.0f}"
+    return "—" if value is None else grouped_number(value, decimals=0)
+
+
+def _kilobytes(value: int | None) -> str:
+    """Format a known UTF-8 source size.
+
+    Returns:
+        A decimal kilobyte value to one decimal place, or unknown.
+    """
+    return "—" if value is None else grouped_number(value / 1000, decimals=1)
 
 
 def _range(row: dict, prefix: str) -> str:
@@ -109,7 +119,15 @@ def _range(row: dict, prefix: str) -> str:
         A bounded numerical interval or an unknown marker.
     """
     low, high = row.get(f"{prefix}_low"), row.get(f"{prefix}_high")
-    return "—" if low is None or high is None else f"{low:,.0f}–{high:,.0f}"
+    return (
+        "—"
+        if low is None or high is None
+        else (
+            grouped_number(low, decimals=0)
+            + "–"
+            + grouped_number(high, decimals=0)
+        )
+    )
 
 
 def _pie(
@@ -367,7 +385,7 @@ def _percentile_label(value: float | None) -> str:
     if value == 0:
         return "0"
     step = 10 ** max(0, floor(log10(value)) - 1)
-    return f"{floor(value / step + 0.5) * step:,}"
+    return grouped_number(floor(value / step + 0.5) * step)
 
 
 def _articles(data: dict, interface: Interface) -> list[dict]:
@@ -451,9 +469,7 @@ def _articles(data: dict, interface: Interface) -> list[dict]:
                 ),
             ),
             "authorship": authorship,
-            "source_label": "—"
-            if row.get("source_bytes") is None
-            else f"{row['source_bytes'] / 1000:,.1f}",
+            "source_label": _kilobytes(row.get("source_bytes")),
             "source_url": _revision_url(row.get("article_revision_id")),
         })
     return articles
@@ -558,8 +574,11 @@ def _editor(source: dict, interface: Interface) -> dict:
         "share": source["share"],
         "character_floor": character_floor,
         "share_label": f"{source['share'] * 100:.1f}%",
-        "characters_label": _number(characters),
-        "bytes_label": _number(raw_bytes),
+        "characters_label": _number(source.get("prose_characters")),
+        "bytes_label": f"{_kilobytes(raw_bytes)} kB"
+        if raw_bytes is not None
+        else "—",
+        "bytes_title": _number(raw_bytes) if raw_bytes is not None else None,
     }
 
 

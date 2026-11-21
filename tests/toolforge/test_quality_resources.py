@@ -938,8 +938,8 @@ class QualityResourcePresentationTests(unittest.TestCase):
             (None, "—"),
             (0, "0"),
             (654, "650"),
-            (1234, "1,200"),
-            (15412, "15,000"),
+            (1234, "1\N{THIN SPACE}200"),
+            (15412, "15\N{THIN SPACE}000"),
         ):
             measured = 654 if value is not None else 0
             data = analysis_fixture()
@@ -975,7 +975,7 @@ class QualityResourcePresentationTests(unittest.TestCase):
                 summary = result["quality_analysis"]["lengths"][0]["summary"]
                 assert summary == interface.text(
                     "quality_analysis.violin_summary",
-                    pages="15,412",
+                    pages="15\N{THIN SPACE}412",
                     measured=str(measured),
                     minimum=label,
                     p25=label,

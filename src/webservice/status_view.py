@@ -20,6 +20,7 @@ from webservice.presentation import (
     catalog,
     duration,
     failure_description,
+    grouped_number,
     readable_size,
     relative_time,
     timestamp,
@@ -292,8 +293,8 @@ def _report_activity(
         interface.text(
             "progress.count",
             phase=activity.rstrip(".。…"),
-            current=f"{current:,}",
-            total=f"{total:,}",
+            current=grouped_number(current),
+            total=grouped_number(total),
         )
         if current is not None and total is not None
         else activity

@@ -14,9 +14,10 @@ const analysis = fs.readFileSync(path.join(root, "quality_analysis.js"), "utf8")
     .replaceAll("export function", "function");
 const context = { document: { querySelector: () => null } };
 const matrix = fs.readFileSync(path.join(root, "quality_matrix.js"), "utf8")
-    .replaceAll("export function", "function").replaceAll("export async function", "async function");
+    .replace(/^import .*;$/gm, "").replaceAll("export function", "function").replaceAll("export async function", "async function");
 const characters = fs.readFileSync(path.join(root, "quality_search_characters.js"), "utf8").replace("export const", "const");
-const source = [shared, matrix, characters, analysis].join("\n");
+const numbers = fs.readFileSync(path.join(root, "number_format.js"), "utf8").replace("export function", "function");
+const source = [numbers, shared, matrix, characters, analysis].join("\n");
 vm.runInNewContext(source, context);
 const compare = context.compareAnalysisRows;
 const row = (column, value) => ({
@@ -517,7 +518,7 @@ test("catalog rows rebuild the prepared table's chips, talk links, evidence and 
     assert.equal(row.cells[5].childNodes.at(-1).handlers.click.length, 1);
     assert.equal(again.cells[5].childNodes.at(-1).handlers.click.length, 1);
     assert.equal(row.cells[6].className, "analysis-number");
-    assert.equal(row.cells[6].textContent, "1,234 characters");
+    assert.equal(row.cells[6].textContent, "1\u2009234 characters");
     assert.equal(row.cells[7].textContent, "12.5 kB");
     article.listed_date = article.date_label = article.listed_oldid = article.review_url = null;
     record.cells[4].dataset.sort = "";
@@ -649,7 +650,7 @@ test("individual violin tooltips use localized names without percentile codes or
         const labels = Object.fromEntries(kinds.map(kind => ['violin_' + kind, interfaceMessages['quality_analysis.violin_' + kind][locale]]));
         for (const kind of kinds) {
             const title = context.violinMarkerTitle(kind, 52318, labels);
-            assert.equal(title, labels['violin_' + kind].replace('{value}', '52,000'));
+            assert.equal(title, labels['violin_' + kind].replace('{value}', '52\u2009000'));
             assert.doesNotMatch(title, /P25|P50|P75|articles|条目|條目|\{value\}/);
         }
     }
@@ -835,8 +836,8 @@ test("actual localized violin templates interpolate every count and digit-contai
         const summary = context.violinSummary({pages: 4, measured: 3, minimum: 0, maximum: 12345, quartiles: [.25, 2.75], quantiles: [null, null, 1.5]}, template);
         assert.doesNotMatch(summary, /\{[^}]+\}/);
         assert.equal(summary, template.replace("{pages}", "4").replace("{measured}", "3")
-            .replace("{minimum}", "0").replace("{p25}", "0").replace("{p50}", "2").replace("{p75}", "3").replace("{maximum}", "12,000"));
-        assert.match(summary, /12,000/);
+            .replace("{minimum}", "0").replace("{p25}", "0").replace("{p50}", "2").replace("{p75}", "3").replace("{maximum}", "12\u2009000"));
+        assert.match(summary, /12\u2009000/);
         const repeated = context.violinSummary({pages: 0, measured: 0, minimum: null, maximum: null, quartiles: [null, null], quantiles: [null, null, null]}, `${template} {p50}/{p50}`);
         assert.doesNotMatch(repeated, /\{[^}]+\}/);
         assert.ok(repeated.endsWith("—/—"));
@@ -852,13 +853,13 @@ test("violin extrema use observed lengths rather than density bounds or central 
     assert.equal(result.maximum, 12345);
     assert.ok(result.quantiles[0] > result.minimum);
     assert.ok(result.quantiles[4] < result.maximum);
-    assert.equal(context.violinSummary(result, "{minimum}/{p25}/{p50}/{p75}/{maximum}"), "0/1,000/1,000/1,000/12,000");
+    assert.equal(context.violinSummary(result, "{minimum}/{p25}/{p50}/{p75}/{maximum}"), "0/1\u2009000/1\u2009000/1\u2009000/12\u2009000");
 });
 
 test("five-number tooltip rounds half lengths upward without changing the saved marker values", () => {
     const statistics = {pages: 4, measured: 4, minimum: 0, maximum: 1234.5,
         quartiles: [.5, 2.5], quantiles: [null, null, 1.5]};
-    assert.equal(context.violinSummary(statistics, "{minimum}/{p25}/{p50}/{p75}/{maximum}"), "0/1/2/3/1,200");
+    assert.equal(context.violinSummary(statistics, "{minimum}/{p25}/{p50}/{p75}/{maximum}"), "0/1/2/3/1\u2009200");
     assert.deepEqual(statistics.quartiles, [.5, 2.5]);
     assert.equal(statistics.quantiles[2], 1.5);
     assert.equal(statistics.maximum, 1234.5);
@@ -868,8 +869,20 @@ test("tooltip lengths use two significant digits with integer display while arti
     const statistics = {pages: 15412, measured: 654, minimum: .5, maximum: 15412,
         quartiles: [75.5, 654], quantiles: [null, null, 995]};
     assert.equal(context.violinSummary(statistics, "{pages}/{measured}: {minimum}/{p25}/{p50}/{p75}/{maximum}"),
-        "15,412/654: 1/76/1,000/650/15,000");
+        "15\u2009412/654: 1/76/1\u2009000/650/15\u2009000");
     assert.deepEqual(statistics.quartiles, [75.5, 654]);
     assert.equal(statistics.maximum, 15412);
     assert.equal(statistics.quantiles[2], 995);
+});
+
+
+test("violin paths are smooth and annual ticks are plain rounded integers", () => {
+    const curve = context.violinDensityPath([[0, 0], [50, .8], [100, 1], [150, .3], [200, 0]], 25000);
+    assert.match(curve, /^M /);
+    assert.equal((curve.match(/ C /g) || []).length, 8);
+    assert.match(curve, / Z$/);
+    assert.equal(context.violinDensityPath([[0, 1]], 25000), "");
+    assert.deepEqual(Array.from(context.annualCountTicks(2200)), [0, 500, 1000, 1500, 2000, 2500]);
+    assert.deepEqual(Array.from(context.annualCountTicks(2)), [0, 1, 2]);
+    assert.equal(context.groupedNumber(13088), "13\u2009088");
 });

@@ -579,8 +579,45 @@ def _figure_file(issue_year: int, number: int, options: str) -> str:
     return f"{{{{File2|{files}|{options}|class=skin-invert-image}}}}"
 
 
-def _quality_charts(review: Mapping, year: int) -> str:
-    """Pair the current quality pie with the previous issue's chart.
+def _picture_version(issue_year: int, number: int, options: str) -> str:
+    """Supply an editor-ready File2 alternative as a comment.
+
+    Returns:
+        A comment with localized filenames and the source of the PNGs.
+    """
+    image = _figure_file(issue_year, number, options)
+    return (
+        f"<!-- Picture version: {image}\n"
+        "See [[toolforge:aranami]] for PNG downloads. -->"
+    )
+
+
+def _quality_pie(chart: AnnualFigure) -> str:
+    """Project one saved quality distribution into the wiki chart.
+
+    Returns:
+        Pie wikitext with the original counts, labels and grade colors.
+    """
+    labels = [f"{series.label}：{series.counts[0]}" for series in chart.series]
+    return "\n".join((
+        "{{Graph:Chart",
+        "| type = pie | width = 220 | height = 250",
+        f"| title = {chart.title}",
+        "| x = " + ", ".join(labels),
+        "| y1 = "
+        + ", ".join(str(series.counts[0]) for series in chart.series),
+        "| colors = " + ", ".join(series.color for series in chart.series),
+        "| legend = true | showValues = false",
+        "}}",
+    ))
+
+
+def _quality_charts(
+    review: Mapping,
+    year: int,
+    current: AnnualFigure | None,
+) -> str:
+    """Pair the wiki's current quality chart with the previous image.
 
     Returns:
         Wikitext charts and their coverage introduction.
@@ -592,16 +629,19 @@ def _quality_charts(review: Mapping, year: int) -> str:
     )
     if not records:
         return ""
-    charts = [
-        "  <div>"
-        + _figure_file(
-            row["year"] + 1,
-            3,
-            f"350px|center|{distribution_title(row['year'])}",
-        )
-        + "</div>"
-        for row in records
-    ]
+    charts = []
+    for row in records:
+        issue_year = row["year"] + 1
+        options = f"350px|center|{distribution_title(row['year'])}"
+        if row["year"] == year and current is not None:
+            chart = (
+                _quality_pie(current)
+                + "\n"
+                + _picture_version(issue_year, current.number, options)
+            )
+        else:
+            chart = _figure_file(issue_year, 3, options)
+        charts.append(f"  <div>\n{chart}\n  </div>")
     return (
         _annual_intro(
             review,
@@ -788,6 +828,7 @@ def _annual_ranking(
 def _article_report(  # ruff: ignore[too-many-locals]
     review: Mapping,
     year: int,
+    distribution: AnnualFigure | None,
 ) -> str:
     """Render annual reference prose and measured popularity rankings.
 
@@ -806,7 +847,7 @@ def _article_report(  # ruff: ignore[too-many-locals]
     parts = [
         _article_growth_prose(review, year, current, previous),
         _assessment_prose(review, year),
-        _quality_charts(review, year),
+        _quality_charts(review, year, distribution),
         _annual_intro(
             review,
             f"以下列出{year}年各月日均瀏覽量最高的條目：",
@@ -974,12 +1015,48 @@ def _awards(review: Mapping) -> str:
     return "\n".join(lines)
 
 
+def _quality_history_graph(chart: AnnualFigure) -> str:
+    """Project prepared yearly cohorts into a wiki stacked bar chart.
+
+    Returns:
+        The chart title, integer axes and original grade series.
+    """
+    peak = max(
+        sum(values)
+        for values in zip(
+            *(series.counts for series in chart.series),
+            strict=True,
+        )
+    )
+    limit = max(50, (peak + 9) // 10 * 10)
+    lines = [
+        "{{Graph:Chart",
+        f"| title = {chart.title}",
+        "| type = stackedrect | width = 600 | height = 300",
+        "| xType = string | x = " + ", ".join(map(str, chart.axis)),
+    ]
+    for index, series in enumerate(chart.series, start=1):
+        counts = ", ".join(map(str, series.counts))
+        lines.append(f"| y{index} = {counts} | y{index}Title = {series.label}")
+    lines.extend((
+        "| colors = " + ", ".join(series.color for series in chart.series),
+        "| legend = true | interactive = true | animate = true",
+        "| xAxisAngle = -30 | xAxisTitle = 年份",
+        (
+            "| yAxisTitle = 入選篇數 | yType = integer "
+            f"| yAxisMin = 0 | yAxisMax = {limit} | yGrid = true"
+        ),
+        "}}",
+    ))
+    return "\n".join(lines)
+
+
 def _milestone_charts(
     review: Mapping,
     issue_year: int,
     figures: Mapping[int, AnnualFigure],
 ) -> tuple[str, str]:
-    """Place both annual milestone images.
+    """Render milestone graphs with commented PNG alternatives.
 
     Returns:
         Wikitext for both milestone figures and their coverage notices.
@@ -988,8 +1065,11 @@ def _milestone_charts(
     if chart := figures.get(1):
         quality = (
             _annual_intro(review, "歷年高品質條目入選數量如下：")
-            + "\n"
-            + _figure_file(
+            + '\n<div class="center" '
+            'style="max-width:100%;overflow-x:auto;text-align:center">\n'
+            + _quality_history_graph(chart)
+            + "\n</div>\n"
+            + _picture_version(
                 issue_year,
                 chart.number,
                 f"600px|center|{chart.title}",
@@ -1004,11 +1084,24 @@ def _milestone_charts(
         partial=not review.get("complete") or chart.data_through is not None,
         data_through=chart.data_through,
     )
-    return quality, _figure_file(
-        issue_year,
-        chart.number,
-        f"thumb|right|upright=1.4|{caption}",
-    )
+    series = chart.series[0]
+    cumulative = "\n".join((
+        "{{Image frame",
+        "| align = right | width = 400",
+        "| content = {{Graph:Chart | type = area | width = 400 | height = 250",
+        "| xType = date | x = " + ", ".join(map(str, chart.axis)),
+        "| y1 = " + ", ".join(map(str, series.counts)),
+        f"| colors = {series.color} | xAxisTitle = 日期 | yAxisTitle = 條目數",
+        "}}",
+        f"| caption = {caption}",
+        "}}",
+        _picture_version(
+            issue_year,
+            chart.number,
+            f"thumb|right|upright=1.4|{caption}",
+        ),
+    ))
+    return quality, cumulative
 
 
 def _quality_summary(review: Mapping, year: int) -> str:
@@ -1131,11 +1224,8 @@ def _annual(issue: Issue, review: Mapping) -> str:
         Annual wikitext without introductions or editor comments.
     """
     year = issue.year - 1
-    quality_chart, dyk_chart = _milestone_charts(
-        review,
-        issue.year,
-        annual_figures(review, year),
-    )
+    figures = annual_figures(review, year)
+    quality_chart, dyk_chart = _milestone_charts(review, issue.year, figures)
     quality_list, author_table = _quality(review)
     if quality_list:
         quality_list = (
@@ -1173,7 +1263,8 @@ def _annual(issue: Issue, review: Mapping) -> str:
         + _dyk_summary(review, year)
         + "\n\n"
         + _dyk(review, year),
-        "==== 条目报告 ====\n\n" + _article_report(review, year),
+        "==== 条目报告 ====\n\n"
+        + _article_report(review, year, figures.get(3)),
         "==== 榮譽表彰 ====\n\n" + _awards(review),
         _invitation(issue),
         (

@@ -43,6 +43,7 @@ from webservice.presentation import (
     assessment_code,
     catalog,
     display_title,
+    grouped_number,
     homepage_sections,
     local_url,
     maintenance_filter,
@@ -453,14 +454,14 @@ def _english_ordinal(value: int) -> str:
         value: Observed positive rank.
 
     Returns:
-        A rank such as ``1st``, ``12th``, or ``1,000th``.
+        An ordinal rank, grouped when it reaches one thousand.
     """
     suffix = (
         "th"
         if value % 100 in {11, 12, 13}
         else {1: "st", 2: "nd", 3: "rd"}.get(value % 10, "th")
     )
-    return f"{value:,}{suffix}"
+    return f"{grouped_number(value)}{suffix}"
 
 
 _SECTION_SIZE_INTEGER_BYTES = 10_000
@@ -485,10 +486,10 @@ def _section_size(value: object, interface: Interface) -> Record | None:
         else 2
     )
     return {
-        "label": f"{kilobytes:,.{digits}f}\u00a0kB",
+        "label": f"{grouped_number(kilobytes, decimals=digits)}\u00a0kB",
         "description": interface.text(
             "reviews.section_size",
-            bytes=f"{value:,}",
+            bytes=grouped_number(value),
         ),
     }
 
@@ -923,13 +924,13 @@ class _Page:
                     "pageviews.views_one"
                     if self.interface.locale == "en" and item["views"] == 1
                     else "pageviews.views",
-                    count=f"{item['views']:,}",
+                    count=grouped_number(item["views"]),
                 ),
                 site_rank=self.text(
                     "pageviews.site_rank",
                     rank=_english_ordinal(item["site_rank"])
                     if self.interface.locale == "en"
-                    else f"{item['site_rank']:,}",
+                    else grouped_number(item["site_rank"]),
                 )
                 if item.get("site_rank") is not None
                 else None,
@@ -1025,12 +1026,12 @@ class _Page:
             Known counts, even without a latest-comment timestamp.
         """
         participants = (
-            f"{item['participant_count']:,}"
+            grouped_number(item["participant_count"])
             if item.get("participant_count") is not None
             else None
         )
         comments = (
-            f"{item['comment_count']:,}"
+            grouped_number(item["comment_count"])
             if item.get("comment_count") is not None
             else None
         )
@@ -1962,7 +1963,7 @@ def render_consistency_checks(  # ruff: ignore[too-many-arguments]
                     "backlog.range",
                     start=portion["offset"] + 1,
                     end=portion["offset"] + len(portion["items"]),
-                    count=f"{group['count']:,}",
+                    count=grouped_number(group["count"]),
                 ),
                 **{
                     name: local_url(
@@ -2126,7 +2127,7 @@ def render_maintenance(  # ruff: ignore[too-many-arguments]
             else "backlog.range",
             start=portion["offset"] + 1 if items else 0,
             end=portion["offset"] + len(portion["items"]),
-            count=f"{len(items):,}",
+            count=grouped_number(len(items)),
         ),
         updated=page.source_updated(
             selected.get("observed_at") or checks.get("observed_at"),
@@ -2248,11 +2249,12 @@ def render_newsletter(  # ruff: ignore[too-many-arguments]
     )
     labels = {
         "主頁": "main",
-        "特優內容": "quality",
         "宣告": "announcements",
+        "特優內容": "quality",
         "專題": "feature",
         "訪談": "interview",
     }
+    draft_order = {label: index for index, label in enumerate(labels)}
     automatic = value.get("automatic_issue", value["issue"])
     previous = Issue.parse(str(automatic)).previous
     choices = value.get("issue_choices", [previous, automatic])
@@ -2312,7 +2314,12 @@ def render_newsletter(  # ruff: ignore[too-many-arguments]
                     draft.get("data_through") or data_through,
                 ),
             }
-            for draft in value["pages"]
+            for draft in sorted(
+                value["pages"],
+                key=lambda draft: draft_order[
+                    draft["label"].lstrip("/") or "主頁"
+                ],
+            )
             if value["available"]
         ],
     )
@@ -2470,8 +2477,8 @@ def render_dataset(
                 "generation",
                 manifest.get("generation", storage.get("generation")),
             ),
-            ("row_count", f"{data['row_count']:,}"),
-            ("column_count", f"{len(data['columns']):,}"),
+            ("row_count", grouped_number(data["row_count"])),
+            ("column_count", grouped_number(len(data["columns"]))),
         ]
         if manifest:
             fields.extend([
@@ -2494,7 +2501,7 @@ def render_dataset(
                 ("sha256", manifest["sha256"]),
             ])
         if data.get("size_bytes") is not None:
-            fields.append(("size_bytes", f"{data['size_bytes']:,}"))
+            fields.append(("size_bytes", grouped_number(data["size_bytes"])))
         current = data.get("page", 1)
         page_count = data.get("page_count", 1)
         size = data["preview_limit"]
@@ -2512,9 +2519,9 @@ def render_dataset(
             ],
             "label": page.text(
                 "data.preview_note",
-                start=f"{offset + 1 if data['rows'] else 0:,}",
-                end=f"{offset + len(data['rows']):,}",
-                total=f"{data['row_count']:,}",
+                start=grouped_number(offset + 1 if data["rows"] else 0),
+                end=grouped_number(offset + len(data["rows"])),
+                total=grouped_number(data["row_count"]),
             ),
             "page": current,
             "page_count": page_count,
@@ -2673,9 +2680,9 @@ def render_reports(  # ruff: ignore[too-many-arguments]
             "size_choices": REPORTS_PAGE_SIZES,
             "label": page.text(
                 "reports.page_status",
-                start=f"{offset + 1 if count else 0:,}",
-                end=f"{offset + len(events):,}",
-                total=f"{count:,}",
+                start=grouped_number(offset + 1 if count else 0),
+                end=grouped_number(offset + len(events)),
+                total=grouped_number(count),
             ),
             **{
                 key: local_url("/reports/", page=target, **options)

@@ -735,7 +735,11 @@ class TestPageviewsProgressPresentation(TestCase):
             for index, (stage, count) in enumerate(
                 zip(
                     stages,
-                    ("0/13,062", "1,000/13,062", "13,062/13,062"),
+                    (
+                        "0/13\N{THIN SPACE}062",
+                        "1\N{THIN SPACE}000/13\N{THIN SPACE}062",
+                        "13\N{THIN SPACE}062/13\N{THIN SPACE}062",
+                    ),
                     strict=True,
                 ),
             ):

@@ -19,6 +19,7 @@ from data.articles.authorship_store import (
     CONTRIBUTOR_SCHEMA,
     complete_contributor_evidence,
     restore_contributor_characters,
+    retain_raw_binding,
 )
 from data.articles.storage import DEFAULT_ROOT
 from data.reports import ReportResult, ReportStore
@@ -518,6 +519,11 @@ def checkpoint(  # ruff: ignore[too-many-arguments] - Single atomic checkpoint f
             if previous is None or latest is None or latest >= previous:
                 tables["targets"] = targets
         if evidence is not None:
+            evidence = retain_raw_binding(
+                tables["evidence"],
+                evidence,
+                [*KEY, "contract", "eligible_bytes"],
+            )
             tables["evidence"] = (
                 pl
                 .concat([tables["evidence"], evidence])

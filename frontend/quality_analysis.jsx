@@ -1174,7 +1174,7 @@ function ArticleDirectory(context) {
                                                                               )}
                                                                           </td>
                                                                           <td>{display(author?.characters_label)}</td>
-                                                                          <td>
+                                                                          <td title={author?.bytes_title ?? undefined}>
                                                                               {display(
                                                                                   author?.bytes_label,
                                                                               )}

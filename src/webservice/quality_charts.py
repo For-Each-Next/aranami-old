@@ -25,9 +25,11 @@ import numpy as np
 from matplotlib import rc_context
 from matplotlib.backends.backend_svg import FigureCanvasSVG
 from matplotlib.figure import Figure
+from matplotlib.ticker import FormatStrFormatter, MaxNLocator
 
 from data.articles.quality_analysis import GRADES
 from shared.assessment_profiles import assessment_profile
+from webservice.presentation import grouped_number
 from webservice.quality_authorship import grade_label
 
 if TYPE_CHECKING:
@@ -72,7 +74,7 @@ def _number(value: float) -> str:
     if value == 0:
         return "0"
     step = 10 ** max(0, math.floor(math.log10(value)) - 1)
-    return f"{math.floor(value / step + 0.5) * step:,}"
+    return grouped_number(math.floor(value / step + 0.5) * step)
 
 
 def _scale(value: np.ndarray, maximum: float) -> np.ndarray:
@@ -234,7 +236,9 @@ def _pie(rows: tuple, dimension: str, caption: str) -> str:
             wedge.set_gid(identifier)
             annotations[identifier] = {
                 "attributes": {"class": "analysis-pie-slice"},
-                "title": f"{label}: {count:,} ({count / total:.1%})",
+                "title": (
+                    f"{label}: {grouped_number(count)} ({count / total:.1%})"
+                ),
                 "link": _link(dimension, code, label),
             }
     else:
@@ -385,8 +389,8 @@ def _violin(  # ruff: ignore[too-many-locals]
             "aria-label": label
             + ": "
             + summary_template.format(
-                pages=f"{pages:,}",
-                measured=f"{len(values):,}",
+                pages=grouped_number(pages),
+                measured=grouped_number(len(values)),
                 **summary_values,
             ),
             "preserveAspectRatio": "none",
@@ -407,6 +411,8 @@ def _years(rows: tuple, grades: tuple, caption: str) -> str:
     axes: Axes = figure.add_axes((0.06, 0.16, 0.92, 0.78))
     axes.set_axisbelow(True)
     axes.grid(axis="y", color="#dce6e7", linewidth=0.7)
+    axes.yaxis.set_major_locator(MaxNLocator(nbins=5, integer=True))
+    axes.yaxis.set_major_formatter(FormatStrFormatter("%d"))
     axes.spines[["top", "right"]].set_visible(False)
     axes.tick_params(axis="both", labelsize=8, length=0)
     years = [row[0] for row in rows]
@@ -429,7 +435,7 @@ def _years(rows: tuple, grades: tuple, caption: str) -> str:
             identifier = f"bar-{year}-{code}"
             bar.set_gid(identifier)
             annotations[identifier] = {
-                "title": f"{year} · {label}: {count:,}",
+                "title": f"{year} · {label}: {grouped_number(count)}",
                 "attributes": {
                     "data-analysis-year": str(year),
                     "data-year-count": str(count),
@@ -441,7 +447,7 @@ def _years(rows: tuple, grades: tuple, caption: str) -> str:
     axes.set_ylim(0, max(1, float(bottom.max(initial=0))) * 1.18)
     for year, count in zip(years, bottom, strict=True):
         axes.annotate(
-            f"{count:,.0f}",
+            grouped_number(count, decimals=0),
             (year, count),
             xytext=(0, 3),
             textcoords="offset points",

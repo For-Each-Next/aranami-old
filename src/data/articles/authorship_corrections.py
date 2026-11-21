@@ -562,6 +562,12 @@ def _overlay_contributors(changes: pl.DataFrame) -> pl.DataFrame:
             )
             .cast(pl.UInt32)
             .alias("raw_bytes"),
+            pl
+            .when(
+                pl.col("_incoming").is_null() & pl.col("_outgoing").is_null(),
+            )
+            .then(pl.col("prose_characters"))
+            .alias("prose_characters"),
             pl.coalesce("name", "_incoming_name").alias("name"),
             pl.col("tokens").fill_null(0),
         )

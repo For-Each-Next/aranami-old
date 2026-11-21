@@ -25,7 +25,7 @@ from tasks.zhwiki.newsletter.statistics import (
     quality_statistics,
 )
 from updater.services.newsletter_editorial import render_annual_feature
-from webservice import newsletter_charts
+from webservice import newsletter_png
 from webservice.newsletter_charts import (
     CHART_DIRECTORY,
     available_charts,
@@ -166,7 +166,7 @@ class NewsletterStatisticsTests(TestCase):
         chart = annual_figures(review, 2026)[3]
         counts = tuple(series.counts[0] for series in chart.series)
         assert counts == (499, 500, 5150, 3851)
-        assert newsletter_charts._percentages(counts) == (  # ruff: ignore[private-member-access]
+        assert newsletter_png._percentages(counts) == (  # ruff: ignore[private-member-access]
             "",
             "5.0%",
             "51.5%",
@@ -350,7 +350,8 @@ class NewsletterStatisticsTests(TestCase):
         assert "# [[:Game]]：123笔修订" in text
         assert "年内共有1名编辑获得ACG专题奖得分。其中1名編者首次得分" in text
         assert "1名首次達到10分。" in text
-        assert "{{Graph:Chart" not in text
+        assert text.count("{{Graph:Chart") == 2
+        assert text.count("See [[toolforge:aranami]]") == 2
         assert "WPVG Newsletter 202701 Feature Graph 2" in text
         assert "WPVG Newsletter 202701 Feature Graph 3" in text
         assert "WPVG Newsletter 202601 Feature Graph 3" in text
@@ -396,8 +397,15 @@ class AnnualFigureIntroductionTests(TestCase):
             for template in grid.contents.filter_templates()
             if template.name.matches("File2")
         ]
-        assert len(charts) == 2
-        for chart, issue in zip(charts, (202701, 202601), strict=True):
+        picture = mwparserfromhell.parse(
+            str(grid.contents.filter_comments()[0].contents),
+        ).filter_templates()[0]
+        assert len(charts) == 1
+        assert any(
+            template.name.matches("Graph:Chart")
+            for template in grid.contents.filter_templates()
+        )
+        for chart, issue in ((picture, 202701), (charts[0], 202601)):
             for variant in ("zh-cn", "zh-hk", "zh-tw"):
                 assert chart.get(variant).value == (
                     f"WPVG Newsletter {issue} Feature Graph 3 ({variant}).png"
@@ -438,11 +446,7 @@ class AnnualFigureIntroductionTests(TestCase):
         blocks = (
             (
                 quality,
-                next(
-                    template
-                    for template in quality.filter_templates(recursive=False)
-                    if template.name.matches("File2")
-                ),
+                next(tag for tag in quality_blocks if tag.tag == "div"),
                 "歷年高品質條目入選數量如下：",
                 "2026年10月31日",
             ),
@@ -525,9 +529,9 @@ class AnnualFigureIntroductionTests(TestCase):
         dyk_chart = next(
             template
             for template in dyk.filter_templates(recursive=False)
-            if template.name.matches("File2")
+            if template.name.matches("Image frame")
         )
-        assert str(dyk_chart.get("3").value).strip() == (
+        assert str(dyk_chart.get("caption").value).strip() == (
             "{{Memo|截至2026年9月30日|inline:info}}"
             "电子游戏专题累计新条目推荐数量"
         )

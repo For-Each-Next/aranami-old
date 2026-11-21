@@ -14,11 +14,16 @@ import mwparserfromhell
 import polars as pl
 from mwparserfromhell.nodes import Heading, Tag, Template, Text
 
+from shared.support.prose import extract_prose
+from shared.support.words import chinese_unit_positions
+from tasks.prose import PROFILE
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from mwparserfromhell.nodes import Node
     from mwparserfromhell.wikicode import Wikicode
+    from pywikibot.site import BaseSite
 
 _REFERENCE_TAGS = frozenset({"ref", "references"})
 _LITERAL_TAGS = frozenset({"nowiki", "source", "syntaxhighlight"})
@@ -54,6 +59,7 @@ _UNPARSED_REFERENCE = re.compile(
     r"<\s*/?\s*(?:ref|references)\b",
     flags=re.IGNORECASE,
 )
+_MAX_PROSE_BYTES = 4 * 1024 * 1024
 
 
 def _active_nodes(code: Wikicode) -> Iterator[Node]:
@@ -176,7 +182,8 @@ def eligible_bytes(wikitext: str) -> int:
 def _source_scores(
     text: str,
     masked: str,
-) -> tuple[str, list[int], list[int], list[int]]:
+    prose: dict[int, int] | None,
+) -> tuple[str, list[int], list[int], list[int], list[int] | None]:
     """Map normalized positions to cumulative byte and character counts.
 
     WikiWho's upstream ``wikiwho.py`` lowercases complete revisions;
@@ -203,7 +210,8 @@ def _source_scores(
     character_counts = [0]
     raw_bytes = [0]
     characters = zip(text, lowered, masked, strict=True)
-    for original, normalized, retained in characters:
+    prose_counts = [0] if prose is not None else None
+    for offset, (original, normalized, retained) in enumerate(characters):
         if original.isspace():
             continue
         compact.append(normalized)
@@ -212,16 +220,60 @@ def _source_scores(
         raw_bytes.append(raw_bytes[-1] + size)
         prefix.append(prefix[-1] + (size if eligible else 0))
         character_counts.append(character_counts[-1] + int(eligible))
-    return "".join(compact), prefix, character_counts, raw_bytes
+        if prose_counts is not None:
+            prose_counts.append(prose_counts[-1] + prose.get(offset, 0))
+    return "".join(compact), prefix, character_counts, raw_bytes, prose_counts
 
 
-def score_tokens(tokens: pl.DataFrame, wikitext: str) -> pl.DataFrame:
+def _prose_scores(
+    wikitext: str,
+    site: BaseSite,
+    *,
+    include_template_values: bool,
+) -> dict[int, int] | None:
+    """Index the article list's prose units by their source positions.
+
+    Returns:
+        Counts by original position, or unknown if alignment fails.
+    """
+    if len(wikitext.encode()) > _MAX_PROSE_BYTES:
+        return None
+    offsets: list[int] = []
+    try:
+        text = extract_prose(
+            wikitext,
+            site=site,
+            profile=PROFILE,
+            include_template_values=include_template_values,
+            source_offsets=offsets,
+        )
+    except ValueError:
+        return None
+    counts = {}
+    for index, size in chinese_unit_positions(text):
+        offset = offsets[index]
+        if offset < 0:
+            return None
+        counts[offset] = counts.get(offset, 0) + size
+    return counts
+
+
+def score_tokens(
+    tokens: pl.DataFrame,
+    wikitext: str,
+    *,
+    site: BaseSite | None = None,
+    include_template_values: bool = False,
+) -> pl.DataFrame:
     """Count source bytes and characters for surviving tokens.
 
     Args:
         tokens: Ordered final-revision WikiWho tokens with text strings.
             Editor, origin and other supplied columns remain unchanged.
         wikitext: Exact original source of that same final revision.
+        site: Supplies template normalization for optional prose counts.
+        include_template_values: Match the article list's expanded
+            extraction for list grades.
 
     Returns:
         Original rows with UInt32 byte and character counts. Raw bytes
@@ -229,8 +281,10 @@ def score_tokens(tokens: pl.DataFrame, wikitext: str) -> pl.DataFrame:
         reference-list/citation templates and audited reference sections
         score zero. Comments and other markup remain attributable.
         Whitespace lacks token ownership and scores zero here while
-        remaining in the separate eligible-byte denominator. This
-        measures source bytes, not rendered prose or revision sizes.
+        remaining in the separate eligible-byte denominator. Prose units
+        count against the token owning a CJK letter or the start of a
+        Western word or number. They remain unknown without the exact
+        prose projection.
 
     Raises:
         ValueError: Coverage, markup or casing prevents exact alignment.
@@ -242,11 +296,22 @@ def score_tokens(tokens: pl.DataFrame, wikitext: str) -> pl.DataFrame:
     ):
         message = "Byte scoring requires original source and token strings."
         raise ValueError(message)
-    source, prefix, characters, raw = _source_scores(
+    prose = (
+        _prose_scores(
+            wikitext,
+            site,
+            include_template_values=include_template_values,
+        )
+        if site is not None
+        else None
+    )
+    source, prefix, characters, raw, prose_prefix = _source_scores(
         wikitext,
         _reference_mask(wikitext),
+        prose,
     )
     scores, counts, sizes, position = [], [], [], 0
+    prose_counts = []
     for text in tokens["text"].to_list():
         compact = "".join(
             character for character in text if not character.isspace()
@@ -258,6 +323,8 @@ def score_tokens(tokens: pl.DataFrame, wikitext: str) -> pl.DataFrame:
         scores.append(prefix[end] - prefix[position])
         counts.append(characters[end] - characters[position])
         sizes.append(raw[end] - raw[position])
+        if prose_prefix is not None:
+            prose_counts.append(prose_prefix[end] - prose_prefix[position])
         position = end
     if position != len(source):
         message = "WikiWho tokens leave unmatched non-whitespace source."
@@ -266,4 +333,7 @@ def score_tokens(tokens: pl.DataFrame, wikitext: str) -> pl.DataFrame:
         pl.Series("bytes", scores, dtype=pl.UInt32),
         pl.Series("characters", counts, dtype=pl.UInt32),
         pl.Series("raw_bytes", sizes, dtype=pl.UInt32),
+        pl.Series("prose_characters", prose_counts, dtype=pl.UInt32)
+        if prose_prefix is not None
+        else pl.lit(None, dtype=pl.UInt32).alias("prose_characters"),
     )

@@ -202,6 +202,13 @@ export function Newsletter(context) {
                                                   <a href={attribute(chart.url)} download={attribute(chart.filename)}>
                                                       {display(chart.title)} · {display(chart.label)}
                                                   </a>
+                                                  {hasContent(chart.source_url) ? (
+                                                      <>
+                                                          {" ("}
+                                                          <a href={attribute(chart.source_url)}>{t.newsletter.chart_source}</a>
+                                                          {")"}
+                                                      </>
+                                                  ) : null}
                                               </figcaption>
                                           </figure>
                                       ))}

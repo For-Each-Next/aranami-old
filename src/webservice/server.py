@@ -80,6 +80,7 @@ from webservice.newsletter_charts import (
     CHART_DIRECTORY,
     CHART_NAME,
     CHART_ROUTE,
+    FONT_ASSETS,
     available_charts,
 )
 from webservice.page_cache import PageCache
@@ -1577,30 +1578,40 @@ class _PublicViews:
         )
 
     def newsletter_chart(self, request: ASGIRequest) -> HttpResponseBase:
-        """Serve a saved annual chart by its stable filename.
+        """Serve annual charts, their Python sources and their font.
 
         Returns:
-            An image download or a missing-file response.
+            A publication asset or a missing-file response.
         """
         name = request.path.removeprefix(CHART_ROUTE)
-        directory = self.runtime / CHART_DIRECTORY
-        if (
-            not CHART_NAME.fullmatch(name)
-            or directory.is_symlink()
-            or directory.parent.is_symlink()
-        ):
-            return _error(HTTPStatus.NOT_FOUND)
+        media_type = FONT_ASSETS.get(name)
+        if media_type is None:
+            directory = self.runtime / CHART_DIRECTORY
+            if (
+                not CHART_NAME.fullmatch(name)
+                or directory.is_symlink()
+                or directory.parent.is_symlink()
+            ):
+                return _error(HTTPStatus.NOT_FOUND)
+            location = directory / name
+            media_type = {
+                ".png": "image/png",
+                ".py": "text/plain; charset=utf-8",
+                ".svg": "image/svg+xml",
+            }[location.suffix]
+            cache_control = "public, max-age=31536000, immutable"
+        else:
+            location = Path(__file__).with_name(name)
+            cache_control = "public, max-age=3600"
         try:
-            asset = self.asset_cache.read(directory / name)
+            asset = self.asset_cache.read(location)
         except OSError, ValueError:
             return _error(HTTPStatus.NOT_FOUND)
         return _AssetHttpResponse(
             asset.content,
-            content_type=(
-                "image/png" if name.endswith(".png") else "image/svg+xml"
-            ),
+            content_type=media_type,
             headers={
-                "Cache-Control": "public, max-age=31536000, immutable",
+                "Cache-Control": cache_control,
                 "ETag": asset.etag,
             },
         )

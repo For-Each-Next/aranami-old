@@ -10,7 +10,13 @@ from urllib.parse import urlencode
 from shared.config import COLLECTION_DEFINITIONS, TASK_DEFINITIONS
 from shared.support.files import encode_json
 from webservice.job_history import source_description
-from webservice.presentation import catalog, timestamp, title_url, utc_time
+from webservice.presentation import (
+    catalog,
+    grouped_number,
+    timestamp,
+    title_url,
+    utc_time,
+)
 
 if TYPE_CHECKING:
     from webservice.presentation import Interface
@@ -36,8 +42,8 @@ def _shape(row: dict, interface: Interface) -> str | None:
     return (
         interface.text(
             "dataset_updates.shape",
-            rows=f"{rows:,}",
-            columns=f"{columns:,}",
+            rows=grouped_number(rows),
+            columns=grouped_number(columns),
         )
         if rows is not None and columns is not None
         else None

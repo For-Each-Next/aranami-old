@@ -1415,7 +1415,7 @@ ul.consistency-cards {
 }
 
 .server-metrics col:first-child {
-    width: max(5.5rem, 24%);
+    width: 8rem;
 }
 
 .server-metrics th {
@@ -1430,6 +1430,7 @@ ul.consistency-cards {
 .server-metrics .server-start { display: block; }
 
 @media (max-width: 30rem) {
+    .server-metrics col:first-child { width: 5.5rem; }
     .server-metrics th, .server-metrics td { padding-inline: .55rem; }
     .server-metrics time { font-size: .875em; }
 }
@@ -1530,8 +1531,8 @@ ul.consistency-cards {
     table-layout: fixed;
 }
 
-.page-updates th:first-child {
-    inline-size: 30%;
+.publication-table thead th:first-child {
+    inline-size: clamp(10rem, 23%, 16rem);
 }
 
 .page-updates th[scope="row"] {
@@ -1979,6 +1980,21 @@ footer nav {
 .logs-table time,
 #tool-status .ui-table__table time {
     white-space: nowrap;
+}
+
+.logs-table thead th:first-child {
+    inline-size: 12rem;
+}
+
+[aria-labelledby="dataset-metadata"] tbody th,
+[aria-labelledby="dataset-schema"] th:first-child {
+    inline-size: 12rem;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 36rem) {
+    [aria-labelledby="dataset-metadata"] tbody th,
+    [aria-labelledby="dataset-schema"] th:first-child { inline-size: 8rem; }
 }
 
 .log-filters {

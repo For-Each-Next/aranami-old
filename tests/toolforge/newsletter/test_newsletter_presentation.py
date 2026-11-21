@@ -44,6 +44,16 @@ def _issue(*, available: bool = True) -> dict[str, object]:
 class NewsletterPresentationTests(unittest.TestCase):
     """Exercise selectable source displays and interface locales."""
 
+    @staticmethod
+    def _display_pages(value: dict) -> list:
+        """Use the page order with announcements above quality.
+
+        Returns:
+            Expected page objects in screen order.
+        """
+        pages = value["pages"]
+        return [pages[0], pages[2], pages[1]]
+
     def test_introduction_links_the_newsletter_in_every_locale(self) -> None:
         """Link the newsletter in the localized introduction."""
         for locale, before, name, after in (
@@ -168,7 +178,7 @@ class NewsletterPresentationTests(unittest.TestCase):
                 )
                 assert len(displays) == len(value["pages"])
                 for index, ((attributes, text), page) in enumerate(
-                    zip(displays, value["pages"], strict=True),
+                    zip(displays, self._display_pages(value), strict=True),
                     start=1,
                 ):
                     assert "readonly" in attributes
@@ -260,7 +270,7 @@ class NewsletterPresentationTests(unittest.TestCase):
                     buttons,
                     links[::2],
                     links[1::2],
-                    value["pages"],
+                    self._display_pages(value),
                     strict=True,
                 ):
                     for (attributes, text), label, action, weight in (
@@ -326,11 +336,10 @@ class NewsletterPresentationTests(unittest.TestCase):
                         output,
                     )
                     assert [unescape(target) for target in targets[::2]] == [
-                        page["url"] for page in value["pages"]
+                        page["url"] for page in self._display_pages(value)
                     ]
-                    expected = [
-                        "2026年10月14日" if archived else "2026年10月15日",
-                    ] * (len(value["pages"]) - 1) + ["2026年9月30日"]
+                    day = "2026年10月14日" if archived else "2026年10月15日"
+                    expected = [day, "2026年9月30日", day]
                     for target, day in zip(
                         targets[1::2],
                         expected,

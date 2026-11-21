@@ -11,8 +11,12 @@ import re
 import unicodedata
 from functools import cache
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import jieba
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 _ENGLISH_WORD_RE = re.compile(r"[A-Za-z0-9]+(?:['-][A-Za-z0-9]+)*")
 _COUNTABLE_TOKEN_RE = re.compile(
@@ -35,23 +39,33 @@ def count_chinese_units(text: str) -> int:
         word or decimal-digit block. Spaces and punctuation contribute
         zero. Combining accents remain part of their preceding word.
     """
-    total = 0
+    return sum(units for _, units in chinese_unit_positions(text))
+
+
+def chinese_unit_positions(text: str) -> Iterator[tuple[int, int]]:
+    """Locate each countable unit in extracted Chinese prose.
+
+    Yields:
+        Each CJK letter and the first character of each Western word or
+        decimal block, with the same weights as the article count.
+    """
     previous = None
-    for character in text:
+    for index, character in enumerate(text):
         if character.isalpha() and _CJK_CHARACTER_RE.fullmatch(character):
-            total += 1
+            yield index, 1
             previous = None
         elif character.isalpha():
-            total += 2 if previous != "word" else 0
+            if previous != "word":
+                yield index, 2
             previous = "word"
         elif character.isdecimal():
-            total += 2 if previous != "number" else 0
+            if previous != "number":
+                yield index, 2
             previous = "number"
         elif unicodedata.category(character).startswith("M"):
             continue
         else:
             previous = None
-    return total
 
 
 @cache

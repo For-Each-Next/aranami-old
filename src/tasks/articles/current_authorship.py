@@ -109,6 +109,10 @@ def collect_revision(member: dict, site: BaseSite) -> pl.DataFrame:
             .when(pl.col("characters").count() > 0)
             .then(pl.col("characters").sum())
             .alias("characters"),
+            pl
+            .when(pl.col("prose_characters").count() > 0)
+            .then(pl.col("prose_characters").sum())
+            .alias("prose_characters"),
         )
         .sort("editor")
     )
