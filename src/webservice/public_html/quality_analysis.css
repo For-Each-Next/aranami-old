@@ -20,10 +20,8 @@
 @media (max-width: 1000px) { .analysis-summary.analysis-coverage { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 480px) { .analysis-summary.analysis-coverage { grid-template-columns: 1fr; } }
 .analysis-number { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.analysis-unit { position: relative; color: var(--color-subtle); white-space: pre; vertical-align: bottom; }
-.analysis-unit > span { color: transparent; }
-.analysis-unit::after { position: absolute; inset-inline-start: 0; inset-block-end: 0; line-height: 1; pointer-events: none; }
-:is(.analysis-unit, .analysis-violin-length-label)::after { content: attr(data-unit); content: attr(data-unit) / ""; margin-inline-start: .25em; }
+.analysis-unit { color: var(--color-subtle); font-size: .8em; white-space: pre; }
+.analysis-violin-length-label::after { content: attr(data-unit); content: attr(data-unit) / ""; margin-inline-start: .25em; }
 .analysis-year-scroll { max-width: 100%; overflow-x: auto; }
 [data-quality-chart="years"] { min-height: 300px; }
 .analysis-year-columns { display: block; width: auto; min-width: 100%; max-width: none; height: 300px; }
@@ -71,7 +69,6 @@ table.quality-author-directory:has(.quality-column-prose) { min-inline-size: 58e
 .quality-author-directory .quality-column-size { inline-size: 7em; }
 .ui-dialog :is(.quality-data-table, .analysis-editor-table) { font-size: .875rem; }
 .analysis-authorship-info { display: inline-flex; align-items: center; justify-content: center; min-width: 1.5rem; min-height: 1.5rem; vertical-align: middle; border-radius: 50%; }
-.analysis-more-authors { display: inline-grid; place-items: center; inline-size: 1em; block-size: 1em; border: 1px solid currentColor; border-radius: 50%; font-size: .875rem; font-weight: 700; line-height: 1; }
 .analysis-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 1.5rem; }
 .analysis-detail-fields { display: grid; grid-template-columns: fit-content(48%) minmax(0, 1fr); gap: .35rem .75rem; margin-block: 0 .6rem; }
 .analysis-detail-fields dt { color: var(--color-subtle); }

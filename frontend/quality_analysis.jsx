@@ -621,10 +621,9 @@ function DetailInfo(context, id, title, url, more = false) {
                     "data-load-failed": context.t.quality_analysis.details_failed,
                 } : {})}
             >
-                {more ? <span class="analysis-more-authors" aria-hidden="true">{"+"}</span> :
-                    <svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-                        <use href={iconHref(context, "message-notice")}></use>
-                    </svg>}
+                <svg class={more ? "analysis-more-authors" : undefined} width="16" height="16" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                    <use href={iconHref(context, more ? "circle-plus" : "message-notice")}></use>
+                </svg>
             </a>
         </>
     );
@@ -632,7 +631,7 @@ function DetailInfo(context, id, title, url, more = false) {
 
 function MeasurementUnit(label) {
     const unit = String(label ?? "").trim();
-    return <small class="analysis-unit" data-unit={unit}><span>{" " + unit}</span></small>;
+    return <small class="analysis-unit" data-unit={unit}>{" " + unit}</small>;
 }
 
 function ProseMeasurement(context, label, value) {

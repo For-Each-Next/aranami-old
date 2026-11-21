@@ -157,6 +157,8 @@ class QualityResourcePresentationTests(unittest.TestCase):
         assert "本页罗列电子游戏专题条目源数据。" in output
         assert "小提琴图的高度按" not in output
         assert "资料观测时间" not in output
+        assert '<svg class="analysis-more-authors"' in output
+        assert '#circle-plus"></use>' in output
         info = output.split('<dialog id="quality-article-1-details"', 1)[
             1
         ].split("</dialog>", 1)[0]
@@ -1355,8 +1357,10 @@ class QualityResourceHTTPTests(unittest.TestCase):
                 assert length["density"] == []
 
     @staticmethod
-    def test_author_html_fits_the_saved_report_budget() -> None:
-        """Keep author pages and directories within the file budget."""
+    def test_article_documents_fit_the_saved_report_budget() -> None:
+        """Save both documents and their related resources together."""
+        html = "<main>条目列表</main>" * 600
+        browser = "<script>article list</script>" * 600
         author = "<tr><td>正文</td><td>1.0千字</td></tr>" * 300
         names = ["author-1.html", "author-1-significant.html"]
         directory = json.dumps(
@@ -1373,14 +1377,17 @@ class QualityResourceHTTPTests(unittest.TestCase):
             path = Path(temporary) / "report.json"
             quality_pages.save(
                 path,
-                "<main>Articles</main>",
+                html,
                 (),
+                browser=browser,
                 resources={
                     **dict.fromkeys(names, author),
                     directory_name: directory,
                 },
             )
-            assert path.read_bytes().count(b'"zlib:') == len(names) + 1
+            assert path.read_bytes().count(b'"zlib:') == len(names) + 3
+            assert quality_pages.read(path) == html
+            assert quality_pages.read(path, browser=True) == browser
             assert all(
                 quality_pages.read_resource(path, name) == author
                 for name in names

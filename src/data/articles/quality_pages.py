@@ -83,7 +83,14 @@ def read(path: Path, *, browser: bool = False) -> str | None:
     value = _read_bundle(path)
     if value is None:
         return None
-    return value.get("browser", value["html"]) if browser else value["html"]
+    document = (
+        value.get("browser", value["html"]) if browser else value["html"]
+    )
+    return (
+        _unpack_resource(document)
+        if document.startswith(_PACKED_RESOURCE_PREFIX)
+        else document
+    )
 
 
 def _read_bundle(path: Path) -> dict | None:
@@ -188,7 +195,7 @@ def _pack_resource(content: str) -> str:
         message = "The quality resource exceeds its size limit."
         raise ValueError(message)
     packed = _PACKED_RESOURCE_PREFIX + b64encode(
-        zlib.compress(raw, level=1),
+        zlib.compress(raw),
     ).decode("ascii")
     return packed if len(packed) < len(raw) else content
 
@@ -206,9 +213,9 @@ def save(
     Previous resources survive ordinary refreshes for in-flight pages.
     They are optional if retaining them would exceed the existing bound.
     """
-    value = {"schema": 1, "source": list(source), "html": html}
+    value = {"schema": 1, "source": list(source), "html": _pack_resource(html)}
     if browser is not None:
-        value["browser"] = browser
+        value["browser"] = _pack_resource(browser)
     if resources is not None:
         resources = {
             name: _pack_resource(content)

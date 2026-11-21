@@ -25,11 +25,11 @@
 {% endmacro %}
 
 {% macro detail_info(id, title, url=none, more=false) -%}
-{% if id %} <a class="analysis-authorship-info" href="{{ url or ('#' ~ id) }}" aria-controls="{{ id }}" aria-haspopup="dialog" title="{{ title }}" aria-label="{{ title }}"{% if url %} data-quality-detail="{{ id }}" data-significant-detail data-loading="{{ t.quality_analysis.loading_details }}" data-load-failed="{{ t.quality_analysis.details_failed }}"{% endif %}>{% if more %}<span class="analysis-more-authors" aria-hidden="true">+</span>{% else %}<svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><use href="{{ asset_url('assets/icons/report-icons.svg') }}#message-notice"></use></svg>{% endif %}</a>{% endif %}
+{% if id %} <a class="analysis-authorship-info" href="{{ url or ('#' ~ id) }}" aria-controls="{{ id }}" aria-haspopup="dialog" title="{{ title }}" aria-label="{{ title }}"{% if url %} data-quality-detail="{{ id }}" data-significant-detail data-loading="{{ t.quality_analysis.loading_details }}" data-load-failed="{{ t.quality_analysis.details_failed }}"{% endif %}><svg{% if more %} class="analysis-more-authors"{% endif %} width="16" height="16" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><use href="{{ asset_url('assets/icons/report-icons.svg') }}#{{ 'circle-plus' if more else 'message-notice' }}"></use></svg></a>{% endif %}
 {%- endmacro %}
 
 {% macro measurement_unit(label) -%}
-<small class="analysis-unit" data-unit="{{ label | trim }}"><span> {{ label | trim }}</span></small>
+<small class="analysis-unit" data-unit="{{ label | trim }}"> {{ label | trim }}</small>
 {%- endmacro %}
 
 {% macro prose_measurement(label, value) -%}

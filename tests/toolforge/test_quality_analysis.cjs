@@ -529,6 +529,10 @@ test("catalog rows rebuild article titles, assessment chips, review dates and me
     assert.equal(row.cells[1].childNodes.at(-1).className, "analysis-authorship-info");
     assert.equal(row.cells[1].childNodes.at(-1).handlers.click.length, 1);
     assert.equal(again.cells[1].childNodes.at(-1).handlers.click.length, 1);
+    const plus = row.cells[5].childNodes.at(-1).childNodes[0];
+    assert.equal(plus.tagName, "svg");
+    assert.equal(plus.getAttribute("class"), "analysis-more-authors");
+    assert.equal(plus.childNodes[0].getAttribute("href"), "/icons.svg#circle-plus");
     assert.equal(row.cells[6].className, "analysis-number");
     assert.equal(row.cells[6].textContent, "1.2 k chars");
     assert.equal(row.cells[7].textContent, "12.5 kB");

@@ -116,9 +116,8 @@ export function selectedAuthorTotals(contributions, ids) {
 
 function measurementUnit(label) {
     const unit = label.trim();
-    const small = node("small", undefined, "analysis-unit");
+    const small = node("small", " " + unit, "analysis-unit");
     small.dataset.unit = unit;
-    small.append(node("span", " " + unit));
     return small;
 }
 
@@ -671,14 +670,11 @@ function articleDetailLink(article, metadata, {more = false, includeContributors
     details.setAttribute("aria-label", details.title);
     details.setAttribute("aria-haspopup", "dialog");
     details.setAttribute("aria-controls", popupId);
-    if (more) {
-        const plus = node("span", "+", "analysis-more-authors");
-        plus.setAttribute("aria-hidden", "true");
-        details.append(plus);
-    } else {
-        const icon = svgNode("svg", {width:16,height:16,viewBox:"0 0 20 20","aria-hidden":"true",focusable:"false"});
-        icon.append(svgNode("use", {href: metadata.authorshipIcon})); details.append(icon);
-    }
+    const source = metadata.authorshipIcon || "/assets/icons/report-icons.svg#message-notice";
+    const icon = svgNode("svg", {width: 16, height: 16, viewBox: "0 0 20 20", "aria-hidden": "true", focusable: "false"});
+    if (more) icon.setAttribute("class", "analysis-more-authors");
+    icon.append(svgNode("use", {href: more ? source.split("#", 1)[0] + "#circle-plus" : source}));
+    details.append(icon);
     bindArticleDialog(details, more, labels.close, body => {
         if (!more) renderArticleDetails(body, article, labels);
         if (more || includeContributors) {

@@ -1649,11 +1649,13 @@ async function checkInterface(assetRoot) {
                                 Boolean(info.querySelector('a[href="https://en.wikipedia.org/wiki/Example_game"]')) &&
                                 !info.querySelector('.analysis-editor-table') && detailColumns === (innerWidth <= 680 ? 1 : 2);
                             info.close();
-                            const proofLink = articleRow.cells[5].querySelector('.analysis-more-authors').closest('a');
+                            const plus = articleRow.cells[5].querySelector('svg.analysis-more-authors use');
+                            const hasPlusIcon = plus.getAttribute('href').endsWith('#circle-plus') && plus.getBBox().width > 0;
+                            const proofLink = plus.closest('a');
                             proofLink.click();
                             const proofDialog = document.getElementById(proofLink.getAttribute('aria-controls'));
                             const anonymous = [...proofDialog.querySelectorAll('tbody th')].find(cell => cell.textContent.trim() === '192.0.2.1');
-                            const attribution = proofDialog.open && anonymous?.querySelector('a')?.href.includes('Contributions') && proofDialog.textContent.includes('Boundary_Editor') && proofDialog.textContent.includes(form.qualityMetadata.labels.authorship_note);
+                            const attribution = hasPlusIcon && proofDialog.open && anonymous?.querySelector('a')?.href.includes('Contributions') && proofDialog.textContent.includes('Boundary_Editor') && proofDialog.textContent.includes(form.qualityMetadata.labels.authorship_note);
                             proofDialog.close();
                             const total = () => Number(document.querySelector('[data-matrix-total]').textContent.replaceAll(',', ''));
                             const initial = total();
@@ -1688,7 +1690,10 @@ async function checkInterface(assetRoot) {
                                 const cell = row.cells[6], unit = cell.querySelector('.analysis-unit');
                                 const range = document.createRange(); range.selectNodeContents(cell);
                                 const selection = getSelection(); selection.removeAllRanges(); selection.addRange(range);
-                                const copied = unit && selection.toString().endsWith(' ' + unit.dataset.unit) && getComputedStyle(unit, '::after').content.includes(unit.dataset.unit);
+                                const style = getComputedStyle(unit);
+                                const copied = selection.toString().endsWith(' ' + unit.dataset.unit) &&
+                                    parseFloat(style.fontSize) < parseFloat(getComputedStyle(cell).fontSize) &&
+                                    style.verticalAlign === 'baseline' && getComputedStyle(unit, '::after').content === 'none';
                                 selection.removeAllRanges();
                                 return copied;
                             });
