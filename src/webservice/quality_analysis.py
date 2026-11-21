@@ -17,10 +17,9 @@ from re import fullmatch
 from urllib.parse import quote
 
 from data.articles.authorship_store import (
-    MAIN_MIN_CHARACTERS,
+    MAIN_MIN_PROSE_CHARACTERS,
     MAIN_SHARE_THRESHOLD,
     SIGNIFICANT_SHARE_THRESHOLD,
-    UTF8_MAX_BYTES_PER_CHARACTER,
 )
 from data.articles.quality_selection import quartiles
 from shared.assessment_profiles import assessment_profile
@@ -612,6 +611,12 @@ def _authorship(row: dict, interface: Interface) -> dict:
             if url
             else None
         )
+    editors = [
+        _editor(editor, interface)
+        for editor in source.get("contributors", [])
+        if editor.get("share", 0) >= SIGNIFICANT_SHARE_THRESHOLD
+    ]
+    available = bool(source.get("available"))
     return {
         **boundaries,
         "visualization_url": (
@@ -622,14 +627,16 @@ def _authorship(row: dict, interface: Interface) -> dict:
             if _revision_url(source.get("range_end_revision"))
             else None
         ),
-        "available": bool(source.get("available")),
+        "available": available,
+        "main_available": available
+        and all(
+            editor["share"] <= MAIN_SHARE_THRESHOLD
+            or editor["prose_characters"] is not None
+            for editor in editors
+        ),
         "eligible_bytes_label": _number(source.get("eligible_bytes")),
         "summary_rows": _authorship_summary(source, interface),
-        "editors": [
-            _editor(editor, interface)
-            for editor in source.get("contributors", [])
-            if editor.get("share", 0) >= SIGNIFICANT_SHARE_THRESHOLD
-        ],
+        "editors": editors,
     }
 
 
@@ -688,14 +695,7 @@ def _editor(source: dict, interface: Interface) -> dict:
             name, url = None, None
         else:
             url = title_url(f"Special:Contributions/{name}")
-    characters = source.get("characters")
     raw_bytes = source.get("raw_bytes")
-    character_floor = characters or 0
-    if characters is None and raw_bytes is None:
-        # Older exact scores can prove a lower bound, even for UTF-8.
-        character_floor = (
-            source.get("bytes") or 0
-        ) // UTF8_MAX_BYTES_PER_CHARACTER
     return {
         "name": name
         or interface.text("quality_analysis.unknown_editor", editor=identity),
@@ -705,7 +705,6 @@ def _editor(source: dict, interface: Interface) -> dict:
         if fullmatch(r"[1-9][0-9]{0,9}", identity)
         else None,
         "share": source["share"],
-        "character_floor": character_floor,
         "prose_characters": source.get("prose_characters"),
         "raw_bytes": raw_bytes,
         "share_label": f"{source['share'] * 100:.1f}%",
@@ -716,7 +715,7 @@ def _editor(source: dict, interface: Interface) -> dict:
 
 
 def _main_editors(proof: dict) -> list[dict]:
-    """Require a share above 33% and 500 attributed characters.
+    """Require a share above 33% and 500 attributed prose units.
 
     Returns:
         Saved editor observations that meet both thresholds.
@@ -727,7 +726,8 @@ def _main_editors(proof: dict) -> list[dict]:
         editor
         for editor in proof["editors"]
         if editor["share"] > MAIN_SHARE_THRESHOLD
-        and editor["character_floor"] >= MAIN_MIN_CHARACTERS
+        and editor["prose_characters"] is not None
+        and editor["prose_characters"] >= MAIN_MIN_PROSE_CHARACTERS
     ]
 
 

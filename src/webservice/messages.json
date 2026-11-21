@@ -4328,9 +4328,9 @@
     "zh-hant": "貢獻者"
   },
   "quality_analysis.guide_main": {
-    "en": "each account for over 33% of eligible source bytes and at least 500 non-whitespace source characters, excluding references.",
-    "zh-hans": "的归属字节占比超过 33%，且至少归属 500 个非空白源代码字符（不计参考文献）。",
-    "zh-hant": "的歸屬位元組占比超過 33%，且至少歸屬 500 個非空白原始碼字元（不計參考文獻）。"
+    "en": "each account for over 33% of eligible source bytes and at least 500 units of attributed prose (equivalent to 250 Western words).",
+    "zh-hans": "的归属字节占比超过 33%，且归属正文至少 500 字（相当于 250 个西文单词）。",
+    "zh-hant": "的歸屬位元組占比超過 33%，且歸屬正文至少 500 字（相當於 250 個西文單字）。"
   },
   "quality_analysis.guide_significant": {
     "en": "each account for at least 10% of eligible source bytes, using WikiWho attribution.",
@@ -4383,9 +4383,9 @@
     "zh-hant": "條目清單"
   },
   "article_query.heading": {
-    "en": "Advanced query",
-    "zh-hans": "高级查询",
-    "zh-hant": "進階查詢"
+    "en": "Advanced filter",
+    "zh-hans": "进阶筛选",
+    "zh-hant": "進階筛选"
   },
   "article_query.blocks": {
     "en": "Blocks",
@@ -4541,11 +4541,6 @@
     "en": "Clear query",
     "zh-hans": "清除查询",
     "zh-hant": "清除查詢"
-  },
-  "article_query.example": {
-    "en": "Load example",
-    "zh-hans": "载入示例",
-    "zh-hant": "載入範例"
   },
   "article_query.fix": {
     "en": "Auto-fix Chinese titles",

@@ -555,7 +555,11 @@ class QualityAnalysisHTTPTests(unittest.TestCase):
                 response = client.get("/article-list/?lang=en")
                 assert response.status_code == HTTPStatus.OK
                 assert 'data-grade="Bplus"' in response.text
-                assert "data-article-query-open" in response.text
+                assert (
+                    response.text.index("data-article-query-open")
+                    < response.text.index("data-matrix-apply")
+                    < response.text.index("data-analysis-reset")
+                )
                 assert '<dialog id="article-query-dialog"' in response.text
                 assert "data-quality-page-total>1<" in response.text
                 assert before == {

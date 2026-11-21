@@ -88,12 +88,13 @@ current count is zero. Central 68% and 95% intervals use empirical
 length while prose is pending.
 
 Main contributors must have a saved attributable byte share strictly greater
-than 33% and at least 500 non-whitespace source characters outside references.
+than 33% and at least 500 units of attributed prose, equivalent to 250 Western
+words. The count uses the same readable-text rules as the prose column.
 The article table, main-contributor filter and author directory use
 the same threshold; being the largest contributor alone does not qualify.
 IP main contributors appear as unlinked anonymous-user labels in the article
-table. Acquired evidence with no qualifying main contributor displays None;
-missing evidence remains explicitly unavailable.
+table. Complete evidence with no qualifying main contributor displays None.
+Missing attribution or prose counts needed to decide remain unavailable.
 In the complete article directory, the circled plus beside the authors opens
 the saved attribution revision endpoint and the contributors with an
 attributable byte share of at least 10%. The information control beside the
@@ -184,14 +185,14 @@ time. Native Polars pools default to two threads unless explicitly configured.
 Rendered HTML is bounded to eight MiB per entry and cached by saved generation,
 locale, class preset and attribution basis.
 
-## Advanced query
+## Advanced filter
 
-Select **Advanced query** next to **Reset filters** in the Article List.
-Choose a function in the dialog to add it to the block or code editor.
+Select **Advanced filter** before **Apply filters**. Add conditions in the
+scrollable builder or edit the same expression in the code editor below it.
 Combine conditions with `~`, `&`, and `|` in that precedence order. Select
 **Pre-check** to inspect named references and **Run** to apply the expression
-with the current grade matrix and directory filters. Braces match any value
-in a set.
+with the current grade matrix and directory filters. **Clear query** removes
+the advanced expression. Braces match any value in a set.
 
 ```text
 class("B", project="Video games", site="en") & class({"小作品", "小列表"})

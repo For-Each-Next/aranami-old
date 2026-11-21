@@ -177,7 +177,7 @@ export function initializeQualityAnalysis(previous = {}) {
     let page = previous.page || 1;
     let pages = 1;
     let visiblePage = page, pending, debounce;
-    const advanced = remote ? initializeArticleQuery(host, () => {
+    const advanced = remote ? initializeArticleQuery(host, form, () => {
         page = 1;
         render();
     }) : null;
@@ -314,7 +314,6 @@ export function initializeQualityAnalysis(previous = {}) {
         render();
     }));
     host.querySelector("[data-analysis-reset]").addEventListener("click", () => {
-        advanced?.clear(false);
         search.value = "";
         for (const option of [regex, caseSensitive, scriptSensitive]) if (option) option.checked = false;
         if (author) author.value = "";

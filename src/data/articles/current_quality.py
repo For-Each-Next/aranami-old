@@ -567,11 +567,11 @@ def _summary_tables(
     }
 
 
-def _registered_credits(articles: pl.DataFrame) -> pl.DataFrame:
-    """Select registered contributor names against each article's proof.
+def _registered_candidates(articles: pl.DataFrame) -> pl.DataFrame:
+    """Select registered contributors above the minimum byte share.
 
     Returns:
-        Unique qualifying article and account pairs.
+        Article, account and saved prose measures for each candidate.
     """
     return (
         articles
@@ -583,8 +583,7 @@ def _registered_credits(articles: pl.DataFrame) -> pl.DataFrame:
             & pl.col("editor").str.contains(r"^[1-9][0-9]*$")
             & pl.col("name").is_not_null(),
         )
-        .select("page_id", "name")
-        .unique()
+        .select("page_id", "name", "prose_characters")
     )
 
 
@@ -598,10 +597,14 @@ def _author_table(
         Precomputed author totals and their current-cohort page details.
     """
     names = (
-        _registered_credits(articles)
+        _registered_candidates(articles)
+        .filter(
+            pl.col("prose_characters")
+            >= authorship_store.MAIN_MIN_PROSE_CHARACTERS,
+        )
         .group_by("page_id")
         .agg(
-            pl.col("name").sort().alias("authors"),
+            pl.col("name").unique().sort().alias("authors"),
         )
     )
     article_credits = (
@@ -1323,7 +1326,7 @@ def author_activity_names(runtime: Path) -> pl.DataFrame:
     evidence, current = _authorship_inputs(runtime, require_current=False)
     variants = _authorship_variants(articles, evidence, current)
     return pl.concat([
-        _registered_credits(rows).select("name") for rows in variants
+        _registered_candidates(rows).select("name") for rows in variants
     ]).unique()
 
 

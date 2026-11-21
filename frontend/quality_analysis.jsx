@@ -296,6 +296,12 @@ function AssessmentMatrix(context) {
                 </div>
                 {ListingAuthorsControl(context)}
                 <div class="analysis-filter-actions">
+                    {quality_analysis.directory_url && t.article_query ? (
+                        <button type="button" class="cdx-button cdx-button--action-progressive"
+                            data-article-query-open="" aria-haspopup="dialog" aria-controls="article-query-dialog" hidden>
+                            {t.article_query.heading}
+                        </button>
+                    ) : null}
                     <button type="submit" class="cdx-button cdx-button--action-progressive cdx-button--weight-primary" data-matrix-apply="" disabled>
                         {t.quality_analysis.apply_filters}
                     </button>
@@ -310,6 +316,14 @@ function AssessmentMatrix(context) {
                     </p>
                 </div>
             </form>
+            {quality_analysis.directory_url && t.article_query ? popup(
+                context,
+                <div data-article-query={JSON.stringify(t.article_query)}></div>,
+                "article-query-dialog",
+                t.article_query.heading,
+                "#analysis-articles",
+                "article-query",
+            ) : null}
         </>
     ) : null;
 }
@@ -525,7 +539,7 @@ function QualityOverview(context) {
     );
 }
 
-function DirectoryFilters({ t, quality_analysis }) {
+function DirectoryFilters({ t }) {
     const labels = t.quality_analysis;
     return (
         <div class="analysis-filters" data-analysis-controls="" hidden>
@@ -554,12 +568,6 @@ function DirectoryFilters({ t, quality_analysis }) {
                 <button type="button" class="cdx-button cdx-button--action-destructive" data-analysis-reset="">
                     {labels.reset}
                 </button>
-                {quality_analysis?.directory_url && t.article_query ? (
-                    <button type="button" class="cdx-button cdx-button--action-progressive"
-                        data-article-query-open="" aria-haspopup="dialog" aria-controls="article-query-dialog" hidden>
-                        {t.article_query.heading}
-                    </button>
-                ) : null}
             </div>
         </div>
     );
@@ -698,7 +706,8 @@ function ArticleCells(context, article, number, showContributors = true) {
                         </Fragment>
                     )) : (
                         <span class="context">
-                            {display(authorship.available ? t.quality_analysis.no_main_contributors : t.quality_analysis.main_unavailable)}
+                            {display((authorship.main_available ?? authorship.available)
+                                ? t.quality_analysis.no_main_contributors : t.quality_analysis.main_unavailable)}
                         </span>
                     )}
                     {authorship.available
@@ -946,14 +955,6 @@ function ArticleDirectory(context) {
                         data-empty={attribute(t.quality_analysis.no_matches)}
                     >
                         {DirectoryFilters(context)}
-                        {quality_analysis.directory_url && t.article_query ? popup(
-                            context,
-                            <div data-article-query={JSON.stringify(t.article_query)}></div>,
-                            "article-query-dialog",
-                            t.article_query.heading,
-                            "#analysis-articles",
-                            "article-query",
-                        ) : null}
                         <p role="status" aria-live="polite" data-analysis-result-count={""}></p>
                         <div class="ui-table">
                             <div

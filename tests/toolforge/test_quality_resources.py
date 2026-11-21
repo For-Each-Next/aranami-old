@@ -622,7 +622,7 @@ class QualityResourcePresentationTests(unittest.TestCase):
                     "editor": str(index),
                     "name": name,
                     "share": share,
-                    "characters": 500,
+                    "prose_characters": 500,
                 }
                 for index, (name, share) in enumerate(
                     (
@@ -698,7 +698,7 @@ class QualityResourcePresentationTests(unittest.TestCase):
     def test_main_threshold_anonymous_and_directory_use_the_same_proof() -> (
         None
     ):
-        """Distinguish above-33% attribution from empty data."""
+        """Apply the prose threshold and distinguish missing counts."""
         data = analysis_fixture()
         row = data["articles"][0]
         row.update(
@@ -709,7 +709,7 @@ class QualityResourcePresentationTests(unittest.TestCase):
                     "editor": str(index),
                     "name": name,
                     "share": share,
-                    "characters": 500,
+                    "prose_characters": 500,
                 }
                 for index, (name, share) in enumerate(
                     (
@@ -725,7 +725,7 @@ class QualityResourcePresentationTests(unittest.TestCase):
                     "editor": "0|192.0.2.1",
                     "name": None,
                     "share": 0.45,
-                    "characters": 500,
+                    "prose_characters": 500,
                 },
             ],
         )
@@ -747,7 +747,8 @@ class QualityResourcePresentationTests(unittest.TestCase):
             "editor": "4",
             "name": "Short edit",
             "share": 0.4,
-            "characters": 499,
+            "characters": 2_000,
+            "prose_characters": 499,
         })
         editors = row["authorship_editors"]
         directory = main_author_directory([row], candidates)
@@ -782,6 +783,16 @@ class QualityResourcePresentationTests(unittest.TestCase):
             )
             assert "192.0.2.1" not in cell
             assert ">Boundary at 33</a>" not in cell
+            row["authorship_editors"] = [
+                {**editors[2], "prose_characters": None},
+            ]
+            pending = quality_analysis_context(data, interface)[
+                "quality_analysis"
+            ]["articles"][0]
+            assert pending["authorship"]["available"]
+            assert not pending["authorship"]["main_available"]
+            assert pending["main_authors"] == []
+            assert pending["significant_authors"] == ["Above 33"]
             row["authorship_editors"] = []
             empty = quality_analysis_context(data, interface)[
                 "quality_analysis"

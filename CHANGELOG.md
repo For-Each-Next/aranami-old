@@ -5,15 +5,17 @@ v0.8.8 was consolidated into the v0.9.2 release.
 
 ## Until 0.11
 
-### 0.10.0.dev22 (2026-11-21 15:19 UTC)
+### 0.10.0 (2026-11-21 15:50 UTC)
 
 Overview: Separated source acquisition from analysis and publication while
 consolidating Toolforge services, standardizing saved tables, and expanding
 the Article List and Parquet previews.
 
-- Added Boolean article queries, English counterparts and advisory title checks.
-- Scheduled a dedicated replica-backed query index and uncached title checks.
-- Opened advanced queries from the filter row with selectable functions.
+- Added a dedicated replica-backed index for Boolean article queries, English
+  counterparts and advisory title checks.
+- Put the advanced filter before Apply filters and kept the code editor
+  visible below a scrollable block builder.
+- Used the saved attributed prose count for the 500-unit main contributor cutoff.
 - Displayed the current and total page numbers on paginated lists.
 - Moved the Article List and its resources to `/article-list/`.
 - Added field explanations and ordered the four overview coverage cards.

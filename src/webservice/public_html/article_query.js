@@ -3,7 +3,6 @@
 const predicates = ["cat", "tl", "link", "backlink", "wp", "class", "imp", "has_wiki"];
 const pagePredicates = new Set(predicates.slice(0, 4));
 const operators = ["and", "or", "not"];
-const example = 'class("B", site="en") & class({"小作品", "小列表"})';
 
 function element(tag, text, className) {
     const item = document.createElement(tag);
@@ -94,14 +93,19 @@ function statusText(result, labels) {
 }
 
 /** Connect the two editors to the confirmed directory selection. */
-export function initializeArticleQuery(host, changed) {
-    const panel = host.querySelector("[data-article-query]");
+export function initializeArticleQuery(host, form, changed) {
+    const trigger = form.querySelector("[data-article-query-open]") ?? host.querySelector("[data-article-query-open]");
+    const dialog = trigger && document.getElementById(trigger.getAttribute("aria-controls"));
+    const panel = (dialog ?? host).querySelector("[data-article-query]");
     if (!panel) return null;
-    const dialog = panel.closest("dialog");
-    const trigger = host.querySelector("[data-article-query-open]");
     const labels = JSON.parse(panel.dataset.articleQuery);
     const workspace = element("div", undefined, "article-query-workspace");
-    const modes = element("div", undefined, "article-query-actions");
+    const scroll = element("div", undefined, "article-query-scroll");
+    scroll.tabIndex = 0;
+    scroll.setAttribute("role", "region");
+    scroll.setAttribute("aria-label", labels.blocks);
+    const builder = element("fieldset", undefined, "article-query-builder");
+    const footer = element("div", undefined, "article-query-footer");
     const functions = element("div", undefined, "article-query-actions article-query-functions");
     functions.setAttribute("role", "group");
     functions.setAttribute("aria-label", labels.functions || labels.add);
@@ -112,12 +116,12 @@ export function initializeArticleQuery(host, changed) {
     }
     const blocks = element("div", undefined, "article-query-blocks");
     const code = element("textarea", undefined, "cdx-text-area__textarea article-query-code");
-    code.rows = 4;
+    code.rows = 3;
     code.maxLength = 2048;
     code.spellcheck = false;
-    code.setAttribute("aria-label", labels.code);
     const highlighted = element("pre", undefined, "article-query-source");
     highlighted.setAttribute("aria-label", labels.precheck);
+    highlighted.hidden = true;
     const feedback = element("p", undefined, "context article-query-feedback");
     feedback.setAttribute("role", "status");
     const observed = element("p", undefined, "context article-query-observed");
@@ -129,28 +133,25 @@ export function initializeArticleQuery(host, changed) {
     const fix = checkbox(labels.fix);
     const redirects = checkbox(labels.redirects);
     let tree = null;
-    let mode = "blocks";
     let results = [];
     let applied = null;
     let pending, timer;
 
-    const blockMode = button(labels.blocks, () => switchMode("blocks"));
-    const codeMode = button(labels.code, () => switchMode("code"));
-    modes.append(blockMode, codeMode, button(labels.example, () => {
-        code.value = example;
-        switchMode("code");
-        discardChecks();
-        void inspect(false);
-        code.focus();
-    }));
-    const preview = button(labels.precheck, () => void inspect(true));
+    const preview = button(labels.precheck, async () => {
+        if (await inspect(true) && results.length && (!dialog || dialog.open)) {
+            (highlighted.hidden ? checks : highlighted).scrollIntoView({block: "start"});
+        }
+    });
     const run = button(labels.run, () => void apply(), true);
     actions.append(fix.wrapper, redirects.wrapper, preview, run,
-        button(labels.clear, () => clear()));
-    workspace.append(modes, functions, blocks, code, actions, feedback, highlighted, checks);
+        button(labels.clear, clear));
+    builder.append(functions, blocks);
+    scroll.append(builder, highlighted, checks);
+    footer.append(field(labels.code, code), feedback, actions);
+    workspace.append(scroll, footer);
     panel.append(workspace);
     if (dialog && trigger) {
-        dialog.after(observed);
+        host.querySelector("[data-analysis-result-count]").before(observed);
         trigger.addEventListener("click", () => {
             if (!dialog.open) dialog.showModal();
         });
@@ -163,15 +164,6 @@ export function initializeArticleQuery(host, changed) {
     } else {
         workspace.append(observed);
         panel.hidden = false;
-    }
-
-    function switchMode(value) {
-        mode = value;
-        code.hidden = mode !== "code";
-        blocks.hidden = mode !== "blocks";
-        blockMode.setAttribute("aria-pressed", String(mode === "blocks"));
-        codeMode.setAttribute("aria-pressed", String(mode === "code"));
-        highlighted.hidden = mode !== "code" || !highlighted.childNodes.length;
     }
 
     function discardChecks() {
@@ -194,19 +186,9 @@ export function initializeArticleQuery(host, changed) {
         if (render) renderBlocks();
     }
 
-    /** Add a function at the end of the active draft. */
+    /** Add a function to the builder and update the code. */
     function insertFunction(name) {
         const term = condition(name);
-        if (mode === "code") {
-            const original = code.value.trim();
-            const clause = serializeArticleQuery(term);
-            code.value = original ? "(" + original + ") & " + clause : clause;
-            discardChecks();
-            code.focus();
-            if (term.value) void inspect(false);
-            else code.setSelectionRange(code.value.length - 2, code.value.length - 2);
-            return;
-        }
         if (!tree) tree = term;
         else if (tree.op === "and") tree.children.push(term);
         else tree = {op: "and", children: [tree, term]};
@@ -400,7 +382,7 @@ export function initializeArticleQuery(host, changed) {
             position = term.end;
         }
         if (position) highlighted.append(source.slice(position).join(""));
-        highlighted.hidden = mode !== "code" || !position;
+        highlighted.hidden = !position;
     }
 
     /** Use the server parser for code edits and resolve titles on explicit checks. */
@@ -437,6 +419,7 @@ export function initializeArticleQuery(host, changed) {
             feedback.textContent = "";
             tree = result.tree;
             results = result.checks ?? [];
+            builder.disabled = false;
             renderBlocks();
             showChecks();
             return {result, expression, params};
@@ -461,24 +444,27 @@ export function initializeArticleQuery(host, changed) {
         changed();
     }
 
-    function clear(notify = true) {
+    function clear() {
         tree = null;
         applied = null;
-        code.value = "";
+        builder.disabled = false;
         observed.textContent = "";
         edited(true);
-        if (notify) changed();
+        changed();
     }
 
     code.addEventListener("input", () => {
+        // Wait for the parsed code before allowing edits to its blocks.
+        builder.disabled = true;
         discardChecks();
         timer = setTimeout(() => void inspect(false), 240);
     });
-    for (const toggle of [fix.item, redirects.item]) toggle.addEventListener("change", discardChecks);
-    switchMode("blocks");
+    for (const toggle of [fix.item, redirects.item]) toggle.addEventListener("change", () => {
+        discardChecks();
+        if (builder.disabled) void inspect(false);
+    });
     renderBlocks();
     return {
-        clear,
         options: () => applied ?? {},
         updated(result) {
             if (!applied || !result) return;

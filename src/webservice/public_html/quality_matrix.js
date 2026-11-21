@@ -825,7 +825,9 @@ export function renderMainContributors(cell, article, labels) {
     }
     const contributors = article.main_contributors || [];
     if (!contributors.length) {
-        cell.append(node("span", labels.no_main_contributors, "context"));
+        const label = article.authorship.main_available === false
+            ? labels.main_unavailable : labels.no_main_contributors;
+        cell.append(node("span", label, "context"));
         return;
     }
     for (const contributor of contributors) {

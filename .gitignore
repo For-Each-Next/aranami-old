@@ -28,7 +28,10 @@ user-password.cfg
 user-fixes.py
 *.lwp
 throttle.ctrl
+
+# Generated runtime output
 logs/
+*.log
 cache/
 dry-run/
 reports/
