@@ -162,9 +162,11 @@ export function proseLengthMaximum(cells) {
     return maximum;
 }
 
-/** Map observed lengths to the shared logarithmic axis, including zero. */
+/** Keep the 25,000-character linear body and the compressed tail. */
 export function proseLengthPosition(characters, maximum) {
-    return 1000 * (Math.log1p(Math.max(0, Math.min(characters, maximum))) / Math.log1p(Math.max(1, maximum)));
+    if (characters <= 25000) return Math.max(0, characters / 25000 * 900);
+    if (maximum <= 25000) return 900;
+    return Math.min(1000, 900 + 100 * Math.log(characters / 25000) / Math.log(maximum / 25000));
 }
 
 /** Round prose measurements to two significant digits with integer labels. */
@@ -181,13 +183,25 @@ export function violinMarkerTitle(kind, value, labels) {
     return template.replaceAll("{value}", proseLengthLabel(value));
 }
 
-/** Keep article counts exact while rounding the five length statistics for display. */
-export function violinSummary(statistics, template) {
+/** Keep article counts exact while rounding length labels for display. */
+export function violinSummary(statistics, template, labels = {}) {
+    if (statistics.minimum !== null && statistics.minimum === statistics.maximum) {
+        const singleTemplate = labels.violin_single || "{value} characters, measured for {measured} of {pages} articles and lists.";
+        return singleTemplate.replace("{value}", proseLengthLabel(statistics.minimum))
+            .replace("{measured}", groupedNumber(statistics.measured))
+            .replace("{pages}", groupedNumber(statistics.pages));
+    }
     const values = {
         pages: groupedNumber(statistics.pages), measured: groupedNumber(statistics.measured),
         minimum: proseLengthLabel(statistics.minimum), maximum: proseLengthLabel(statistics.maximum),
         p25: proseLengthLabel(statistics.quartiles[0]), p50: proseLengthLabel(statistics.quantiles[2]), p75: proseLengthLabel(statistics.quartiles[1]),
     };
+    if (statistics.measured > 1 && statistics.measured < 4 && labels.violin_range) {
+        const range = labels.violin_range.replace(/\{(pages|measured|minimum|maximum)\}/g, (_, key) => values[key]);
+        const mean = violinMarkerTitle("mean", statistics.mean, labels);
+        const median = statistics.measured === 3 ? ` ${violinMarkerTitle("p50", statistics.quantiles[2], labels)}.` : "";
+        return `${range}${median} ${mean}.`;
+    }
     return template.replace(/\{(pages|measured|minimum|p25|p50|p75|maximum)\}/g, (_, key) => values[key]);
 }
 
@@ -280,24 +294,25 @@ function densityAt(points, position) {
     if (index < 0) return points.at(-1)[1];
     if (index === 0) return points[0][1];
     const [left, low] = points[index - 1], [right, high] = points[index];
-    const fraction = (Math.log1p(position) - Math.log1p(left))
-        / (Math.log1p(right) - Math.log1p(left));
+    const fraction = (position - left) / (right - left);
     return low + fraction * (high - low);
 }
 
-/** Truncate density to measured bounds and give its log-space area its count. */
-export function violinAreaDensity({density, minimum, maximum, measured}) {
+/** Clip to measured bounds and scale the area on the displayed length axis. */
+export function violinAreaDensity({density, minimum, maximum, measured}, scaleMaximum) {
     if (!density.length || !measured || minimum == null || maximum <= minimum) return [];
     const support = [
         [minimum, densityAt(density, minimum)],
         ...density.filter(([length]) => length > minimum && length < maximum),
         [maximum, densityAt(density, maximum)],
     ];
+    const x = length => proseLengthPosition(length, scaleMaximum) / 1000;
     const integral = support.slice(1).reduce((area, [value, height], index) => {
         const [previous, previousHeight] = support[index];
-        return area + (height + previousHeight) * (Math.log1p(value) - Math.log1p(previous)) / 2;
+        return area + (height + previousHeight) * (x(value) - x(previous)) / 2;
     }, 0);
-    return integral > 0 ? support.map(([value, height]) => [value, height * measured / integral]) : [];
+    const area = 1 + Math.log10(measured / 10000) / 10;
+    return integral > 0 ? support.map(([value, height]) => [value, height * area / integral]) : [];
 }
 
 /** Use one pixel-per-density scale across both breakdowns. */
@@ -331,9 +346,10 @@ export function violinDensityPath(density, maximum, scale = 18) {
     ].join(" ");
 }
 
-/** Draw the saved density with exact extrema, quartiles, median and mean. */
+/** Draw measured lengths and show one bar for a single distinct value. */
 function violinFigure(summary, group, option, labels, maximum, scale) {
-    const caption = option.label + " · " + violinSummary(summary, labels.violin_summary);
+    const description = violinSummary(summary, labels.violin_summary, labels);
+    const caption = option.label + " · " + description;
     const svg = svgNode("svg", {
         viewBox: "0 0 1020 44", preserveAspectRatio: "none", role: "group",
         class: "analysis-mini-violin", "aria-label": caption,
@@ -349,10 +365,14 @@ function violinFigure(summary, group, option, labels, maximum, scale) {
             class: "analysis-violin-density", fill: option.color,
         }));
     }
-    for (const [kind, value] of Object.entries({
-        minimum: summary.minimum, p25: summary.quartiles[0], p50: summary.quantiles[2],
-        p75: summary.quartiles[1], maximum: summary.maximum, mean: summary.mean,
-    })) {
+    const markers = summary.minimum !== null && summary.minimum === summary.maximum
+        ? {length: summary.minimum}
+        : {minimum: summary.minimum,
+            ...(summary.measured >= 4 ? {p25: summary.quartiles[0]} : {}),
+            ...(summary.measured >= 3 ? {p50: summary.quantiles[2]} : {}),
+            ...(summary.measured >= 4 ? {p75: summary.quartiles[1]} : {}),
+            maximum: summary.maximum, mean: summary.mean};
+    for (const [kind, value] of Object.entries(markers)) {
         if (value === null) continue;
         const position = x(value);
         const attributes = {"data-statistic": kind, "data-value": value};
@@ -372,12 +392,13 @@ function violinFigure(summary, group, option, labels, maximum, scale) {
             });
         } else {
             mark = svgNode("line", {
-                ...attributes, class: kind === "p50" ? "analysis-violin-median" : "analysis-violin-extreme",
+                ...attributes, class: kind === "length" ? "analysis-violin-single"
+                    : kind === "p50" ? "analysis-violin-median" : "analysis-violin-extreme",
                 x1: position, x2: position, y1: 15, y2: 29,
-                ...(kind === "p50" ? {} : {"data-extreme": kind}),
+                ...(kind === "minimum" || kind === "maximum" ? {"data-extreme": kind} : {}),
             });
         }
-        mark.append(svgNode("title", {}, violinMarkerTitle(kind, value, labels)));
+        mark.append(svgNode("title", {}, kind === "length" ? description : violinMarkerTitle(kind, value, labels)));
         plot.append(mark);
     }
     const link = plotLink(group, option, plot, caption);
@@ -430,7 +451,7 @@ function annualFigure(years, grades, caption) {
 }
 
 /** Read exact saved marks and compute the display density. */
-function savedViolin(saved) {
+function savedViolin(saved, scaleMaximum) {
     const summary = {
         pages: saved.pages, measured: saved.measured,
         minimum: saved.extrema.find(mark => mark.kind === "minimum")?.value ?? null,
@@ -440,7 +461,7 @@ function savedViolin(saved) {
             saved.quartiles.find(mark => mark.percentile === percentile)?.value ?? null),
         density: (saved.density || []).map(({position, density}) => [position, density]),
     };
-    return {...summary, density: violinAreaDensity(summary)};
+    return {...summary, density: violinAreaDensity(summary, scaleMaximum)};
 }
 
 /** Draw the default figures directly from the prepared overview. */
@@ -448,9 +469,10 @@ export function initializeQualityFigures(form) {
     if (!form?.qualityOverview) return;
     const {analysis, labels} = form.qualityOverview;
     delete form.qualityOverview;
+    const maximum = analysis.length_scale_maximum;
     const summaries = new Map([...analysis.grades, ...analysis.importance_totals]
         .filter(row => row.length)
-        .map(row => [row.length, savedViolin(row.length)]));
+        .map(row => [row.length, savedViolin(row.length, maximum)]));
     const scale = violinScale(summaries.values());
     for (const [kind, group, rows] of [
         ["grades", "grade", analysis.grades],
@@ -471,7 +493,7 @@ export function initializeQualityFigures(form) {
             if (!saved) continue;
             const summary = summaries.get(saved);
             const option = {value, label: saved.label, color: saved.color};
-            cell.replaceChildren(violinFigure(summary, group, option, labels, analysis.length_scale_maximum, scale));
+            cell.replaceChildren(violinFigure(summary, group, option, labels, maximum, scale));
         }
     }
     const host = document.querySelector('[data-quality-chart="years"]');
@@ -783,7 +805,7 @@ export function initializeQualityMatrix() {
                 quartiles: [null, null], quantiles: [null, null, null], density: [],
                 ...lengths[option.value],
             } : combineCells(cells);
-            entries.push({option, summary: {...summary, density: violinAreaDensity(summary)}});
+            entries.push({option, summary: {...summary, density: violinAreaDensity(summary, maximum)}});
         }
         return entries;
     }

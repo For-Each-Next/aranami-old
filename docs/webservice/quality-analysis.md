@@ -68,18 +68,19 @@ Legacy word counts remain readable internally but are never displayed as these
 new character units.
 
 Miniature horizontal violin charts sit beside the quality and importance
-counts. The horizontal scale is `log(1 + characters)`, with the same catalog
-maximum across groups and filters. Density is evaluated on that scale and
-clipped at each group's observed minimum and maximum. A shared vertical
-scale makes the area proportional to its number of measured articles and
-lists. A group with one distinct length is marked at that length.
+counts. The first 90% of the horizontal axis covers 0–25,000 characters
+linearly. The remaining 10% uses a logarithmic tail up to the shared catalog
+maximum. Fill starts at the observed minimum and ends at the observed maximum.
+A shared vertical scale gives 10,000 measured items 100% reference area,
+1,000 items 90%, and 100 items 80%. Each tenfold decrease subtracts ten
+percentage points.
 
-Dots mark P25 and P75. Vertical lines mark the minimum, median and maximum.
-The red cross marks the arithmetic mean. Tooltips show the underlying
-character counts, and the accessible label gives the length summary.
-Percentiles interpolate linearly between observed lengths. Missing lengths
-remain unknown. The browser uses saved density samples and histograms, and
-Matplotlib applies the same axis and area rules to the native figures.
+One distinct length appears as a single bar. With two distinct measurements,
+the plot shows the extrema and the arithmetic mean. The median appears from
+three measured items and the quartiles from four. The red cross marks the
+mean. Tooltips and the accessible label describe the visible statistics.
+The browser uses saved density samples and histograms. Matplotlib follows
+the same rules for the native figures.
 
 NA and Bottom importance groups are omitted. A/AL groups hide when their
 current count is zero. Central 68% and 95% intervals use empirical

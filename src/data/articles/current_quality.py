@@ -300,32 +300,27 @@ def _counts() -> list[pl.Expr]:
 def _length_density(articles: pl.DataFrame, dimension: str) -> pl.DataFrame:
     """Prepare Gaussian violin samples over each observed length range.
 
-    Estimate density on a logarithmic grid within each observed range.
-    The renderer scales areas by measured counts on the shared axis.
-    A constant sample stays at its observed value.
+    Use Silverman's normal-reference bandwidth and normalize each
+    group's width independently. A constant sample becomes a vertical
+    mark at its actual value. Unknown measurements produce no density.
 
     Returns:
         Group keys with ordered, bounded density points for rendering.
     """
-    samples = (
-        articles
-        .select(
-            dimension,
-            pl.col("prose_characters").cast(pl.Float64).alias("length"),
-        )
-        .drop_nulls()
-        .with_columns(pl.col("length").log1p().alias("value"))
-    )
+    samples = articles.select(
+        dimension,
+        pl.col("prose_characters").cast(pl.Float64).alias("value"),
+    ).drop_nulls()
     if samples.is_empty():
         return pl.DataFrame(schema={dimension: pl.String, "density": _DENSITY})
     grid = (
         samples
         .group_by(dimension)
         .agg(
-            pl.col("length").min().alias("minimum"),
-            pl.col("length").max().alias("maximum"),
+            pl.col("value").min().alias("minimum"),
+            pl.col("value").max().alias("maximum"),
             (1.06 * pl.col("value").std(ddof=0) * pl.len().pow(-0.2))
-            .clip(lower_bound=0.02)
+            .clip(lower_bound=1)
             .alias("bandwidth"),
         )
         .join(
@@ -334,8 +329,8 @@ def _length_density(articles: pl.DataFrame, dimension: str) -> pl.DataFrame:
         )
         .with_columns(
             (
-                pl.col("minimum").log1p()
-                + (pl.col("maximum").log1p() - pl.col("minimum").log1p())
+                pl.col("minimum")
+                + (pl.col("maximum") - pl.col("minimum"))
                 * pl.col("step")
                 / _DENSITY_STEPS
             ).alias("position"),
@@ -344,7 +339,7 @@ def _length_density(articles: pl.DataFrame, dimension: str) -> pl.DataFrame:
     return (
         grid
         .join(samples, on=dimension, how="inner")
-        .group_by(dimension, "step", "position", "minimum", "maximum")
+        .group_by(dimension, "step", "position")
         .agg(
             (
                 -0.5
@@ -358,16 +353,6 @@ def _length_density(articles: pl.DataFrame, dimension: str) -> pl.DataFrame:
             .alias("density"),
         )
         .with_columns(
-            pl
-            .when(
-                (pl.col("step") == 0)
-                | (pl.col("minimum") == pl.col("maximum")),
-            )
-            .then(pl.col("minimum"))
-            .when(pl.col("step") == _DENSITY_STEPS)
-            .then(pl.col("maximum"))
-            .otherwise(pl.col("position").exp() - 1)
-            .alias("position"),
             (
                 pl.col("density") / pl.col("density").max().over(dimension)
             ).alias("density"),

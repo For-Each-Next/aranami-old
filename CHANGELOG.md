@@ -5,7 +5,7 @@ v0.8.8 was consolidated into the v0.9.2 release.
 
 ## Until 0.11
 
-### 0.10.0.dev7 (2026-11-21 07:13 UTC)
+### 0.10.0.dev8 (2026-11-21 07:26 UTC)
 
 Overview: Separated source acquisition from analysis and publication while
 consolidating Aranami's Toolforge services.
@@ -23,7 +23,9 @@ consolidating Aranami's Toolforge services.
 - Reorganized runtime and deployment code by responsibility and removed the
   individual-job dispatcher.
 - Used cards and execution details in About and localized weekly schedules.
-- Drew count-weighted logarithmic violins bounded by measured lengths.
+- Kept the existing length axis and scaled bounded violin areas by log count.
+  Simplified markers for small samples.
+- Shared the home-page card grid with report status and worklist results.
 - Kept authenticated Redis page caching and compact authorship generations.
 
 ## Until 0.10

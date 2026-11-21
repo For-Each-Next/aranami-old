@@ -660,27 +660,31 @@ test("individual violin tooltips use localized names without percentile codes or
     }
 });
 
-test("the x-axis is logarithmic across the full displayed range", () => {
-    const position = length => context.proseLengthPosition(length, 99999);
+test("the original length positions remain fixed", () => {
+    const position = length => context.proseLengthPosition(length, 100000);
     assert.equal(position(0), 0);
-    assert.ok(Math.abs(position(99) - 400) < 1e-10);
-    assert.ok(Math.abs(position(999) - 600) < 1e-10);
-    assert.ok(Math.abs(position(9999) - 800) < 1e-10);
-    assert.equal(position(99999), 1000);
+    assert.equal(position(10000), 360);
+    assert.equal(position(25000), 900);
+    assert.equal(position(50000), 950);
+    assert.equal(position(100000), 1000);
 });
 
-test("violin density is cut at observed extrema and integrates to its count", () => {
-    const density = [[0, 1], [50, 3], [100, 4], [200, 2], [300, 1]];
-    const measured = 70;
-    const bounded = context.violinAreaDensity({density, measured, minimum: 40, maximum: 210});
-    assert.equal(bounded[0][0], 40);
-    assert.ok(bounded[0][1] > 0);
-    assert.equal(bounded.at(-1)[0], 210);
-    const area = bounded.slice(1).reduce((sum, [x, y], index) => {
-        const [left, height] = bounded[index];
-        return sum + (y + height) * (Math.log1p(x) - Math.log1p(left)) / 2;
-    }, 0);
-    assert.ok(Math.abs(area - measured) < 1e-10);
+test("bounded violin areas follow a logarithmic count scale on the original length axis", () => {
+    const density = [[0, 1], [50, 3], [100, 4], [200, 2], [30000, 1.5], [90000, 1]];
+    const scaleMaximum = 100000;
+    const x = length => context.proseLengthPosition(length, scaleMaximum) / 1000;
+    for (const [measured, maximum, target] of [[10000, 80000, 1], [1000, 210, 0.9], [100, 80000, 0.8]]) {
+        const bounded = context.violinAreaDensity({density, measured, minimum: 40, maximum}, scaleMaximum);
+        assert.equal(bounded[0][0], 40);
+        assert.ok(bounded[0][1] > 0);
+        assert.equal(bounded.at(-1)[0], maximum);
+        assert.ok(bounded.at(-1)[1] > 0);
+        const area = bounded.slice(1).reduce((sum, [right, y], index) => {
+            const [left, height] = bounded[index];
+            return sum + (y + height) * (x(right) - x(left)) / 2;
+        }, 0);
+        assert.ok(Math.abs(area - target) < 1e-10);
+    }
 });
 
 test("violin scale maximum uses all observed catalog lengths and ignores empty bins", () => {

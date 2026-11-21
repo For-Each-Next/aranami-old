@@ -31,10 +31,10 @@
 .analysis-legend li { white-space: nowrap; }
 .analysis-violin-density { fill-opacity: .75; stroke: var(--border-color-interactive); stroke-width: 1; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .analysis-violin-track { stroke: var(--border-color-subtle); stroke-width: 1; vector-effect: non-scaling-stroke; }
-.analysis-violin-median, .analysis-violin-extreme { stroke: var(--color-emphasized); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.analysis-violin-median, .analysis-violin-extreme, .analysis-violin-single { stroke: var(--color-emphasized); stroke-width: 2; vector-effect: non-scaling-stroke; }
 .analysis-violin-quartile { stroke: var(--color-emphasized); stroke-width: 6; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .analysis-violin-mean line { stroke: var(--color-destructive); stroke-width: 2; vector-effect: non-scaling-stroke; }
-@media (forced-colors: active) { .analysis-violin-density { fill: Highlight; stroke: CanvasText; } .analysis-violin-track, .analysis-violin-median, .analysis-violin-extreme, .analysis-violin-quartile, .analysis-violin-mean line { stroke: CanvasText; } }
+@media (forced-colors: active) { .analysis-violin-density { fill: Highlight; stroke: CanvasText; } .analysis-violin-track, .analysis-violin-median, .analysis-violin-extreme, .analysis-violin-single, .analysis-violin-quartile, .analysis-violin-mean line { stroke: CanvasText; } }
 .analysis-filters { display: grid; grid-template-columns: minmax(0, 1fr); gap: .5rem; margin-block: 1rem; }
 .analysis-filters[hidden], .analysis-directory [hidden] { display: none; }
 .analysis-filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; }

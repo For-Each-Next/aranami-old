@@ -4415,9 +4415,9 @@
     "zh-hant": "尚無已儲存的正文測量結果。"
   },
   "quality_analysis.violin_scale": {
-    "en": "Length uses a logarithmic scale. Violin area is proportional to the number of measured articles and lists.",
-    "zh-hans": "正文字数使用对数刻度。小提琴图的面积与有字数记录的条目及列表数量成正比。",
-    "zh-hant": "正文字數使用對數刻度。小提琴圖的面積與有字數紀錄的條目及列表數量成正比。"
+    "en": "Violin area uses a logarithmic count scale. A group of 10,000 measured articles and lists has 100% reference area, and a group of 1,000 has 90%.",
+    "zh-hans": "小提琴图的面积按有字数记录的条目及列表数量进行对数缩放。10,000 个对应 100% 的参考面积，1,000 个对应 90%。",
+    "zh-hant": "小提琴圖的面積依有字數紀錄的條目及列表數量進行對數縮放。10,000 個對應 100% 的參考面積，1,000 個對應 90%。"
   },
   "quality_analysis.search": {
     "en": "Article title",
@@ -4855,6 +4855,16 @@
     "en": "{pages} articles in total; lengths collected for {measured} articles: shortest length: {minimum} characters; lower quartile (P25): {p25} characters; median (P50): {p50} characters; upper quartile (P75): {p75} characters; longest length: {maximum} characters.",
     "zh-hans": "共{pages}篇条目，{measured}篇条目已采集字数：最短字数：{minimum}；下四分位字数：{p25}；中位字数：{p50}；上四分位字数：{p75}；最长字数：{maximum}。",
     "zh-hant": "共{pages}篇條目，{measured}篇條目已採集字數：最短字數：{minimum}；下四分位字數：{p25}；中位字數：{p50}；上四分位字數：{p75}；最長字數：{maximum}。"
+  },
+  "quality_analysis.violin_range": {
+    "en": "Lengths measured for {measured} of {pages} articles and lists. The measured range is {minimum}–{maximum} characters.",
+    "zh-hans": "{pages} 个条目及列表中有 {measured} 个测得字数，范围为 {minimum} 至 {maximum} 字。",
+    "zh-hant": "{pages} 個條目及列表中有 {measured} 個測得字數，範圍為 {minimum} 至 {maximum} 字。"
+  },
+  "quality_analysis.violin_single": {
+    "en": "{value} characters, measured for {measured} of {pages} articles and lists.",
+    "zh-hans": "{value} 字（{pages} 个条目及列表中有 {measured} 个测得此长度）",
+    "zh-hant": "{value} 字（{pages} 個條目及列表中有 {measured} 個測得此長度）"
   },
   "quality_analysis.violin_minimum": {
     "en": "Minimum: {value} characters",

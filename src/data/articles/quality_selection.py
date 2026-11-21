@@ -56,15 +56,12 @@ def cells(articles: pl.DataFrame) -> pl.DataFrame:
             },
         )
     else:
-        logarithms = samples.with_columns(
-            pl.col("value").cast(pl.Float64).log1p().alias("log_value"),
-        )
         grid = (
-            logarithms
+            samples
             .select(
-                pl.col("log_value").max().alias("maximum"),
-                (1.06 * pl.col("log_value").std(ddof=0) * pl.len().pow(-0.2))
-                .clip(lower_bound=0.02)
+                pl.col("value").max().cast(pl.Float64).alias("maximum"),
+                (1.06 * pl.col("value").std(ddof=0) * pl.len().pow(-0.2))
+                .clip(lower_bound=1)
                 .alias("bandwidth"),
             )
             .join(pl.DataFrame({"step": range(_POINTS)}), how="cross")
@@ -75,14 +72,14 @@ def cells(articles: pl.DataFrame) -> pl.DataFrame:
             )
         )
         density = (
-            logarithms
+            samples
             .join(grid, how="cross")
             .group_by(*KEY, "step", "position")
             .agg(
                 (
                     -0.5
                     * (
-                        (pl.col("log_value") - pl.col("position"))
+                        (pl.col("value") - pl.col("position"))
                         / pl.col("bandwidth")
                     ).pow(2)
                 )
@@ -90,7 +87,6 @@ def cells(articles: pl.DataFrame) -> pl.DataFrame:
                 .sum()
                 .alias("density"),
             )
-            .with_columns((pl.col("position").exp() - 1).alias("position"))
             .sort(*KEY, "step")
             .group_by(KEY, maintain_order=True)
             .agg(

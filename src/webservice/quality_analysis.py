@@ -10,7 +10,7 @@ presentation values without acquiring sources or recalculating metrics.
 from __future__ import annotations
 
 from ipaddress import ip_address
-from math import floor, log1p, log10
+from math import floor, log, log10
 from operator import itemgetter
 from urllib.parse import quote
 
@@ -77,7 +77,7 @@ _DISTRIBUTION_GRADES = tuple(
     == group
 )
 _FIRST_FILTER_YEAR = 2009
-_DEFAULT_MAX_LENGTH = 25_000
+_PROSE_LENGTH_LINEAR = 25_000
 
 
 def _assessment_color(code: str, dimension: str) -> str:
@@ -209,7 +209,7 @@ def prose_length_maximum(data: dict) -> float:
     """Share one scale across groups and filters using saved lengths.
 
     Returns:
-        Catalog-wide observed maximum with a default display extent.
+        Catalog-wide observed maximum, at least the 25,000 linear limit.
     """
     selection = data.get("selection")
     values = (
@@ -226,17 +226,28 @@ def prose_length_maximum(data: dict) -> float:
             if row.get("prose_characters") is not None
         )
     )
-    return max(_DEFAULT_MAX_LENGTH, max(values, default=0))
+    return max(_PROSE_LENGTH_LINEAR, max(values, default=0))
 
 
 def prose_length_position(characters: float, maximum: float) -> float:
-    """Position lengths on the shared logarithmic axis.
+    """Reserve 90% for 0-25,000 characters and compress the tail by log.
+
+    The shared observed maximum closes the logarithmic tail at 100%.
+    Zero or missing observations never change the fixed linear segment.
 
     Returns:
         SVG coordinate between zero and 1,000, inclusive.
     """
-    return 1000 * (
-        log1p(max(0, min(characters, maximum))) / log1p(max(1, maximum))
+    if characters <= _PROSE_LENGTH_LINEAR:
+        return max(0, characters / _PROSE_LENGTH_LINEAR * 900)
+    if maximum <= _PROSE_LENGTH_LINEAR:
+        return 900
+    return min(
+        1000,
+        900
+        + 100
+        * log(characters / _PROSE_LENGTH_LINEAR)
+        / log(maximum / _PROSE_LENGTH_LINEAR),
     )
 
 
@@ -248,7 +259,7 @@ def _lengths(
     """Position saved percentile intervals on a shared visual scale.
 
     Returns:
-        Localized ranges on the shared logarithmic scale.
+        Localized ranges on the shared linear and logarithmic scale.
     """
     selection = data.get("selection") or {}
     quartile_lookup = {
@@ -877,6 +888,8 @@ def quality_analysis_context(
                         "review",
                         "listing_evidence",
                         "violin_summary",
+                        "violin_range",
+                        "violin_single",
                         "violin_minimum",
                         "violin_p25",
                         "violin_p50",

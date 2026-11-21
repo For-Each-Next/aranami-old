@@ -389,7 +389,10 @@ async function checkInterface(assetRoot) {
                     const cells = metadata.cells.filter(cell => checked.has(cell.grade + '/' + cell.importance) && cell[group] === code && (cell.year === null ? unknown : cell.year >= from && cell.year <= to));
                     const sample = cells.flatMap(cell => cell.histogram.flatMap(item => Array(item.count).fill(item.value))).sort((a,b) => a-b);
                     const percentile = p => { const position = (sample.length - 1) * p; return sample[Math.floor(position)] + (sample[Math.ceil(position)] - sample[Math.floor(position)]) * (position % 1); };
-                    const values = sample.length ? {minimum:sample[0], p25:percentile(.25), p50:percentile(.5), p75:percentile(.75), maximum:sample.at(-1), mean:sample.reduce((sum,value) => sum+value,0)/sample.length} : {};
+                    const values = !sample.length ? {} : sample[0] === sample.at(-1) ? {length:sample[0]} : {
+                        minimum:sample[0], maximum:sample.at(-1), mean:sample.reduce((sum,value) => sum+value,0)/sample.length,
+                        ...(sample.length >= 3 ? {p50:percentile(.5)} : {}),
+                        ...(sample.length >= 4 ? {p25:percentile(.25), p75:percentile(.75)} : {})};
                     const marks = [...svg.querySelectorAll('[data-statistic]')];
                     return svg.dataset.chartRenderer === 'browser' && Boolean(svg.getAttribute('aria-label'))
                         && marks.length === Object.keys(values).length && marks.every(mark => Math.abs(Number(mark.dataset.value) - values[mark.dataset.statistic]) < .001 && Boolean(mark.querySelector('title')?.textContent));
@@ -929,6 +932,10 @@ async function checkInterface(assetRoot) {
                         overflow: [...document.querySelectorAll('main *')].filter(element => visible(element) && element.getBoundingClientRect().right > innerWidth + 1).slice(0, 8).map(element => ({ tag: element.tagName, class: element.className, right: element.getBoundingClientRect().right })) };
                 })()`);
                 assert.ok(layout.page <= layout.viewport + 1, JSON.stringify(layout));
+                if ([320, 768, 1440].includes(width)) {
+                    const grids = await evaluate(`(() => [...document.querySelectorAll('.routine-rows, .consistency-worklist .consistency-cards')].map(grid => getComputedStyle(grid).gridTemplateColumns.trim().split(/\\s+/).length))()`);
+                    assert.ok(grids.every(columns => columns === ({320:1, 768:2, 1440:3})[width]), 'report and search cards use the home-page grid widths');
+                }
                 if (surface === "consistency" || surface === "quarterly") {
                     const evidence = await evaluate(`(() => ({
                         tables: document.querySelectorAll('.maintenance-table').length,
@@ -1670,11 +1677,11 @@ async function checkInterface(assetRoot) {
                             const violinState = async (code, measured) => {
                                 await selectAnnualGrade(code);
                                 const svg = document.querySelector('[data-analysis-violin="' + code + '"]');
-                                const expected = form.qualityMetadata.labels.violin_summary.replace('{pages}', '1').replace('{measured}', String(measured)).replace('{minimum}', measured ? '0' : '—').replace('{p25}', measured ? '0' : '—').replace('{p50}', measured ? '0' : '—').replace('{p75}', measured ? '0' : '—').replace('{maximum}', measured ? '0' : '—');
-                                const dots = [...svg.querySelectorAll('.analysis-violin-quartile')];
-                                const extrema = [...svg.querySelectorAll('.analysis-violin-extreme')];
-                                const median = svg.querySelector('.analysis-violin-median');
-                                return !svg.querySelector(':scope > title') && svg.getAttribute('aria-label').endsWith(expected) && (measured ? dots.length === 2 && dots.every(dot => Number(dot.dataset.value) === 0) && Number(median.dataset.value) === 0 && extrema.length === 2 && Number(svg.querySelector('.analysis-violin-mean')?.dataset.meanX) === 0 : dots.length === 0 && !median && !extrema.length && !svg.querySelector('.analysis-violin-mean'));
+                                const {violin_single, violin_summary} = form.qualityMetadata.labels;
+                                const expected = (measured ? violin_single : violin_summary).replace('{pages}', '1').replace('{measured}', String(measured)).replace('{value}', '0').replace(/\\{(minimum|p25|p50|p75|maximum)\\}/g, '—');
+                                const marks = [...svg.querySelectorAll('[data-statistic]')];
+                                return !svg.querySelector(':scope > title') && svg.getAttribute('aria-label').endsWith(expected)
+                                    && (measured ? marks.length === 1 && marks[0].matches('.analysis-violin-single[data-value="0"]') : marks.length === 0);
                             };
                             const quantileStates = await violinState('C', 1) && await violinState('B', 0);
                             from.value = '2009'; from.dispatchEvent(new Event('change'));

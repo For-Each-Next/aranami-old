@@ -109,11 +109,16 @@ class QualityResourcePresentationTests(unittest.TestCase):
 
     @staticmethod
     def test_length_scale_anchors_and_endpoints() -> None:
-        """Keep a logarithmic axis with zero and exact endpoints."""
-        for length, position in [(0, 0), (99, 400), (999, 600), (9999, 800)]:
-            assert isclose(prose_length_position(length, 99_999), position)
-        assert isclose(prose_length_position(99_999, 99_999), 1000)
-        assert isclose(prose_length_position(100_001, 99_999), 1000)
+        """Preserve the linear body and compressed length tail."""
+        for length, position in [
+            (0, 0),
+            (10_000, 360),
+            (25_000, 900),
+            (50_000, 950),
+        ]:
+            assert isclose(prose_length_position(length, 100_000), position)
+        assert isclose(prose_length_position(100_000, 100_000), 1000)
+        assert isclose(prose_length_position(100_001, 100_000), 1000)
 
     @staticmethod
     def test_length_scale_uses_the_complete_observed_catalog() -> None:

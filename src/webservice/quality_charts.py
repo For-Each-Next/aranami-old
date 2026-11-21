@@ -42,10 +42,14 @@ _PROFILE = assessment_profile("zhwiki", "电子游戏")
 _IMPORTANCE = ("Top", "High", "Mid", "Low", "Unknown")
 _MAX_ARTICLES = 30_000
 _MAX_YEARS = 200
-_DEFAULT_MAX_LENGTH = 25_000
+_LINEAR_LIMIT = 25_000
+_LINEAR_SHARE = 0.9
+_QUARTILE_SAMPLE = 4
+_MEDIAN_SAMPLE = 3
 _SVG = "http://www.w3.org/2000/svg"
 _XLINK = "http://www.w3.org/1999/xlink"
 _STATISTICS = ("minimum", "p25", "p50", "p75", "maximum", "mean")
+_VIOLIN_LABELS = (*_STATISTICS, "summary", "range", "single")
 ET.register_namespace("", _SVG)
 ET.register_namespace("xlink", _XLINK)
 
@@ -77,21 +81,37 @@ def _number(value: float) -> str:
 
 
 def _scale(value: np.ndarray, maximum: float) -> np.ndarray:
-    """Map lengths to the shared logarithmic axis.
+    """Map a shared linear body and logarithmic tail to one unit axis.
 
     Returns:
-        Vectorized unit coordinates, with zero retained at zero.
+        Vectorized positions without taking logarithms of zero.
     """
-    return np.log1p(np.maximum(value, 0)) / math.log1p(maximum)
+    values = np.asarray(value)
+    tail = math.log(max(maximum / _LINEAR_LIMIT, 1.000001))
+    return np.where(
+        values <= _LINEAR_LIMIT,
+        values / _LINEAR_LIMIT * _LINEAR_SHARE,
+        _LINEAR_SHARE
+        + (1 - _LINEAR_SHARE)
+        * np.log(np.maximum(values, _LINEAR_LIMIT) / _LINEAR_LIMIT)
+        / tail,
+    )
 
 
 def _inverse_scale(value: np.ndarray, maximum: float) -> np.ndarray:
-    """Invert the logarithmic axis for Matplotlib.
+    """Restore character counts for the function scale.
 
     Returns:
         Original character coordinates.
     """
-    return np.expm1(np.asarray(value) * math.log1p(maximum))
+    values = np.asarray(value)
+    tail = math.log(max(maximum / _LINEAR_LIMIT, 1.000001))
+    return np.where(
+        values <= _LINEAR_SHARE,
+        values / _LINEAR_SHARE * _LINEAR_LIMIT,
+        _LINEAR_LIMIT
+        * np.exp((values - _LINEAR_SHARE) / (1 - _LINEAR_SHARE) * tail),
+    )
 
 
 def _link(group: str, value: str, label: str, year: int | None = None) -> dict:
@@ -240,24 +260,76 @@ def _pie(rows: tuple, dimension: str, caption: str) -> str:
     )
 
 
-def _violin_density(values: tuple) -> tuple:
-    """Estimate count-weighted density inside the observed support.
+def _violin_density(values: tuple, maximum: float) -> tuple:
+    """Scale the bounded density to its logarithmic count area.
 
     Returns:
-        Original lengths paired with heights per unit log length.
+        Observed lengths paired with heights on the displayed axis.
     """
     if not values or values[0] == values[-1]:
         return ()
-    samples = np.log1p(values)
+    samples = np.asarray(values)
     grid = np.linspace(samples[0], samples[-1], 129)
-    bandwidth = max(0.02, 1.06 * samples.std() * len(values) ** -0.2)
+    bandwidth = max(1, 1.06 * samples.std() * len(values) ** -0.2)
     density = np.exp(-0.5 * ((grid[:, None] - samples) / bandwidth) ** 2).mean(
         axis=1,
     )
-    density *= len(values) / np.trapezoid(density, grid)
-    positions = np.expm1(grid)
-    positions[0], positions[-1] = values[0], values[-1]
-    return tuple(zip(positions, density, strict=True))
+    target = 1 + math.log10(len(values) / 10_000) / 10
+    density *= target / np.trapezoid(density, _scale(grid, maximum))
+    return tuple(zip(grid, density, strict=True))
+
+
+def _violin_marks(values: tuple) -> dict[str, float]:
+    """Select the statistics appropriate for the measured sample.
+
+    Returns:
+        Values for the visible markers, ordered for drawing.
+    """
+    if not values:
+        return {}
+    if values[0] == values[-1]:
+        return {"length": values[0]}
+    marks = {"minimum": values[0]}
+    if len(values) >= _QUARTILE_SAMPLE:
+        marks["p25"] = float(np.quantile(values, 0.25))
+    if len(values) >= _MEDIAN_SAMPLE:
+        marks["p50"] = float(np.median(values))
+    if len(values) >= _QUARTILE_SAMPLE:
+        marks["p75"] = float(np.quantile(values, 0.75))
+    marks.update(maximum=values[-1], mean=float(np.mean(values)))
+    return marks
+
+
+def _violin_summary(
+    pages: int,
+    measured: int,
+    marks: dict,
+    titles: dict,
+) -> str:
+    """Describe only the statistics on the figure.
+
+    Returns:
+        The localized description shared by the accessible SVG and bar.
+    """
+    counts = {
+        "pages": grouped_number(pages),
+        "measured": grouped_number(measured),
+    }
+    values = {kind: _number(value) for kind, value in marks.items()}
+    if "length" in values:
+        return titles["single"].format(**counts, value=values["length"])
+    if marks and measured < _QUARTILE_SAMPLE:
+        details = [titles["range"].format(**counts, **values)]
+        details.extend(
+            titles[kind].format(value=values[kind]) + "."
+            for kind in ("p50", "mean")
+            if kind in values
+        )
+        return " ".join(details)
+    return titles["summary"].format(
+        **counts,
+        **(dict.fromkeys(_STATISTICS, "—") | values),
+    )
 
 
 @lru_cache(maxsize=64)
@@ -276,7 +348,7 @@ def _violin(  # ruff: ignore[too-many-arguments,too-many-locals] - Explicit char
         A horizontal violin with individually titled native markers.
     """
     dimension, code, label, color = option
-    titles, summary_template = labels[:-1], labels[-1]
+    titles = dict(zip(_VIOLIN_LABELS, labels, strict=True))
     figure = Figure(figsize=(5, 0.55))
     axes = figure.add_axes((0.015, 0.05, 0.97, 0.9))
     axes.set_axis_off()
@@ -287,7 +359,7 @@ def _violin(  # ruff: ignore[too-many-arguments,too-many-locals] - Explicit char
             lambda x: _inverse_scale(x, maximum),
         ),
     )
-    axes.set_xlim(0, max(maximum, _DEFAULT_MAX_LENGTH))
+    axes.set_xlim(0, maximum)
     axes.set_ylim(-0.65, 0.65)
     axes.axhline(0, color="#dce6e7", linewidth=0.7)
     annotations = {
@@ -298,103 +370,87 @@ def _violin(  # ruff: ignore[too-many-arguments,too-many-locals] - Explicit char
             },
         },
     }
-    summary_values = dict.fromkeys(_STATISTICS, "—")
-    if values:
-        if density:
-            positions, heights = np.asarray(density).T
-            body = axes.fill_between(
-                positions,
-                -heights,
-                heights,
-                facecolor=color,
-                edgecolor="#52797e",
-                alpha=0.75,
-                linewidth=0.7,
-            )
-            body.set_gid("density")
-            annotations["density"] = {
-                "attributes": {"class": "analysis-violin-density"},
-            }
-        sample = np.asarray(values)
-        statistics = (
-            *np.quantile(sample, [0, 0.25, 0.5, 0.75, 1]),
-            float(sample.mean()),
+    if density:
+        positions, heights = np.asarray(density).T
+        body = axes.fill_between(
+            positions,
+            -heights,
+            heights,
+            facecolor=color,
+            edgecolor="#52797e",
+            alpha=0.75,
+            linewidth=0.7,
         )
-        summary_values = {
-            kind: _number(float(value))
-            for kind, value in zip(_STATISTICS, statistics, strict=True)
+        body.set_gid("density")
+        annotations["density"] = {
+            "attributes": {"class": "analysis-violin-density"},
         }
-        for kind, value, template in zip(
-            _STATISTICS,
-            statistics,
-            titles,
-            strict=True,
-        ):
-            identifier = f"statistic-{kind}"
-            if kind == "mean":
-                artist = axes.plot(
-                    [value],
-                    [0],
-                    marker="x",
-                    color="#9c3e32",
-                    markersize=7,
-                    markeredgewidth=1.4,
-                    linestyle="none",
-                )[0]
-                attributes = {
-                    "class": "analysis-violin-mean",
-                    "data-mean-x": str(
-                        float(_scale(np.asarray(value), maximum)) * 1000,
-                    ),
-                }
-            elif kind in {"p25", "p75"}:
-                artist = axes.plot(
-                    [value],
-                    [0],
-                    marker="o",
-                    color="#163c41",
-                    markersize=3.5,
-                    linestyle="none",
-                )[0]
-                attributes = {
-                    "class": "analysis-violin-quartile",
-                    "data-percentile": kind[1:],
-                }
-            else:
-                artist = axes.vlines(
-                    value,
-                    -0.3,
-                    0.3,
-                    colors="#163c41",
-                    linewidth=1.2,
-                )
-                attributes = {
-                    "class": "analysis-violin-median"
-                    if kind == "p50"
-                    else "analysis-violin-extreme",
-                }
-                if kind != "p50":
-                    attributes["data-extreme"] = kind
-            artist.set_gid(identifier)
-            attributes["data-statistic"] = kind
-            attributes["data-value"] = str(float(value))
-            annotations[identifier] = {
-                "attributes": attributes,
-                "title": template.format(value=_number(float(value))),
+    marks = _violin_marks(values)
+    summary = _violin_summary(pages, len(values), marks, titles)
+    for kind, value in marks.items():
+        identifier = f"statistic-{kind}"
+        if kind == "mean":
+            artist = axes.plot(
+                [value],
+                [0],
+                marker="x",
+                color="#9c3e32",
+                markersize=7,
+                markeredgewidth=1.4,
+                linestyle="none",
+            )[0]
+            attributes = {
+                "class": "analysis-violin-mean",
+                "data-mean-x": str(
+                    float(_scale(np.asarray(value), maximum)) * 1000,
+                ),
             }
+        elif kind in {"p25", "p75"}:
+            artist = axes.plot(
+                [value],
+                [0],
+                marker="o",
+                color="#163c41",
+                markersize=3.5,
+                linestyle="none",
+            )[0]
+            attributes = {
+                "class": "analysis-violin-quartile",
+                "data-percentile": kind[1:],
+            }
+        else:
+            artist = axes.vlines(
+                value,
+                -0.3,
+                0.3,
+                colors="#163c41",
+                linewidth=1.2,
+            )
+            mark_class = {"length": "single", "p50": "median"}.get(
+                kind,
+                "extreme",
+            )
+            attributes = {"class": f"analysis-violin-{mark_class}"}
+            if mark_class == "extreme":
+                attributes["data-extreme"] = kind
+        artist.set_gid(identifier)
+        annotations[identifier] = {
+            "attributes": {
+                **attributes,
+                "data-statistic": kind,
+                "data-value": str(value),
+            },
+            "title": summary
+            if kind == "length"
+            else titles[kind].format(value=_number(value)),
+        }
     result = _svg(
         figure,
         f"quality-violin-{dimension}-{code}",
         {
             "class": "analysis-mini-violin",
             "data-analysis-violin": code,
-            "aria-label": label
-            + ": "
-            + summary_template.format(
-                pages=grouped_number(pages),
-                measured=grouped_number(len(values)),
-                **summary_values,
-            ),
+            "aria-label": f"{label} · {summary}",
             "preserveAspectRatio": "none",
         },
         annotations,
@@ -488,8 +544,8 @@ def _year_bounds(articles: list[dict], data: dict) -> tuple[int, int]:
     return first, last
 
 
-def _length_profiles(articles: list, options: dict) -> dict:
-    """Put count-weighted shapes on the same vertical display scale.
+def _length_profiles(articles: list, options: dict, maximum: float) -> dict:
+    """Use one vertical display scale for the area-weighted shapes.
 
     Returns:
         Measured values and scaled density for every assessment group.
@@ -507,7 +563,8 @@ def _length_profiles(articles: list, options: dict) -> dict:
         for code, _, _ in choices
     }
     densities = {
-        key: _violin_density(values) for key, values in observed.items()
+        key: _violin_density(values, maximum)
+        for key, values in observed.items()
     }
     peak = max(
         (height for points in densities.values() for _, height in points),
@@ -552,7 +609,7 @@ def render_charts(data: dict, interface: Interface) -> dict:
         message = "Chart lengths must be finite nonnegative measurements."
         raise ValueError(message)
     maximum = max(
-        _DEFAULT_MAX_LENGTH,
+        _LINEAR_LIMIT,
         float(data.get("length_scale_maximum") or max(lengths, default=0)),
     )
     first, last = _year_bounds(articles, data)
@@ -579,9 +636,9 @@ def render_charts(data: dict, interface: Interface) -> dict:
     }
     titles = tuple(
         interface.text(f"quality_analysis.violin_{kind}")
-        for kind in _STATISTICS
+        for kind in _VIOLIN_LABELS
     )
-    profiles = _length_profiles(articles, options)
+    profiles = _length_profiles(articles, options, maximum)
     result = {"lengths": {}}
     with (
         _LOCK,
@@ -607,10 +664,7 @@ def render_charts(data: dict, interface: Interface) -> dict:
                     profiles[dimension, code][0],
                     maximum,
                     (dimension, code, label, color),
-                    (
-                        *titles,
-                        interface.text("quality_analysis.violin_summary"),
-                    ),
+                    titles,
                     counts[code],
                     density=profiles[dimension, code][1],
                 )

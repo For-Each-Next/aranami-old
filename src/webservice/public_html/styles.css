@@ -757,7 +757,7 @@ main {
     border-color: var(--color-progressive);
 }
 
-.card-grid {
+.card-grid, .routine-rows, .consistency-worklist .consistency-cards {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(19rem, 100%), 1fr));
     gap: 1rem;
@@ -1261,6 +1261,15 @@ ul.consistency-cards {
 
 .consistency-cards > li + li {
     margin-block-start: .75rem;
+}
+
+.consistency-worklist .consistency-cards > li {
+    min-inline-size: 0;
+    margin-block-start: 0;
+}
+
+.consistency-worklist .consistency-cards > li > .ui-card {
+    block-size: 100%;
 }
 
 .consistency-history-cards {
@@ -1920,12 +1929,6 @@ footer nav {
     max-inline-size: calc(100vw - 4rem);
     max-block-size: min(24rem, 60dvh);
     overflow-y: auto;
-}
-
-.routine-rows {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 23rem), 1fr));
-    gap: 1rem;
 }
 
 .routine-row {

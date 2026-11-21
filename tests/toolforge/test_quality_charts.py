@@ -82,12 +82,6 @@ class MatplotlibChartTests(TestCase):
             positions = call.args[1]
             assert positions[0] == 0
             assert positions[-1] == 100_000
-        positions, heights = np.asarray(
-            charts._violin_density((10, 100, 100_000)),
-        ).T
-        assert positions[0] == 10
-        assert positions[-1] == 100_000
-        assert np.isclose(np.trapezoid(heights, np.log1p(positions)), 3)
         assert pie.call_count == 2
         bar.assert_called_once()
         svg = ET.fromstring(result["lengths"]["grade:FA"])
@@ -132,17 +126,45 @@ class MatplotlibChartTests(TestCase):
             )
 
     @staticmethod
-    def test_empty_unknown_and_constant_lengths_are_distinct() -> None:
-        """Preserve zero, constant and unknown measurements."""
-        for values in ([0], [100, 100], [None]):
+    def test_violin_area_uses_log_count_on_the_display_axis() -> None:
+        """Keep observed endpoints and scale the heights only."""
+        maximum = 100_000
+        for count, target in ((100, 0.8), (1000, 0.9), (10_000, 1.0)):
+            values = (10,) * (count // 2) + (80_000,) * (count // 2)
+            positions, heights = np.asarray(
+                charts._violin_density(values, maximum),
+            ).T
+            assert positions[0] == 10
+            assert positions[-1] == 80_000
+            assert np.isclose(
+                np.trapezoid(heights, charts._scale(positions, maximum)),
+                target,
+            )
+
+    @staticmethod
+    def test_small_samples_use_appropriate_statistics() -> None:
+        """Distinguish unknown lengths from small measured samples."""
+        for values, expected in (
+            ([0], {"length": 0}),
+            ([100, 100], {"length": 100}),
+            ([10, 20], {"minimum": 10, "maximum": 20, "mean": 15}),
+            ([1, 3, 5], {"minimum": 1, "p50": 3, "maximum": 5, "mean": 3}),
+            ([None], {}),
+        ):
             result = charts.render_charts(_data(values), Interface("zh-hans"))
             root = ET.fromstring(result["lengths"]["grade:FA"])
-            marks = [
-                element
+            marks = {
+                element.get("data-statistic"): float(element.get("data-value"))
                 for element in root.iter()
                 if element.get("data-statistic")
-            ]
-            assert len(marks) == (0 if values == [None] else 6)
+            }
+            assert marks == expected
+            if "length" in marks:
+                assert (
+                    "analysis-violin-single" in result["lengths"]["grade:FA"]
+                )
+            if marks:
+                assert "四分位" not in root.get("aria-label")
             assert "nan" not in result["lengths"]["grade:FA"].lower()
         empty = charts.render_charts(_data([]), Interface("en"))
         assert empty["lengths"] == {}
