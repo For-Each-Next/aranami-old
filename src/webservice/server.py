@@ -52,7 +52,12 @@ from data.runtime.log_store import (
 )
 from data.runtime.logs import open_run_log
 from data.runtime.server_samples import read_live_status as read_status
-from data.runtime.status import WEB_STATUS_NAME, get_boot_id, save_status
+from data.runtime.status import (
+    WEB_STATUS_NAME,
+    StatusReadCache,
+    get_boot_id,
+    save_status,
+)
 from data.website import read_snapshot, validate_dashboard_snapshot
 from shared.config import routine_configuration
 from shared.deployment import project_version, resource_root
@@ -739,11 +744,12 @@ class _PublicViews:
         self.asset_cache = AssetCache()
         self.quality_resources = QualityResourceCache()
         self.pages = PageCache()
+        self._status_cache = StatusReadCache()
         self.chart_lock = BoundedSemaphore(1)
         self.directory_lock = BoundedSemaphore(1)
         self.socket_clients = 0
         self.live_feed = LiveFeed(
-            lambda: read_status(self.runtime),
+            self._status,
             lambda status, locale: pages.render_live_update(
                 status,
                 _configuration(),
@@ -751,6 +757,14 @@ class _PublicViews:
             ),
             self._live_identity,
         )
+
+    def _status(self) -> dict:
+        """Read current observations using the shared hub generation.
+
+        Returns:
+            A read-only view with current heartbeats and freshness.
+        """
+        return read_status(self.runtime, cache=self._status_cache)
 
     def page(self, request: ASGIRequest) -> HttpResponseBase:
         """Render using saved conversion labels without external reads.
@@ -859,7 +873,7 @@ class _PublicViews:
                 _html(
                     renderer(
                         snapshot,
-                        read_status(self.runtime),
+                        self._status(),
                         _configuration(),
                         locale,
                         navigation=navigation,
@@ -938,7 +952,7 @@ class _PublicViews:
                     "analysis": {"available": False},
                     "authorship": {"available": False, "authors": []},
                 },
-                read_status(self.runtime),
+                self._status(),
                 _configuration(),
                 locale,
                 navigation=navigation,
@@ -990,7 +1004,7 @@ class _PublicViews:
         Returns:
             Localized HTML with the same saved status and navigation.
         """
-        status = read_status(self.runtime)
+        status = self._status()
         configuration = _configuration()
         content = (
             pages.render_about(
@@ -1246,7 +1260,7 @@ class _PublicViews:
             pages.render_newsletter(
                 value,
                 locale,
-                status=read_status(self.runtime),
+                status=self._status(),
                 config=_configuration(),
                 navigation=navigation,
             ),
@@ -1266,7 +1280,7 @@ class _PublicViews:
             try:
                 content = pages.render_consistency_checks(
                     snapshot,
-                    read_status(self.runtime),
+                    self._status(),
                     _configuration(),
                     locale,
                     navigation=navigation,
@@ -1294,7 +1308,7 @@ class _PublicViews:
                 parameters,
                 locale,
                 navigation=navigation,
-                status=read_status(self.runtime),
+                status=self._status(),
                 config=_configuration(),
             )
         except ValueError:
@@ -1402,7 +1416,7 @@ class _PublicViews:
         if kind == "config":
             return _json(_configuration())
         if kind == "status":
-            return _json(read_status(self.runtime))
+            return _json(self._status())
         if kind == "consistency-repair":
             return self._consistency_repair_api(request)
         value = self._dashboard()
@@ -1731,7 +1745,7 @@ class _PublicViews:
                 value,
                 locale,
                 navigation=_navigation(request, locale),
-                status=read_status(self.runtime),
+                status=self._status(),
                 config=_configuration(),
             ),
             locale,
@@ -1748,7 +1762,7 @@ class _PublicViews:
         Returns:
             A Reports page with retained invocations across all dates.
         """
-        status = read_status(self.runtime)
+        status = self._status()
         history_page = request.GET.get("page", "1")[:5]
         size = request.GET.get("size", "")
         history_size = (
@@ -1857,7 +1871,7 @@ class _PublicViews:
                 pages.render_logs(
                     value,
                     locale,
-                    status=read_status(self.runtime),
+                    status=self._status(),
                     config=_configuration(),
                     navigation=_navigation(request, locale),
                 ),
@@ -2241,25 +2255,27 @@ def create_app(runtime: Path, assets: Path = _ASSETS) -> DjangoWebsite:
     """
     setup_django()
     views = _PublicViews(runtime, assets)
+    page_routes = (
+        "/",
+        "/discussions/",
+        "/quality-authorship/",
+        "/quality-analysis/",
+        "/about/",
+        "/checks/",
+        "/reports/",
+        "/data/",
+        "/logs/",
+        "/newsletter/",
+        *_ATTRIBUTION_PATHS,
+    )
+    buffered_api = ("api/status", "api/dashboard", "api/consistency-repair")
     patterns = [
         url_path(route.lstrip("/"), _route(views.page))
-        for route in (
-            "/",
-            "/discussions/",
-            "/quality-authorship/",
-            "/quality-analysis/",
-            "/about/",
-            "/checks/",
-            "/reports/",
-            "/data/",
-            "/logs/",
-            "/newsletter/",
-            *_ATTRIBUTION_PATHS,
-        )
+        for route in page_routes
     ]
     patterns.extend(
-        url_path(f"api/{kind}", _route(views.api))
-        for kind in ("config", "status", "dashboard", "consistency-repair")
+        url_path(route, _route(views.api))
+        for route in ("api/config", *buffered_api)
     )
     patterns.extend([
         url_path("quality-analysis/charts/", _route(views.quality_charts)),
@@ -2283,6 +2299,13 @@ def create_app(runtime: Path, assets: Path = _ASSETS) -> DjangoWebsite:
             live_feed=views.live_feed,
             page_cache=views.pages,
         ),
+        buffered_paths=frozenset({
+            *page_routes,
+            *(f"/{route}" for route in buffered_api),
+            "/api/live",
+            "/quality-analysis/charts/",
+        })
+        - {"/logs/"},
         validate=_validate_request,
         policy=_response_policy,
         socket=views.live_socket,

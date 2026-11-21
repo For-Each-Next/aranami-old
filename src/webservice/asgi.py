@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from http import HTTPStatus
 from io import BytesIO
@@ -23,6 +24,9 @@ if TYPE_CHECKING:
     type Scope = dict
     type Receive = Callable[[], Awaitable[dict]]
     type Send = Callable[[dict], Awaitable[None]]
+
+
+_MAX_BUFFERED_REQUESTS = 4
 
 
 class SocketDisconnectError(Exception):
@@ -133,6 +137,7 @@ class DjangoWebsite:
         patterns: Sequence[URLPattern],
         *,
         state: SimpleNamespace,
+        buffered_paths: frozenset[str],
         validate: Callable[[ASGIRequest], HttpResponseBase | None],
         policy: Callable[[ASGIRequest, HttpResponseBase], HttpResponseBase],
         socket: Callable[[LiveSocket], Awaitable[None]],
@@ -141,6 +146,8 @@ class DjangoWebsite:
         """Bind views, transport policy and service observers."""
         self.http = _DjangoHandler(patterns)
         self.state = state
+        self._buffered_paths = buffered_paths
+        self._buffered_slots = asyncio.BoundedSemaphore(_MAX_BUFFERED_REQUESTS)
         self._validate = validate
         self._policy = policy
         self._socket = socket
@@ -176,7 +183,7 @@ class DjangoWebsite:
         send: Send,
         request: ASGIRequest,
     ) -> None:
-        """Bound body bytes before Django consumes request input."""
+        """Bound request input and concurrent buffered responses."""
         body = bytearray()
         while True:
             message = await receive()
@@ -213,7 +220,11 @@ class DjangoWebsite:
                 return {"type": "http.request", "body": bytes(body)}
             return await receive()
 
-        await self.http(scope, replay, send)
+        if request.path_info in self._buffered_paths:
+            async with self._buffered_slots:
+                await self.http(scope, replay, send)
+        else:
+            await self.http(scope, replay, send)
 
     async def _lifetime(self, receive: Receive, send: Send) -> None:
         """Run heartbeats between ASGI startup and shutdown events."""

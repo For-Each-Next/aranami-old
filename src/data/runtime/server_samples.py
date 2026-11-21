@@ -9,11 +9,15 @@ from __future__ import annotations
 import datetime as dt
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from data.runtime.dataset_updates import planned_updates, read_updates
 from data.runtime.resources import validate_runtime
 from data.runtime.status import read_status
 from shared.support.files import atomic_json, read_json_object
+
+if TYPE_CHECKING:
+    from data.runtime.status import StatusReadCache
 
 SAMPLE_PATH = Path("state/observability/server-sample.json")
 _MAX_BYTES = 16 * 1024
@@ -59,18 +63,23 @@ def save_sample(
     )
 
 
-def read_live_status(runtime: Path) -> dict:
+def read_live_status(
+    runtime: Path,
+    *,
+    cache: StatusReadCache | None = None,
+) -> dict:
     """Combine saved status with a fresh sample from the same hub boot.
 
     Args:
         runtime: Runtime owner containing the independent observations.
+        cache: Optional cache for the saved hub generation.
 
     Returns:
         A read-only derived status view. Missing, stale, malformed or
         different-boot samples leave the original saved status intact.
     """
     updates = read_updates(runtime.absolute())
-    status = read_status(runtime)
+    status = read_status(runtime, cache=cache)
     status["dataset_updates"] = updates
     status["dataset_updates"]["planned"] = planned_updates(
         runtime.absolute(),

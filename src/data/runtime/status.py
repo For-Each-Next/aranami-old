@@ -10,13 +10,14 @@ from __future__ import annotations
 import datetime as dt
 import fcntl
 import hashlib
+import json
 import logging
 import math
 import os
 import re
 import stat
 from pathlib import Path
-from threading import RLock
+from threading import Lock, RLock
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -27,11 +28,18 @@ from data.runtime.failure_status import (
 from data.runtime.progress import validate_progress
 from data.runtime.resources import validate_runtime
 from shared.support.activity import validate_source
-from shared.support.files import atomic_json, encode_json, read_json_object
+from shared.support.files import (
+    atomic_json,
+    encode_json,
+    open_regular,
+    stat_identity,
+)
 lazy from data.runtime.events import current_log_context, event_extra
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from contextlib import AbstractContextManager
+    from typing import BinaryIO
 
 MAX_STAGES = 64
 MAX_EXECUTIONS = 8192
@@ -591,22 +599,38 @@ def _empty() -> dict:
     }
 
 
-def _read(path: Path) -> dict:
-    """Read and validate one complete observation envelope.
+def _open_status(path: Path) -> AbstractContextManager[BinaryIO]:
+    """Open one bounded status file under its real status directories.
 
     Returns:
-        The validated saved status, with no derived freshness fields.
+        A context manager for the selected file generation.
 
     Raises:
-        OSError: The file is unsafe or cannot be read.
-        ValueError: Saved fields or identities violate the contract.
-        TypeError: A domain is not a mapping.
+        OSError: A status directory is a symlink.
     """
     if path.parent.is_symlink() or path.parent.parent.is_symlink():
         message = "Status directories cannot be symlinks."
         raise OSError(message)
-    value = read_json_object(path, MAX_BYTES)
-    if set(value) != {
+    return open_regular(path, MAX_BYTES)
+
+
+def _decode_status(stream: BinaryIO) -> dict:
+    """Decode and validate the complete observation envelope.
+
+    Returns:
+        Saved facts with normalized times and no derived freshness.
+
+    Raises:
+        ValueError: The bounded file or its fields violate the contract.
+        TypeError: A domain is not a mapping.
+    """
+    content = stream.read(MAX_BYTES + 1)
+    if len(content) > MAX_BYTES:
+        message = "The saved status exceeds its size limit."
+        raise ValueError(message)
+    value = json.loads(content)
+    del content
+    if not isinstance(value, dict) or set(value) != {
         "schema",
         "store_id",
         "revision",
@@ -625,14 +649,48 @@ def _read(path: Path) -> dict:
     _count(value["revision"])
     _instant(value["written_at"])
     for domain in _DOMAINS:
-        if not isinstance(value[domain], dict):
+        records = value[domain]
+        if not isinstance(records, dict):
             message = "Invalid status domain."
             raise TypeError(message)
-        value[domain] = {
-            key: _validate_record(domain, key, row)
-            for key, row in value[domain].items()
-        }
+        for key, row in records.items():
+            records[key] = _validate_record(domain, key, row)
     return value
+
+
+def _read(path: Path) -> dict:
+    """Read one status file for an independent reader or writer.
+
+    Returns:
+        A privately owned, validated envelope.
+    """
+    with _open_status(path) as stream:
+        return _decode_status(stream)
+
+
+class StatusReadCache:
+    """Share one validated status generation."""
+
+    def __init__(self) -> None:
+        """Start without reading saved files."""
+        self._lock = Lock()
+        self._entry: tuple[Path, tuple[int, ...], dict] | None = None
+
+    def read(self, path: Path) -> dict:
+        """Share saved facts from the exact open file.
+
+        Returns:
+            A validated envelope for read-only use.
+        """
+        with self._lock, _open_status(path) as stream:
+            identity = stat_identity(os.fstat(stream.fileno()))
+            if self._entry is not None and self._entry[:2] == (path, identity):
+                return self._entry[2]
+            self._entry = None
+            value = _decode_status(stream)
+            if stat_identity(os.fstat(stream.fileno())) == identity:
+                self._entry = path, identity, value
+            return value
 
 
 def _newer(domain: str, old: dict | None, new: dict) -> bool:
@@ -1015,12 +1073,19 @@ def _merge_web_status(path: Path, value: dict, availability: str) -> str:
     return availability
 
 
-def read_status(runtime: Path, *, as_of: dt.datetime | None = None) -> dict:
+def read_status(
+    runtime: Path,
+    *,
+    as_of: dt.datetime | None = None,
+    cache: StatusReadCache | None = None,
+) -> dict:
     """Read saved status with explicit availability and freshness.
 
     Args:
         runtime: Runtime home whose observations are displayed.
         as_of: Aware read clock, defaulting to actual UTC now.
+        cache: Optional reuse for consumers that treat saved facts as
+            read-only. Each read derives its own freshness and services.
 
     Returns:
         One versioned envelope. Missing, corrupt, or unreadable files
@@ -1037,7 +1102,19 @@ def read_status(runtime: Path, *, as_of: dt.datetime | None = None) -> dict:
     availability = "available"
     path = status_path(runtime)
     try:
-        value = _read(path)
+        if cache is None:
+            value = _read(path)
+        else:
+            saved = cache.read(path)
+            value = {
+                **saved,
+                "services": {
+                    key: row.copy() for key, row in saved["services"].items()
+                },
+                "datasets": {
+                    key: row.copy() for key, row in saved["datasets"].items()
+                },
+            }
     except FileNotFoundError:
         availability = "missing"
     except OSError:
