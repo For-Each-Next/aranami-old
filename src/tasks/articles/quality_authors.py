@@ -11,6 +11,7 @@ import polars as pl
 
 from data.articles import current_quality, quality_authors
 from shared.sources.quarry.users import fetch_user_activity
+from tasks.articles.quality_details import refresh_editor_history
 
 if TYPE_CHECKING:
     from pywikibot.site import BaseSite
@@ -49,6 +50,7 @@ def _refresh(site: BaseSite, runtime: Path) -> None:
         pl.col("observed_at") >= hour,
     )
     due = names.join(checked, on="name", how="anti")
+    refresh_editor_history(site, runtime, names)
     if due.is_empty():
         return
     observed = fetch_user_activity(site, due["name"].to_list())

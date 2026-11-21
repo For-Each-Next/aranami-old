@@ -22,6 +22,7 @@ from data.articles import (
     history_store,
     quality_analysis,
     quality_authors,
+    quality_details,
     quality_selection,
     rating_history,
 )
@@ -1141,6 +1142,7 @@ def _refresh_locked(runtime: Path) -> bool:
     _validate(selection)
     document = {
         "schema": 1,
+        "details": quality_details.presentation(runtime, articles["page_id"]),
         "observed_at": clock.isoformat(),
         "prepared_at": dt.datetime.now(dt.UTC).isoformat(),
         "coverage_updated_at": _coverage_clocks(
@@ -1256,7 +1258,7 @@ def _read_quality_document(runtime: Path) -> dict | None:
         document = read_json_object(runtime / _PATH, _MAX_BYTES)
     except FileNotFoundError:
         return None
-    if document.get("schema") != 1 or set(document) != {
+    if document.get("schema") != 1 or document.keys() - {"details"} != {
         "schema",
         "observed_at",
         "prepared_at",
@@ -1326,6 +1328,7 @@ def _select_quality(
         "importance_available": True,
         "lengths_available": True,
         "selection": matrix,
+        "article_metadata": document.get("details", {}).get("articles", {}),
         "authorship_basis": authorship_basis,
         "assessment_comparison": comparison,
         "coverage_updated_at": {
@@ -1365,6 +1368,7 @@ def _select_quality(
         "observed_at": observed,
         "prepared_at": prepared,
         "authors": selected["authors"],
+        "editor_histories": document.get("details", {}).get("editors", {}),
         "all_grades": all_grades,
     }
     return {

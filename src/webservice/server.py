@@ -552,6 +552,8 @@ def _browser_fallback(request: ASGIRequest) -> str | None:
     """
     query = request.GET.copy()
     if query.getlist("render") == ["html"]:
+        if request.path == "/quality-authorship/":
+            return None
         del query["render"]
         raw = query.urlencode()
         request.GET = query
@@ -808,8 +810,8 @@ class _PublicViews:
         parameters.pop("lang", None)
         navigation = _navigation(request, locale)
         saved_tool = {
-            "/quality-authorship/": self._quality_authorship_page,
-            "/quality-analysis/": self._quality_analysis_page,
+            "/quality-authorship/": self._article_list_redirect,
+            "/article-list/": self._quality_analysis_page,
         }.get(path)
         if saved_tool is not None:
             return saved_tool(parameters, locale, navigation)
@@ -913,7 +915,7 @@ class _PublicViews:
         )
         all_grades = parameters.get("all_grades") == ["1"]
         client = browser.fallback_url() is not None
-        key = ("/quality-analysis/", locale, basis, all_grades, client)
+        key = ("/article-list/", locale, basis, all_grades, client)
         try:  # ruff: ignore[too-many-statements-in-try-clause] - One optional prepared-page read boundary.
             preset = quality_pages.path_for(
                 self.runtime,
@@ -954,19 +956,23 @@ class _PublicViews:
         )
 
     @staticmethod
-    def _quality_authorship_page(
+    def _article_list_redirect(
         parameters: dict[str, list[str]],
         locale: str,
         _navigation: dict[str, object],
     ) -> HttpResponseBase:
-        """Redirect the former author directory to the merged page.
+        """Redirect legacy URLs to Article List.
 
         Returns:
             A canonical saved-data URL preserving the selected cohort.
         """
-        if set(parameters) - {"listing_authors", "all_grades"} or any(
-            parameters.get(name, ["0"]) not in (["0"], ["1"])
-            for name in ("listing_authors", "all_grades")
+        if (
+            set(parameters) - {"listing_authors", "all_grades", "render"}
+            or parameters.get("render", ["html"]) != ["html"]
+            or any(
+                parameters.get(name, ["0"]) not in (["0"], ["1"])
+                for name in ("listing_authors", "all_grades")
+            )
         ):
             return _page_error(
                 "backlog.not_found",
@@ -974,6 +980,8 @@ class _PublicViews:
                 HTTPStatus.BAD_REQUEST,
             )
         query = {"lang": locale}
+        if parameters.get("render") == ["html"]:
+            query["render"] = "html"
         query.update({
             name: "1"
             for name in ("listing_authors", "all_grades")
@@ -982,7 +990,7 @@ class _PublicViews:
         return HttpResponse(
             status=HTTPStatus.MOVED_PERMANENTLY,
             headers={
-                "Location": "/quality-analysis/?" + urlencode(query),
+                "Location": "/article-list/?" + urlencode(query),
             },
         )
 
@@ -1481,7 +1489,7 @@ class _PublicViews:
             A page, summary, or error from the requested preset.
         """
         match = re.fullmatch(
-            r"/quality-analysis/resources/(en|zh-hans|zh-hant)/"
+            r"/article-list/resources/(en|zh-hans|zh-hant)/"
             r"(0|all)/(current|listed)/(directory-[0-9a-f]{64}\.json)",
             request.path,
         )
@@ -1528,7 +1536,7 @@ class _PublicViews:
             Saved bytes, a conditional response, or a missing URL.
         """
         match = re.fullmatch(
-            r"/quality-analysis/resources/(en|zh-hans|zh-hant)/"
+            r"/article-list/resources/(en|zh-hans|zh-hant)/"
             r"(0|all)/(current|listed)/"
             r"((?:catalog-[0-9a-f]{64}\.json|"
             rf"{quality_pages.HASHED_AUTHOR_DETAIL_NAME.pattern}|"
@@ -2261,7 +2269,7 @@ def create_app(runtime: Path, assets: Path = _ASSETS) -> DjangoWebsite:
         "/",
         "/discussions/",
         "/quality-authorship/",
-        "/quality-analysis/",
+        "/article-list/",
         "/about/",
         "/checks/",
         "/reports/",
@@ -2280,16 +2288,16 @@ def create_app(runtime: Path, assets: Path = _ASSETS) -> DjangoWebsite:
         for route in ("api/config", *buffered_api)
     )
     patterns.extend([
-        url_path("quality-analysis/charts/", _route(views.quality_charts)),
+        url_path("article-list/charts/", _route(views.quality_charts)),
         url_path("api/live", _route(views.live_api)),
         url_path("api/logs", _route(views.api_logs)),
         re_path(r"^newsletter/charts/[^/]+$", _route(views.newsletter_chart)),
         re_path(
-            r"^quality-analysis/resources/[^/]+/[^/]+/[^/]+/directory-.*$",
+            r"^article-list/resources/[^/]+/[^/]+/[^/]+/directory-.*$",
             _route(views.quality_directory),
         ),
         re_path(
-            r"^quality-analysis/resources/.*$",
+            r"^article-list/resources/.*$",
             _route(views.quality_resource),
         ),
         re_path(r"^.*$", _route(views.asset)),
@@ -2305,7 +2313,7 @@ def create_app(runtime: Path, assets: Path = _ASSETS) -> DjangoWebsite:
             *page_routes,
             *(f"/{route}" for route in buffered_api),
             "/api/live",
-            "/quality-analysis/charts/",
+            "/article-list/charts/",
         })
         - {"/logs/"},
         validate=_validate_request,

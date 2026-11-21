@@ -14,6 +14,7 @@ from data.articles import (
     current_authorship,
     current_quality,
     quality_analysis as store,
+    quality_details,
 )
 from data.articles.storage import AUTHORSHIP_PATH
 
@@ -91,6 +92,33 @@ def saved_analysis_fixture(
                 b_evidence,
                 schema=current_authorship.EVIDENCE_SCHEMA,
             ),
+        )
+        quality_details.save(
+            runtime,
+            "articles",
+            pl.DataFrame([
+                {
+                    "page_id": 1,
+                    "year": year,
+                    "edits": count,
+                    "first_edit": dt.datetime(year, 1, 1, tzinfo=dt.UTC),
+                    "last_edit": dt.datetime(year, 6, 1, tzinfo=dt.UTC),
+                    "english_title": "Example_game",
+                    "english_grade": "GA",
+                }
+                for year, count in ((2007, 1), (2008, 500), (2010, 2))
+            ]),
+            now,
+        )
+        quality_details.save(
+            runtime,
+            "editors",
+            pl.DataFrame({
+                "name": ["Author_A", "Author_A"],
+                "year": [2008, 2010],
+                "edits": [13, 5],
+            }),
+            now,
         )
         assert current_quality.refresh_saved_quality(runtime)
         return current_quality.read_current_quality(

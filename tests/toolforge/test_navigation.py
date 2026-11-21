@@ -59,11 +59,11 @@ class NavigationTests(unittest.TestCase):
                 assert re.findall(r'<a href="([^"]+)"', direct) == [
                     "/",
                     "/discussions/",
-                    "/quality-analysis/",
+                    "/article-list/",
                 ]
                 assert 'href="/reports/"' in details[1]
                 assert 'href="/discussions/"' not in details[1]
-                assert 'href="/quality-analysis/"' not in details[1]
+                assert 'href="/article-list/"' not in details[1]
                 assert navigation.count('href="/newsletter/"') == 1
                 assert 'role="menu' not in navigation
                 assert "aria-expanded" not in navigation
@@ -75,7 +75,7 @@ class NavigationTests(unittest.TestCase):
                 "/",
                 "/reports/",
                 "/discussions/",
-                "/quality-analysis/",
+                "/article-list/",
                 "/about/",
                 "/newsletter/",
             ):

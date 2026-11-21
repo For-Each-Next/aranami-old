@@ -46,12 +46,12 @@
 
 {% macro quality_article_cells(article, number, show_contributors=true) -%}
 <td class="analysis-number">{{ number }}</td>
-<td data-sort="{{ article.title_label }}"><a href="{{ article.url }}">{{ article.title_label }}</a>{{ detail_info(article.authorship_popup_id, article.authorship_popup_title) }}</td>
+<td data-sort="{{ article.title_label }}"><a href="{{ article.url }}">{{ article.title_label }}</a>{{ detail_info(article.article_popup_id, article.article_popup_title) }}</td>
 <td data-sort="{{ article.grade_order }}"><span class="analysis-assessment-label"><svg viewBox="0 0 12 12" width="12" height="12" class="analysis-swatch" aria-hidden="true"><rect width="12" height="12" fill="{{ article.grade_color }}"/></svg>{{ article.grade_label }}</span></td>
 <td data-sort="{{ article.importance_order }}"><span class="analysis-assessment-label"><svg viewBox="0 0 12 12" width="12" height="12" class="analysis-swatch" aria-hidden="true"><rect width="12" height="12" fill="{{ article.importance_color }}"/></svg>{{ article.importance_label }}</span></td>
 <td data-sort="{{ article.listed_date or '' }}">{{ assessment_date(article.listed_date, article.date_label, article.review_url) }}</td>
 {% if show_contributors %}
-<td data-sort="{{ article.contributors | map(attribute='label') | join(', ') }}">{% for author in article.contributors %}{% if not loop.first %}、{% endif %}{% if author.url %}<a href="{{ author.url }}"{% if author.article_label %} title="{{ author.label }}"{% endif %}>{{ author.article_label or author.label }}</a>{% else %}<span>{{ author.label }}</span>{% endif %}{% else %}<span class="context">{{ t.quality_analysis.no_main_contributors if article.authorship.available else t.quality_analysis.main_unavailable }}</span>{% endfor %}{% if article.authorship.editors | length > article.contributors | length %}{{ detail_info(article.authorship_popup_id, article.authorship_popup_title, more=true) }}{% endif %}</td>
+<td data-sort="{{ article.contributors | map(attribute='label') | join(', ') }}">{% for author in article.contributors %}{% if not loop.first %}、{% endif %}{% if author.url %}<a href="{{ author.url }}"{% if author.article_label %} title="{{ author.label }}"{% endif %}>{{ author.article_label or author.label }}</a>{% else %}<span>{{ author.label }}</span>{% endif %}{% else %}<span class="context">{{ t.quality_analysis.no_main_contributors if article.authorship.available else t.quality_analysis.main_unavailable }}</span>{% endfor %}{% if article.authorship.available %}{{ detail_info(article.authorship_popup_id, article.authorship_popup_title, more=true) }}{% endif %}</td>
 {% endif %}
 <td data-sort="{{ article.prose_characters if article.prose_characters is not none else '' }}" class="analysis-number">{{ prose_measurement(article.characters_label, article.prose_characters) }}</td>
 <td data-sort="{{ article.source_bytes if article.source_bytes is not none else '' }}" class="analysis-number">{{ size_measurement(article.source_label, article.source_bytes) }}</td>
@@ -67,31 +67,91 @@
 </tr>
 {% endmacro %}
 
-{% macro article_authorship_dialog(article, return_to) %}
-{% if article.authorship_popup_id %}
-{% call popup(article.authorship_popup_id, article.authorship_popup_title, return_to, "analysis-authorship-dialog") %}
+{% macro article_authorship(article) %}
 <p>{{ t.quality_analysis.authorship_note }}</p>
 {% if not article.authorship.available %}<p class="notice">{{ t.quality_analysis.authorship_unavailable }}</p>{% else %}
 <p class="analysis-authorship-evidence">{% if article.authorship.range_end %}{{ t.quality_analysis.until }}<a href="{{ article.authorship.range_end.url }}">{{ article.authorship.range_end.date or t.data.unknown }}</a>{% endif %}{% if article.authorship.visualization_url %} · <a href="{{ article.authorship.visualization_url }}">{{ t.quality_analysis.visualization }}</a>{% endif %}</p>
 <div class="table-scroll" tabindex="0" role="region" aria-label="{{ article.authorship_popup_title }}"><table class="analysis-editor-table" data-no-pagination><thead><tr><th scope="col">#</th><th scope="col">{{ t.quality_analysis.significant_contributors }}</th><th scope="col" title="{{ t.quality_analysis.editor_characters_hint }}">{{ t.quality_analysis.editor_characters }}</th><th scope="col" title="{{ t.quality_analysis.editor_bytes_hint }}">{{ t.quality_analysis.editor_bytes }}</th><th scope="col">{{ t.quality_analysis.editor_share }}</th></tr></thead><tbody>{% for author in article.authorship.editors %}{{ editor_row(author, loop.index) }}{% else %}<tr><td colspan="5">{{ t.quality_analysis.no_top_editors }}</td></tr>{% endfor %}{% for summary in article.authorship.summary_rows %}{{ editor_row(summary, summary.index) }}{% endfor %}</tbody></table></div>
-{% endif %}{% endcall %}
+{% endif %}
+{% endmacro %}
+
+{% macro article_authorship_dialog(article, return_to) %}
+{% if article.authorship_popup_id and article.authorship.available %}
+{% call popup(article.authorship_popup_id, article.authorship_popup_title, return_to, "analysis-authorship-dialog") %}
+  {{ article_authorship(article) }}
+{% endcall %}
+{% endif %}
+{% endmacro %}
+
+{% macro edit_activity(chart) %}
+{% if chart %}
+<div class="analysis-activity">
+  <svg viewBox="{{ chart.viewbox }}" role="img" aria-label="{{ t.quality_analysis.edit_history }} · {{ chart.peak_label }}">
+    <path d="M 4 44 H 212"/>
+    <polyline points="{{ chart.points }}"/>
+    <circle cx="{{ chart.peak_x }}" cy="{{ chart.peak_y }}" r="3"><title>{{ chart.peak_label }}</title></circle>
+  </svg>
+  <div class="analysis-activity-years"><span>{{ chart.first }}</span>{% if chart.last != chart.first %}<span>{{ chart.last }}</span>{% endif %}</div>
+</div>
+{% endif %}
+{% endmacro %}
+
+{% macro detail_time(value) -%}
+{% if value %}<time datetime="{{ value.value }}">{{ value.label }}</time>{% else %}{{ t.data.unknown }}{% endif %}
+{%- endmacro %}
+
+{% macro article_details_dialog(article, return_to, include_contributors=false) %}
+{% if article.article_popup_id %}
+{% set details = article.details %}
+{% call popup(article.article_popup_id, article.article_popup_title, return_to, "analysis-article-dialog") %}
+<div class="analysis-detail-grid" data-significant-label="{{ t.quality_analysis.significant_contributors }}" data-authorship-unavailable="{{ t.quality_analysis.authorship_unavailable }}">
+  <dl class="analysis-detail-fields">
+    <dt>{{ t.quality_authorship.article }}</dt><dd><a href="{{ article.url }}">{{ article.title_label }}</a></dd>
+    <dt>{{ t.quality_analysis.created }}</dt><dd>{{ detail_time(details.created) }}</dd>
+    <dt>{{ t.quality_analysis.last_edited }}</dt><dd>{{ detail_time(details.latest) }}</dd>
+    <dt>{{ t.quality_analysis.prose }}</dt><dd>{{ prose_measurement(details.characters_label, details.prose_characters) }}</dd>
+    <dt>{{ t.quality_analysis.source_size }}</dt><dd>{{ size_measurement(details.source_label, details.source_bytes) }}</dd>
+  </dl>
+  <div>
+    <dl class="analysis-detail-fields">
+      <dt>{{ t.quality_analysis.english_article }}</dt>
+      <dd>{% if details.english %}<a href="{{ details.english.url }}" lang="en">{{ details.english.title }}</a>{% if details.english.grade %} · <span lang="en">{{ details.english.grade }}</span>{% endif %}{% else %}{{ t.data.unknown }}{% endif %}</dd>
+      <dt>{{ t.quality_analysis.peak_edit_year }}</dt><dd>{{ details.activity.peak_year if details.activity else t.data.unknown }}</dd>
+    </dl>
+    {{ edit_activity(details.activity) }}
+  </div>
+</div>
+{% if include_contributors %}
+<section class="analysis-article-contributors">
+  <h4>{{ t.quality_analysis.significant_contributors }}</h4>
+  {{ article_authorship(article) }}
+</section>
+{% endif %}
+{% endcall %}
 {% endif %}
 {% endmacro %}
 
 {% macro author_profile(author) %}
-<div class="quality-author-info">
+<div class="quality-author-info analysis-detail-grid">
+  <section>
   <h4>{{ t.quality_authorship.basic_info }}</h4>
-  <dl>
+  <dl class="analysis-detail-fields">
     <dt>{{ t.quality_analysis.author_filter }}</dt><dd><a href="{{ author.url }}">{{ author.name }}</a></dd>
     <dt>{{ t.quality_authorship.latest_active }}</dt><dd>{% if author.last_active %}<time datetime="{{ author.last_active.value }}" title="{{ author.last_active.title }}">{{ author.last_active.label }}</time>{{ measurement_unit(author.last_active.age) }}{% else %}{{ t.data.unknown }}{% endif %}</dd>
   </dl>
   <p><a href="{{ author.talk_url }}">{{ t.consistency.talk }}</a> · <a href="{{ author.contributions_url }}">{{ t.quality_authorship.public_edits }}</a></p>
+  </section>
+  <section>
   <h4><a href="{{ quality_analysis.project_url }}">{{ t.quality_authorship.video_game_project }}</a></h4>
-  <dl>
+  <dl class="analysis-detail-fields">
     <dt>{{ t.quality_authorship.main_article_count }}</dt><dd data-author-main>{{ article_count(author) }}</dd>
     <dt>{{ t.quality_analysis.prose }}</dt><dd data-author-prose>{{ prose_measurement(author.contributed_prose_label, author.contributed_prose) }}</dd>
     <dt>{{ t.quality_analysis.source_size }}</dt><dd data-author-size>{{ size_measurement(author.contributed_bytes_label, author.contributed_bytes) }}</dd>
+    {% if author.edit_activity %}
+    <dt>{{ t.quality_analysis.edit_history }}</dt><dd>{{ edit_activity(author.edit_activity) }}</dd>
+    {% endif %}
   </dl>
+  </section>
 </div>
 <h4>{{ t.quality_authorship.significant_article_list }}</h4>
 {% endmacro %}
@@ -110,6 +170,6 @@
   </div></div>
 </div>
 {% for article in articles %}
-  {{ article_authorship_dialog(article, '#' ~ dialog_id) }}
+  {{ article_details_dialog(article, '#' ~ dialog_id, true) }}
 {% endfor %}
 {% endmacro %}

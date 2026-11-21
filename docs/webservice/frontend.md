@@ -201,9 +201,9 @@ Copying must not reinterpret wikitext. Keep a native fallback when Clipboard
 fails, date bounds, issue identities, labeled controls and source-linked edit
 URLs. [Newsletter drafts](newsletter.md) defines editorial behavior.
 
-## Article Statistics
+## Article List
 
-The main navigation links to `/quality-analysis/`. The earlier author-directory
+The main navigation links to `/article-list/`. The earlier author-directory
 URL redirects here. The page displays current article and list assessments,
 saved measurements, and main contributors in one cohort. Use the grade,
 importance and year controls, then select **Apply filters** to update the

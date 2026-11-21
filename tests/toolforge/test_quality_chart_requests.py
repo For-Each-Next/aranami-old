@@ -109,7 +109,7 @@ class QualityChartRequestTests(TestCase):
         before = sorted(self.runtime.rglob("*"))
         with patch("pywikibot.Site", side_effect=AssertionError("sources")):
             response = self.client.get(
-                "/quality-analysis/charts/",
+                "/article-list/charts/",
                 params=self.controls,
             )
         assert response.status_code == HTTPStatus.OK
@@ -123,13 +123,13 @@ class QualityChartRequestTests(TestCase):
         assert rendered["length_scale_maximum"] == 100_000
         assert sorted(self.runtime.rglob("*")) == before
         self.controls["unknown"] = "0"
-        self.client.get("/quality-analysis/charts/", params=self.controls)
+        self.client.get("/article-list/charts/", params=self.controls)
         assert [
             row["page_id"] for row in self.render.call_args.args[0]["articles"]
         ] == [1]
         self.controls["cells"] = "Stub:Top"
         response = self.client.get(
-            "/quality-analysis/charts/",
+            "/article-list/charts/",
             params=self.controls,
         )
         assert response.status_code == HTTPStatus.OK
@@ -149,7 +149,7 @@ class QualityChartRequestTests(TestCase):
         ):
             with self.subTest(name=name, value=value):
                 response = self.client.get(
-                    "/quality-analysis/charts/",
+                    "/article-list/charts/",
                     params={**self.controls, name: value},
                 )
                 assert response.status_code == HTTPStatus.BAD_REQUEST
@@ -158,7 +158,7 @@ class QualityChartRequestTests(TestCase):
     def test_first_supported_listing_year_is_inclusive(self) -> None:
         """Accept the first supported year within the saved catalog."""
         response = self.client.get(
-            "/quality-analysis/charts/",
+            "/article-list/charts/",
             params={**self.controls, "from": "2009"},
         )
         assert response.status_code == HTTPStatus.OK
@@ -168,7 +168,7 @@ class QualityChartRequestTests(TestCase):
         """Reject sources replaced during rendering."""
         self.identity.return_value = (2,)
         response = self.client.get(
-            "/quality-analysis/charts/",
+            "/article-list/charts/",
             params=self.controls,
         )
         assert response.status_code == HTTPStatus.CONFLICT
@@ -176,7 +176,7 @@ class QualityChartRequestTests(TestCase):
         self.render.assert_not_called()
         self.identity.side_effect = [(1,), (2,)]
         response = self.client.get(
-            "/quality-analysis/charts/",
+            "/article-list/charts/",
             params=self.controls,
         )
         assert response.status_code == HTTPStatus.CONFLICT
@@ -186,14 +186,14 @@ class QualityChartRequestTests(TestCase):
         """Distinguish corrupt data from invalid controls."""
         self.saved.side_effect = ValueError("damaged")
         response = self.client.get(
-            "/quality-analysis/charts/",
+            "/article-list/charts/",
             params=self.controls,
         )
         assert response.status_code == HTTPStatus.SERVICE_UNAVAILABLE
         self.saved.side_effect = None
         self.identity.return_value = (None,)
         response = self.client.get(
-            "/quality-analysis/charts/",
+            "/article-list/charts/",
             params=self.controls,
         )
         assert response.status_code == HTTPStatus.SERVICE_UNAVAILABLE

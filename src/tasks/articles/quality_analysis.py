@@ -30,6 +30,7 @@ from shared.sources.quarry.assessment import listing_revisions
 from shared.sources.revisions import read_revision_contents
 from shared.support.prose import extract_prose
 from shared.support.words import count_chinese_units
+from tasks.articles.quality_details import refresh_article_details
 from tasks.prose import PROFILE
 
 if TYPE_CHECKING:
@@ -487,6 +488,10 @@ def refresh_quality_analysis(  # ruff: ignore[too-many-arguments] - Source, runt
             members=members,
             observed_at=observed,
         )
+        if should_yield and should_yield():
+            return
+        if max_pages > 0 and monotonic() < deadline:
+            refresh_article_details(site, runtime, current, min(max_pages, 50))
         if should_yield and should_yield():
             return
         current = _resolve_listing_versions(site, current)

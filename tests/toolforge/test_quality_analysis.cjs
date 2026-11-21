@@ -108,7 +108,7 @@ test("saved cells combine exact quantiles without treating unknown measurements 
 function loaderContext(overrides = {}) {
     const context = {
         document: {querySelector: () => null, getElementById: () => null},
-        location: {href: "https://aranami.example/quality-analysis/", origin: "https://aranami.example"},
+        location: {href: "https://aranami.example/article-list/", origin: "https://aranami.example"},
         URL, AbortController, setTimeout, clearTimeout, Event,
         ...overrides,
     };
@@ -209,7 +209,7 @@ test("catalog requests share one fetch and one parsed object across controls", a
         calls++;
         return new Promise(resolve => {finish = resolve;});
     }});
-    const form = {dataset: {metadataUrl: "/quality-analysis/resources/catalog-version.json", authorshipIcon: "/icon.svg"}};
+    const form = {dataset: {metadataUrl: "/article-list/resources/catalog-version.json", authorshipIcon: "/icon.svg"}};
     const first = context.loadQualityMetadata(form);
     const second = context.loadQualityMetadata(form);
     assert.equal(first, second);
@@ -283,7 +283,7 @@ function detailFixture() {
     });
     function link(id) {
         return {
-            href: `https://aranami.example/quality-analysis/resources/${id}.html#${id}`,
+            href: `https://aranami.example/article-list/resources/${id}.html#${id}`,
             dataset: {qualityDetail: id}, textContent: "40 articles", isConnected: true, attributes: new Map(),
             hasAttribute(name) {return this.attributes.has(name);},
             closest() {return null;},
@@ -658,20 +658,21 @@ test("violin means weight observed lengths, including zero and excluding missing
     }
 });
 
-test("individual violin tooltips use localized names without percentile codes or counts", () => {
+test("violin marker tooltips use localized names and tenths of a thousand", () => {
     const kinds = ["minimum", "p25", "p50", "p75", "maximum", "mean"];
     for (const locale of ["en", "zh-hans", "zh-hant"]) {
         const labels = Object.fromEntries(kinds.map(kind => ['violin_' + kind, interfaceMessages['quality_analysis.violin_' + kind][locale]]));
+        labels.words = interfaceMessages['quality_analysis.words'][locale];
         for (const kind of kinds) {
             const title = context.violinMarkerTitle(kind, 52318, labels);
-            assert.equal(title, labels['violin_' + kind].replace('{value}', '52\u2009000'));
-            assert.doesNotMatch(title, /P25|P50|P75|articles|条目|條目|\{value\}/);
+            assert.equal(title, labels['violin_' + kind].replace('{value}', '52.3').replace('{unit}', labels.words));
+            assert.doesNotMatch(title, /P25|P50|P75|articles|条目|條目|\{value\}|\{unit\}/);
         }
     }
-    const names = ['最小值', '下四分位数', '中位数', '上四分位数', '最大值', '平均值'];
-    for (const [index, kind] of kinds.entries()) {
-        assert.equal(context.violinMarkerTitle(kind, 0, {["violin_" + kind]: interfaceMessages['quality_analysis.violin_' + kind]['zh-hans']}), names[index] + '：0字');
-    }
+    assert.equal(context.violinMarkerTitle("p25", 11500, {
+        words: "千字",
+        violin_p25: interfaceMessages["quality_analysis.violin_p25"]["zh-hans"],
+    }), "下四分位长度（下四分位值：11.5千字）");
 });
 
 test("the original length positions remain fixed", () => {

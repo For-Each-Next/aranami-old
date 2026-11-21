@@ -234,7 +234,7 @@ function AssessmentMatrix(context) {
     return hasContent(quality_analysis?.matrix) ? (
         <>
             <form
-                action="/quality-analysis/"
+                action="/article-list/"
                 method="get"
                 class="analysis-selection"
                 data-quality-matrix={""}
@@ -464,7 +464,6 @@ function QualityOverview(context) {
                     )}
                     <section id="analysis-distribution" aria-labelledby="analysis-distribution-heading">
                         <h3 id="analysis-distribution-heading">{t.quality_analysis.grades}</h3>
-                        <p class="context">{t.quality_analysis.violin_scale}</p>
                         <div class="analysis-pies">
                             {DistributionPanel(
                                 context,
@@ -667,7 +666,7 @@ function ArticleCells(context, article, number, showContributors = true) {
             <td class="analysis-number">{number}</td>
             <td data-sort={attribute(article.title_label)}>
                 <a href={attribute(article.url)}>{display(article.title_label)}</a>
-                {DetailInfo(context, article.authorship_popup_id, article.authorship_popup_title)}
+                {DetailInfo(context, article.article_popup_id, article.article_popup_title)}
             </td>
             <td data-sort={attribute(article.grade_order)}>
                 <AssessmentLabel color={article.grade_color} label={article.grade_label} />
@@ -705,7 +704,7 @@ function ArticleCells(context, article, number, showContributors = true) {
                             {display(authorship.available ? t.quality_analysis.no_main_contributors : t.quality_analysis.main_unavailable)}
                         </span>
                     )}
-                    {(authorship.editors?.length || 0) > contributors.length
+                    {authorship.available
                         ? DetailInfo(context, article.authorship_popup_id, article.authorship_popup_title, undefined, true) : null}
                 </td>
             ) : null}
@@ -731,12 +730,9 @@ function EditorRow(context, editor, index) {
     </tr>;
 }
 
-function ArticleAuthorshipDialog(context, article, returnTo) {
+function ArticleAuthorship(context, authorship, title) {
     const { t } = context;
-    const { authorship, authorship_popup_id: id, authorship_popup_title: title } = article;
-    if (!id) return null;
-    return popup(
-        context,
+    return (
         <>
             <p>{display(t.quality_analysis.authorship_note)}</p>
             {authorship.available ? (
@@ -781,7 +777,7 @@ function ArticleAuthorshipDialog(context, article, returnTo) {
                                     <tr><td colspan="5">{display(t.quality_analysis.no_top_editors)}</td></tr>
                                 )}
                                 {(authorship.summary_rows ?? []).map(editor =>
-                                    <Fragment key={editor.index}>{EditorRow(context, editor, editor.index)}</Fragment>)}
+                                    <Fragment key={editor.label}>{EditorRow(context, editor, editor.index)}</Fragment>)}
                             </tbody>
                         </table>
                     </div>
@@ -790,10 +786,78 @@ function ArticleAuthorshipDialog(context, article, returnTo) {
                 <p class="notice">{display(t.quality_analysis.authorship_unavailable)}</p>
             )}
         </>,
+    );
+}
+
+function ArticleAuthorshipDialog(context, article, returnTo) {
+    const { authorship, authorship_popup_id: id, authorship_popup_title: title } = article;
+    return id && authorship.available ? popup(
+        context,
+        ArticleAuthorship(context, authorship, title),
         id,
         title,
         returnTo,
         "analysis-authorship-dialog",
+    ) : null;
+}
+
+function EditActivity({ chart, label }) {
+    return chart ? (
+        <div class="analysis-activity">
+            <svg viewBox={chart.viewbox} role="img" aria-label={label + " · " + chart.peak_label}>
+                <path d="M 4 44 H 212" />
+                <polyline points={chart.points} />
+                <circle cx={chart.peak_x} cy={chart.peak_y} r="3"><title>{chart.peak_label}</title></circle>
+            </svg>
+            <div class="analysis-activity-years"><span>{chart.first}</span>{chart.last !== chart.first ? <span>{chart.last}</span> : null}</div>
+        </div>
+    ) : null;
+}
+
+function DetailTime({ value, unknown }) {
+    return value ? <time datetime={attribute(value.value)}>{display(value.label)}</time> : display(unknown);
+}
+
+function ArticleDetailsDialog(context, article, returnTo, includeContributors = false) {
+    const { t } = context;
+    const labels = t.quality_analysis;
+    const { article_popup_id: id, article_popup_title: title, details } = article;
+    if (!id || !details) return null;
+    return popup(
+        context,
+        <>
+            <div class="analysis-detail-grid" data-significant-label={labels.significant_contributors} data-authorship-unavailable={labels.authorship_unavailable}>
+                <dl class="analysis-detail-fields">
+                    <dt>{t.quality_authorship.article}</dt>
+                    <dd><a href={attribute(article.url)}>{display(article.title_label)}</a></dd>
+                    <dt>{labels.created}</dt><dd><DetailTime value={details.created} unknown={details.unknown} /></dd>
+                    <dt>{labels.last_edited}</dt><dd><DetailTime value={details.latest} unknown={details.unknown} /></dd>
+                    <dt>{labels.prose}</dt><dd>{ProseMeasurement(context, details.characters_label, details.prose_characters)}</dd>
+                    <dt>{labels.source_size}</dt><dd>{SizeMeasurement(details.source_label, details.source_bytes)}</dd>
+                </dl>
+                <div>
+                    <dl class="analysis-detail-fields">
+                        <dt>{labels.english_article}</dt>
+                        <dd>{details.english ? <>
+                            <a href={attribute(details.english.url)} lang="en">{display(details.english.title)}</a>
+                            {details.english.grade ? <>{" · "}<span lang="en">{display(details.english.grade)}</span></> : null}
+                        </> : display(details.unknown)}</dd>
+                        <dt>{labels.peak_edit_year}</dt><dd>{display(details.activity?.peak_year ?? details.unknown)}</dd>
+                    </dl>
+                    <EditActivity chart={details.activity} label={labels.edit_history} />
+                </div>
+            </div>
+            {includeContributors ? (
+                <section class="analysis-article-contributors">
+                    <h4>{labels.significant_contributors}</h4>
+                    {ArticleAuthorship(context, article.authorship, article.authorship_popup_title)}
+                </section>
+            ) : null}
+        </>,
+        id,
+        title,
+        returnTo,
+        "analysis-article-dialog",
     );
 }
 
@@ -802,9 +866,10 @@ function AuthorProfile(context, author) {
     const labels = t.quality_authorship;
     const active = author.last_active;
     return <>
-        <div class="quality-author-info">
+        <div class="quality-author-info analysis-detail-grid">
+          <section>
             <h4>{display(labels.basic_info)}</h4>
-            <dl>
+            <dl class="analysis-detail-fields">
                 <dt>{display(t.quality_analysis.author_filter)}</dt>
                 <dd><a href={attribute(author.url)}>{display(author.name)}</a></dd>
                 <dt>{display(labels.latest_active)}</dt>
@@ -817,12 +882,18 @@ function AuthorProfile(context, author) {
                 <a href={attribute(author.talk_url)}>{display(t.consistency.talk)}</a>{" · "}
                 <a href={attribute(author.contributions_url)}>{display(labels.public_edits)}</a>
             </p>
+          </section>
+          <section>
             <h4><a href={attribute(quality_analysis.project_url)}>{display(labels.video_game_project)}</a></h4>
-            <dl>
+            <dl class="analysis-detail-fields">
                 <dt>{display(labels.main_article_count)}</dt><dd data-author-main="">{AuthorArticleCount(author)}</dd>
                 <dt>{display(t.quality_analysis.prose)}</dt><dd data-author-prose="">{ProseMeasurement(context, author.contributed_prose_label, author.contributed_prose)}</dd>
                 <dt>{display(t.quality_analysis.source_size)}</dt><dd data-author-size="">{SizeMeasurement(author.contributed_bytes_label, author.contributed_bytes)}</dd>
+                {author.edit_activity ? <>
+                    <dt>{t.quality_analysis.edit_history}</dt><dd><EditActivity chart={author.edit_activity} label={t.quality_analysis.edit_history} /></dd>
+                </> : null}
             </dl>
+          </section>
         </div>
         <h4>{display(labels.significant_article_list)}</h4>
     </>;
@@ -857,7 +928,7 @@ function AuthorStatistics(context, articles, id, title, author) {
                 </div>
             </div>
             {articles.map(article => (
-                <Fragment key={article.page_id}>{ArticleAuthorshipDialog(context, article, "#" + id)}</Fragment>
+                <Fragment key={article.page_id}>{ArticleDetailsDialog(context, article, "#" + id, true)}</Fragment>
             ))}
         </>,
         id,
@@ -1033,6 +1104,7 @@ function ArticleDirectory(context) {
                     )}
                     {(quality_analysis?.articles ?? []).map(article => (
                         <Fragment key={article.page_id}>
+                            {ArticleDetailsDialog(context, article, "#analysis-articles")}
                             {ArticleAuthorshipDialog(context, article, "#analysis-articles")}
                         </Fragment>
                     ))}
@@ -1063,14 +1135,6 @@ function QualityContributors(context) {
                 </a>
                 {t.quality_authorship.accuracy_end}
             </p>
-            {hasContent(quality_authorship?.observed_at) ? (
-                <p class="context">
-                    {display(t.quality_authorship.evidence_observed)}{" "}
-                    <time datetime={attribute(quality_authorship?.observed_at?.value)}>
-                        {display(quality_authorship?.observed_at?.label)}
-                    </time>
-                </p>
-            ) : null}
             {!hasContent(quality_authorship?.available) ? (
                 <p class="context">{t.quality_authorship.unavailable}</p>
             ) : !hasContent(quality_authorship?.authors) ? (
@@ -1220,12 +1284,25 @@ function QualityContributors(context) {
 
 export function QualityAnalysis(context) {
     const { quality_analysis, quality_authorship, t } = context;
+    const labels = t.quality_analysis;
     return (
         <>
-            <p class="lead">{t.quality_analysis.intro}</p>
-            <p>{t.quality_analysis.listing_intro}</p>
-            <p>{t.quality_analysis.author_intro}</p>
-            <form id="analysis-authorship-basis" method="get" action="/quality-analysis/" data-authorship-basis="">
+            <p class="lead">{labels.intro}</p>
+            <dl class="article-list-guide" aria-label={labels.guide}>
+                <div><dt>{labels.guide_lengths}</dt><dd>
+                    <p><strong>{labels.source_size}</strong>{" "}{labels.guide_size}</p>
+                    <p><strong>{labels.prose}</strong>{" "}{labels.guide_prose}</p>
+                </dd></div>
+                <div><dt>{t.quality_authorship.listed}</dt><dd>
+                    <p>{labels.guide_quality_date}</p>
+                    <p>{labels.guide_other_date}</p>
+                </dd></div>
+                <div><dt>{labels.guide_contributors}</dt><dd>
+                    <p><strong>{labels.contributors}</strong>{" "}{labels.guide_main}</p>
+                    <p><strong>{labels.significant_contributors}</strong>{" "}{labels.guide_significant}</p>
+                </dd></div>
+            </dl>
+            <form id="analysis-authorship-basis" method="get" action="/article-list/" data-authorship-basis="">
                 {hasContent(quality_analysis?.all_grades) ? (
                     <input type="hidden" name="all_grades" value="1" />
                 ) : null}

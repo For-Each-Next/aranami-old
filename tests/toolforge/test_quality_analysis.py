@@ -147,8 +147,15 @@ class QualityAnalysisPresentationTests(unittest.TestCase):
         updated = quality_analysis_context(source, Interface("en"))[
             "quality_analysis"
         ]["coverage_cards"]
-        assert updated[1]["updated_at"] == "2026-11-12T01:00:00Z"
+        assert [card["key"] for card in updated] == [
+            "total",
+            "length",
+            "dates",
+            "authorship",
+        ]
+        assert updated[1]["updated_at"] == _NOW.isoformat()
         assert updated[2]["updated_at"] == "2026-11-12T02:00:00Z"
+        assert updated[3]["updated_at"] == "2026-11-12T01:00:00Z"
 
     @staticmethod
     def test_display_and_listing_links_keep_separate_revision_provenance() -> (
@@ -268,7 +275,7 @@ class QualityAnalysisPresentationTests(unittest.TestCase):
             assert "Game <script>" not in output
             assert 'data-sort="0" class="analysis-number">0' in output
             assert 'role="img"' in output
-            assert 'href="/quality-analysis/"' in output
+            assert 'href="/article-list/"' in output
             assert "quality_analysis.js" in output
             assert "oldid=94091952" not in output
             assert "sandbox analysis" not in output
@@ -497,7 +504,7 @@ class QualityAnalysisHTTPTests(unittest.TestCase):
             root = Path(directory) / "absent"
             client = TestClient(create_app(root))
             for locale in ("en", "zh-hans", "zh-hant"):
-                response = client.get(f"/quality-analysis/?lang={locale}")
+                response = client.get(f"/article-list/?lang={locale}")
                 assert response.status_code == HTTPStatus.OK
                 assert (
                     Interface(locale).text("quality_analysis.unavailable")
@@ -545,7 +552,7 @@ class QualityAnalysisHTTPTests(unittest.TestCase):
                     for path in root.rglob("*")
                     if path.is_file()
                 }
-                response = client.get("/quality-analysis/?lang=en")
+                response = client.get("/article-list/?lang=en")
                 assert response.status_code == HTTPStatus.OK
                 assert 'data-grade="Bplus"' in response.text
                 assert before == {
@@ -564,7 +571,7 @@ class QualityAnalysisHTTPTests(unittest.TestCase):
             )
             assert current_quality.refresh_saved_quality(root)
             prepare_quality_pages(root)
-            response = client.get("/quality-analysis/?lang=en")
+            response = client.get("/article-list/?lang=en")
             assert "Updated analysis title" in response.text
 
     @staticmethod
@@ -596,17 +603,17 @@ class QualityAnalysisHTTPTests(unittest.TestCase):
             client = TestClient(create_app(Path(directory)))
             for _ in range(2):
                 assert (
-                    client.get("/quality-analysis/?lang=en").status_code
+                    client.get("/article-list/?lang=en").status_code
                     == HTTPStatus.OK
                 )
             read.assert_called_once()
             identity.return_value = (2,)
             assert (
-                client.get("/quality-analysis/?lang=en").status_code
+                client.get("/article-list/?lang=en").status_code
                 == HTTPStatus.OK
             )
             assert read.call_count == 2
-            response = client.get("/quality-analysis/?unexpected=1")
+            response = client.get("/article-list/?unexpected=1")
             assert response.status_code == HTTPStatus.BAD_REQUEST
             assert read.call_count == 2
 
@@ -621,7 +628,7 @@ class QualityAnalysisHTTPTests(unittest.TestCase):
             ),
         ):
             response = TestClient(create_app(Path(directory))).get(
-                "/quality-analysis/?lang=en",
+                "/article-list/?lang=en",
             )
             assert response.status_code == HTTPStatus.OK
             assert (

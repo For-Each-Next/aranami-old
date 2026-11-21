@@ -1,6 +1,6 @@
-# Current quality articles and contributors
+# Article List
 
-The `/quality-analysis/` page combines the current Chinese Wikipedia Video
+The `/article-list/` page combines the current Chinese Wikipedia Video
 games quality cohort and its contributor statistics. Former
 `/quality-authorship/` links redirect here while preserving language. Only currently selected articles and lists count; historical
 promotions and departed project members do not add author credits.
@@ -31,8 +31,8 @@ Annual columns cover a continuous year range beginning in 2009, retaining
 zero-count years. They describe the latest supported listing at each current
 grade, not historical annual project totals. Unknown dates stay outside bars.
 
-The annual legend uses the categories and colors actually plotted for the
-selected years. Its data table includes only the selected quality columns,
+The centered legend below the annual chart uses the categories and colors
+actually plotted. Its data table includes only the selected quality columns,
 plus the year and total; selected categories with zero values retain their
 columns. Narrow screens can scroll the chart horizontally.
 
@@ -91,15 +91,25 @@ the same threshold; being the largest contributor alone does not qualify.
 IP main contributors appear as unlinked anonymous-user labels in the article
 table. Acquired evidence with no qualifying main contributor displays None;
 missing evidence remains explicitly unavailable.
-The adjacent information dialog gives the actual saved attribution revision
-endpoint date and significant contributors whose attributable byte share is
-at least 10%.
+In the complete article directory, the circled plus beside the authors opens
+the saved attribution revision endpoint and the contributors with an
+attributable byte share of at least 10%. The information control beside the
+title opens article metadata. Chart and contributor article lists include
+significant contributors with those details. The contributor table shows
+the unattributed share below its measured total when applicable.
 Anonymous contributors link to their public contribution history. The endpoint date links to the exact revision and an XTools WikiWho
 visualization; the first revision is not displayed. Missing endpoints remain
 unknown. Missing attribution explicitly says that data has not been acquired.
 Only a successfully acquired result can say that no editor reached 10%; a
-share of exactly 10% qualifies. Both the initial article
-dialogs and dynamically created rows use these distinct states.
+share of exactly 10% qualifies. The views preserve these distinct states
+when article rows are loaded on demand.
+
+Article details show the first and latest saved public revision timestamps,
+full-article lengths, the English Wikipedia counterpart and its Video games
+grade when available, and edit counts by UTC year. The earliest year tied
+for the highest count is marked as the peak. Author profiles chart public
+edits to current Chinese Wikipedia Video games project articles and lists.
+Background workers fill the annual histories in bounded batches.
 
 Existing high-quality attribution can use a saved end-of-listing-day revision
 that differs from the review template's explicit oldid. The dialog preserves

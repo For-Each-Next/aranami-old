@@ -675,6 +675,10 @@ class QualityAnalysisStoreTests(TestCase):
 class QualityAnalysisCollectionTests(TestCase):
     """Reuse saved talk evidence while acquiring changed bodies."""
 
+    def setUp(self) -> None:
+        """Keep optional replica metadata reads outside body tests."""
+        self.enterContext(patch.object(collector, "refresh_article_details"))
+
     @staticmethod
     def test_collection_lease_defers_rivals_and_releases_after_finish() -> (
         None

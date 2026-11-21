@@ -47,7 +47,7 @@ def prepare_quality_pages(runtime: Path) -> None:
             query["listing_authors"] = "1"
         for locale in _LANGUAGES:
             navigation = {
-                "path": "/quality-analysis/",
+                "path": "/article-list/",
                 "languages": [
                     {
                         "label": label,
@@ -56,7 +56,7 @@ def prepare_quality_pages(runtime: Path) -> None:
                             "zh-hant": "zh-Hant",
                         }.get(language, language),
                         "url": local_url(
-                            "/quality-analysis/",
+                            "/article-list/",
                             **query,
                             lang=language,
                         ),
@@ -73,10 +73,10 @@ def prepare_quality_pages(runtime: Path) -> None:
                 locale,
                 navigation=navigation,
                 resource_prefix=(
-                    f"/quality-analysis/resources/{locale}/{cohort}/{basis}/"
+                    f"/article-list/resources/{locale}/{cohort}/{basis}/"
                 ),
                 fallback=local_url(
-                    "/quality-analysis/",
+                    "/article-list/",
                     **query,
                     lang=locale,
                     render="html",

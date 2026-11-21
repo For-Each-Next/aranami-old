@@ -43,7 +43,7 @@ from webservice.quality_analysis import (
 from webservice.server import create_app
 
 _NOW = dt.datetime(2026, 11, 14, 12, tzinfo=dt.UTC)
-_PREFIX = "/quality-analysis/resources/en/0/current/"
+_PREFIX = "/article-list/resources/en/0/current/"
 
 
 def _catalog_fixture() -> dict:
@@ -109,6 +109,71 @@ def _resource(content: str) -> str:
 
 class QualityResourcePresentationTests(unittest.TestCase):
     """Keep saved results while deferring optional payloads."""
+
+    @staticmethod
+    def test_article_metadata_is_separate_from_directory_contributors() -> (
+        None
+    ):
+        """Keep both launchers and display any unattributed share."""
+        data = _catalog_fixture()
+        analysis = data["analysis"]
+        row = analysis["selection"]["articles"][0]
+        row["authorship_eligible_bytes"] = 1000
+        row["authorship_summary"] = {
+            "other": {
+                "editors": 94,
+                "bytes": 5,
+                "raw_bytes": 100,
+                "prose_characters": 0,
+            },
+            "total": {
+                "editors": 95,
+                "bytes": 983,
+                "raw_bytes": 28_000,
+                "prose_characters": 4000,
+            },
+        }
+        analysis["article_metadata"] = {
+            "1": {
+                "created_at": "2007-01-01T00:00:00Z",
+                "latest_at": "2024-06-01T09:10:11Z",
+                "english_title": "Example_game",
+                "english_grade": "GA",
+                "years": [
+                    {"year": 2008, "edits": 20},
+                    {"year": 2024, "edits": 3},
+                ],
+            },
+        }
+        resources = {}
+        output = render_quality_analysis(
+            data,
+            None,
+            None,
+            "zh-hans",
+            _NOW,
+            resources=resources,
+        )
+        assert "本页罗列电子游戏专题条目源数据。" in output
+        assert "小提琴图的高度按" not in output
+        assert "资料观测时间" not in output
+        info = output.split('<dialog id="quality-article-1-details"', 1)[
+            1
+        ].split("</dialog>", 1)[0]
+        assert "https://en.wikipedia.org/wiki/Example_game" in info
+        assert 'datetime="2007-01-01T00:00:00Z"' in info
+        assert 'datetime="2024-06-01T09:10:11Z"' in info
+        assert "高峰编辑年份</dt><dd>2008</dd>" in info
+        assert "analysis-editor-table" not in info
+        proof = output.split('<dialog id="quality-article-1-authorship"', 1)[
+            1
+        ].split("</dialog>", 1)[0]
+        assert "合计95编者" in proof
+        assert "98.3%" in proof
+        assert "未归属" in proof
+        assert "1.7%" in proof
+        author = resources["author-1.html"]
+        assert 'class="analysis-article-contributors"' in author
 
     @staticmethod
     def test_length_scale_anchors_and_endpoints() -> None:
@@ -321,7 +386,7 @@ class QualityResourcePresentationTests(unittest.TestCase):
         data = _catalog_fixture()
         for locale in ("en", "zh-hans", "zh-hant"):
             resources = {}
-            prefix = f"/quality-analysis/resources/{locale}/0/current/"
+            prefix = f"/article-list/resources/{locale}/0/current/"
             interface = Interface(locale)
             output = render_quality_analysis(
                 data,
@@ -362,7 +427,10 @@ class QualityResourcePresentationTests(unittest.TestCase):
             assert "Catalog-only article 1 " in detail
             significant = resources["author-1-significant.html"]
             assert 'id="quality-author-user-1-significant"' in significant
-            assert 'class="quality-author-info"' in significant
+            assert (
+                'class="quality-author-info analysis-detail-grid"'
+                in significant
+            )
             assert (
                 interface.text("quality_authorship.basic_info") in significant
             )
@@ -376,10 +444,8 @@ class QualityResourcePresentationTests(unittest.TestCase):
             )
             assert 'data-sort="1100"' in output
             assert 'data-sort="1600"' in output
-            assert (
-                "quality-author-user-1-quality-article-1-authorship" in detail
-            )
-            assert 'href="/quality-analysis/?lang=' in detail
+            assert "quality-author-user-1-quality-article-1-details" in detail
+            assert 'href="/article-list/?lang=' in detail
             assert '#quality-authors"' in detail
             assert '<script src="/live.js?' in detail
             assert "<script>" not in detail
@@ -458,11 +524,13 @@ class QualityResourcePresentationTests(unittest.TestCase):
                     locale,
                     _NOW,
                 )
-                assert 'aria-controls="quality-article-1-authorship"' in output
-                for key in ("no_top_editors", "authorship_unavailable"):
-                    assert (
-                        interface.text(f"quality_analysis.{key}") in output
-                    ) == (key == expected)
+                assert 'aria-controls="quality-article-1-details"' in output
+                assert (
+                    'aria-controls="quality-article-1-authorship"' in output
+                ) == available
+                assert (
+                    interface.text("quality_analysis.no_top_editors") in output
+                ) == (expected == "no_top_editors")
 
     @staticmethod
     def test_contribution_types_use_main_names_and_observed_major_shares() -> (
@@ -519,7 +587,7 @@ class QualityResourcePresentationTests(unittest.TestCase):
                 _NOW,
                 resources=resources,
                 resource_prefix=(
-                    f"/quality-analysis/resources/{locale}/0/current/"
+                    f"/article-list/resources/{locale}/0/current/"
                 ),
             )
             assert (
@@ -859,7 +927,6 @@ class QualityResourcePresentationTests(unittest.TestCase):
             assert 'data-percentile="75"' in output
             assert 'data-statistic="p50"' in output
             assert 'data-value="15.0"' in output
-            assert interface.text("quality_analysis.violin_scale") in output
             assert 'data-extreme="minimum"' in output
             assert 'data-extreme="maximum"' in output
             assert length["extrema"] == [
@@ -872,17 +939,11 @@ class QualityResourcePresentationTests(unittest.TestCase):
             ]
             assert length["summary"] in output
             assert f"<title>{length['summary']}</title>" not in output
-            for kind, value in {
-                "minimum": "0",
-                "p25": "8",
-                "p50": "15",
-                "p75": "25",
-                "maximum": "40",
-                "mean": "18",
-            }.items():
+            for kind in ("minimum", "p25", "p50", "p75", "maximum", "mean"):
                 title = interface.text(
                     f"quality_analysis.violin_{kind}",
-                    value=value,
+                    value="0.0",
+                    unit=interface.text("quality_analysis.words"),
                 )
                 assert length["marker_titles"][kind] == title
                 assert f'aria-label="{title}"' in output
@@ -1077,9 +1138,7 @@ class QualityResourceHTTPTests(unittest.TestCase):
                 if path.is_file()
             }
             assert (
-                client.get("/quality-analysis/?lang=en").headers[
-                    "Cache-Control"
-                ]
+                client.get("/article-list/?lang=en").headers["Cache-Control"]
                 == "no-store"
             )
             wrong_locale = client.get(
@@ -1182,7 +1241,7 @@ class QualityResourceHTTPTests(unittest.TestCase):
             "en",
             navigation={},
             resource_prefix=_PREFIX,
-            fallback="/quality-analysis/?render=html",
+            fallback="/article-list/?render=html",
         )
         directory = next(
             name for name in resources if name.startswith("directory-")

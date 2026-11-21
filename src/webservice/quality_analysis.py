@@ -36,6 +36,7 @@ from webservice.quality_authorship import grade_label, review_url
 ARTICLE_PAGE_SIZE = 10
 ARTICLE_PAGE_SIZES = (ARTICLE_PAGE_SIZE, 20, 50, 100)
 _PROFILE = assessment_profile("zhwiki", "电子游戏")
+_ENGLISH_PROFILE = assessment_profile("enwiki", "Video games")
 _GRADES = tuple(
     label.code
     for label in _PROFILE.classes
@@ -82,6 +83,7 @@ _DISTRIBUTION_GRADES = tuple(
 )
 _FIRST_FILTER_YEAR = 2009
 _PROSE_LENGTH_LINEAR = 25_000
+_ACTIVITY_VIEWBOX = "0 0 216 48"
 
 
 def _assessment_color(code: str, dimension: str) -> str:
@@ -327,7 +329,10 @@ def _lengths(
             "marker_titles": {
                 key: interface.text(
                     f"quality_analysis.violin_{key}",
-                    value=_percentile_label(value),
+                    value=grouped_number(value / 1000, decimals=1)
+                    if value is not None
+                    else "—",
+                    unit=interface.text("quality_analysis.words"),
                 )
                 for key, value in (
                     ("minimum", points.get("minimum")),
@@ -404,12 +409,17 @@ def _articles(data: dict, interface: Interface) -> list[dict]:
         Unfiltered article rows with missing observations preserved.
     """
     articles = []
+    metadata = data.get("article_metadata", {})
     for row in data.get("articles", []):
         page_id = row["page_id"]
         date = row.get("listed_date")
         importance = row.get("importance") or "Unknown"
         authorship = _authorship(row, interface)
         contributors = _main_contributors(authorship, interface)
+        title = display_title(
+            row["title"].replace("_", " "),
+            interface.locale,
+        )
         articles.append({
             **row,
             "default_selected": bool(
@@ -435,10 +445,7 @@ def _articles(data: dict, interface: Interface) -> list[dict]:
                     or data.get("all_grades")
                 ),
             ),
-            "title_label": display_title(
-                row["title"].replace("_", " "),
-                interface.locale,
-            ),
+            "title_label": title,
             "url": title_url(row["title"]),
             "grade_label": grade_label(row["grade"], interface),
             "grade_color": _assessment_color(row["grade"], "class"),
@@ -468,16 +475,104 @@ def _articles(data: dict, interface: Interface) -> list[dict]:
             "authorship_popup_id": f"quality-article-{page_id}-authorship",
             "authorship_popup_title": interface.text(
                 "quality_analysis.authorship_details",
-                title=display_title(
-                    row["title"].replace("_", " "),
-                    interface.locale,
-                ),
+                title=title,
+            ),
+            "article_popup_id": f"quality-article-{page_id}-details",
+            "article_popup_title": interface.text(
+                "quality_analysis.article_details",
+                title=title,
+            ),
+            "details": _article_details(
+                row,
+                metadata.get(str(page_id), {}),
+                interface,
             ),
             "authorship": authorship,
             "source_label": _thousands(row.get("source_bytes")),
             "source_url": _revision_url(row.get("article_revision_id")),
         })
     return articles
+
+
+def _edit_activity(years: list[dict]) -> dict | None:
+    """Plot saved annual counts with zeroes between observed years.
+
+    Returns:
+        Sparkline geometry and the earliest year tied for peak edits.
+    """
+    if not years:
+        return None
+    counts = {row["year"]: row["edits"] for row in years}
+    first, last = min(counts), max(counts)
+    peak = max(counts.values())
+    peak_year = min(year for year, edits in counts.items() if edits == peak)
+    coordinates = [
+        (
+            108
+            if first == last
+            else 4 + 208 * (year - first) / (last - first),
+            44 - 40 * counts.get(year, 0) / peak,
+        )
+        for year in range(first, last + 1)
+    ]
+    peak_x, peak_y = coordinates[peak_year - first]
+    return {
+        "viewbox": _ACTIVITY_VIEWBOX,
+        "points": " ".join(f"{x:.1f},{y:.1f}" for x, y in coordinates),
+        "first": first,
+        "last": last,
+        "peak_year": peak_year,
+        "peak_x": round(peak_x, 1),
+        "peak_y": round(peak_y, 1),
+        "peak_label": f"{peak_year} · {grouped_number(peak)}",
+    }
+
+
+def _article_details(row: dict, saved: dict, interface: Interface) -> dict:
+    """Localize full-article measurements and edit metadata.
+
+    Returns:
+        Available timestamps, lengths, counterpart and editing activity.
+    """
+    proof = row.get("authorship") or {}
+    created = (
+        saved.get("created_at")
+        or proof.get("range_start_timestamp")
+        or row.get("authorship_start_timestamp")
+    )
+    latest = saved.get("latest_at")
+    revision = row.get("article_revision_id")
+    if not latest and revision:
+        if revision == proof.get("range_end_revision"):
+            latest = proof.get("range_end_timestamp")
+        elif revision == row.get("authorship_end_revision"):
+            latest = row.get("authorship_end_timestamp")
+    english = saved.get("english_title")
+    english_grade = _ENGLISH_PROFILE.resolve(
+        saved.get("english_grade"),
+        "class",
+    )
+    return {
+        "created": {"value": created, "label": utc_time(created)}
+        if created
+        else None,
+        "latest": {"value": latest, "label": utc_time(latest)}
+        if latest
+        else None,
+        "activity": _edit_activity(saved.get("years", [])),
+        "english": {
+            "url": title_url(english, "enwiki"),
+            "title": english.replace("_", " "),
+            "grade": english_grade.long_name if english_grade else None,
+        }
+        if english
+        else None,
+        "prose_characters": row.get("prose_characters"),
+        "characters_label": _thousands(row.get("prose_characters")),
+        "source_bytes": row.get("source_bytes"),
+        "source_label": _thousands(row.get("source_bytes")),
+        "unknown": interface.text("data.unknown"),
+    }
 
 
 def _revision_url(value: object) -> str | None:
@@ -558,9 +653,9 @@ def _authorship_summary(source: dict, interface: Interface) -> list[dict]:
     if not source.get("available") or not summary:
         return []
     output = []
+    eligible = source.get("eligible_bytes")
     for role in ("other", "total"):
         data = summary[role]
-        eligible = source.get("eligible_bytes")
         share = (
             data["bytes"] / eligible
             if eligible and data["bytes"] is not None
@@ -578,6 +673,17 @@ def _authorship_summary(source: dict, interface: Interface) -> list[dict]:
             "raw_bytes": data["raw_bytes"],
             "bytes_label": _thousands(data["raw_bytes"]),
             "share_label": f"{share * 100:.1f}%" if share is not None else "—",
+        })
+    attributed = summary["total"]["bytes"]
+    if eligible and attributed is not None and attributed < eligible:
+        output.append({
+            "index": "",
+            "label": interface.text("quality_analysis.editors_unattributed"),
+            "prose_characters": None,
+            "characters_label": "—",
+            "raw_bytes": None,
+            "bytes_label": "—",
+            "share_label": f"{(eligible - attributed) / eligible:.1%}",
         })
     return output
 
@@ -668,6 +774,7 @@ def _main_contributors(proof: dict, interface: Interface) -> list[dict]:
 def catalog_article(
     row: dict,
     interface: Interface,
+    saved: dict | None = None,
 ) -> list:
     """Encode one deferred article with consistent contributor roles.
 
@@ -701,6 +808,7 @@ def catalog_article(
             "title": row["title"],
         }),
         main,
+        _article_details(row, saved or {}, interface),
     ]
 
 
@@ -817,6 +925,7 @@ def _author_article(article: dict, prefix: str) -> dict:
     return {
         **article,
         "authorship_popup_id": f"{prefix}-{article['authorship_popup_id']}",
+        "article_popup_id": f"{prefix}-{article['article_popup_id']}",
     }
 
 
@@ -864,6 +973,9 @@ def prepare_author_articles(
         for row in rows
     }
     for author in authors:
+        author["edit_activity"] = _edit_activity(
+            analysis.get("editor_histories", {}).get(author["name"], []),
+        )
         prefix = (
             f"quality-author-user-{author['user_id']}"
             if author["user_id"]
@@ -918,13 +1030,13 @@ def _coverage_cards(data: dict, interface: Interface) -> list[dict]:
         rows = [row for row in rows if row["page_id"] in identities]
     counts = {
         "total": len(rows),
+        "length": sum(row.get("prose_characters") is not None for row in rows),
+        "dates": sum(row.get("listed_date") is not None for row in rows),
         "authorship": sum(
             bool((row.get("authorship") or {}).get("available"))
             or bool(row.get("authorship_available"))
             for row in rows
         ),
-        "dates": sum(row.get("listed_date") is not None for row in rows),
-        "length": sum(row.get("prose_characters") is not None for row in rows),
     }
     clocks = {
         "total": data.get("observed_at"),
@@ -1055,7 +1167,11 @@ def quality_analysis_context(
             "extra": []
             if paged
             else [
-                catalog_article(row, interface)
+                catalog_article(
+                    row,
+                    interface,
+                    data.get("article_metadata", {}).get(str(row["page_id"])),
+                )
                 for row in selection["articles"]
                 if row["page_id"] not in default_ids
             ],
@@ -1078,6 +1194,14 @@ def quality_analysis_context(
                         "editor_characters_hint",
                         "words",
                         "authorship_details",
+                        "article_details",
+                        "created",
+                        "last_edited",
+                        "peak_edit_year",
+                        "edit_history",
+                        "english_article",
+                        "prose",
+                        "source_size",
                         "review",
                         "violin_summary",
                         "violin_range",
@@ -1094,6 +1218,8 @@ def quality_analysis_context(
                     )
                 },
                 "unknown": interface.text("data.unknown"),
+                "article": interface.text("quality_authorship.article"),
+                "close": interface.text("ops.close"),
                 "article_count_unit": interface.text(
                     "quality_authorship.articles",
                     count="",

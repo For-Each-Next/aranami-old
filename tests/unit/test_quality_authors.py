@@ -567,6 +567,7 @@ class QualityActivitySourceTests(TestCase):
             schema=users.SCHEMA,
         )
         with (
+            patch.object(collector, "refresh_editor_history"),
             patch.object(
                 collector.current_quality,
                 "author_activity_names",
@@ -593,6 +594,7 @@ class QualityActivitySourceTests(TestCase):
     def test_source_failure_preserves_previous_saved_activity() -> None:
         """Preserve saved activity after a replica failure."""
         with (
+            patch.object(collector, "refresh_editor_history"),
             patch.object(
                 collector.current_quality,
                 "author_activity_names",

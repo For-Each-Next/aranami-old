@@ -322,6 +322,7 @@ _MAINTENANCE_ICONS = {
 }
 _CONSISTENCY_HISTORY_PREVIEW = 10
 _DIRECTORY_ARTICLE_FIELDS = {
+    "article_revision_id",
     "authorship",
     "grade",
     "importance",
@@ -1503,7 +1504,7 @@ def render_quality_analysis(  # ruff: ignore[too-many-arguments] - Shared page-r
     *,
     navigation: Record | None = None,
     resources: dict[str, str] | None = None,
-    resource_prefix: str = "/quality-analysis/resources/en/0/current/",
+    resource_prefix: str = "/article-list/resources/en/0/current/",
 ) -> str:
     """Render precomputed article metrics and complete native tables.
 
@@ -1560,6 +1561,7 @@ def render_quality_preset(  # ruff: ignore[too-many-arguments]
         directory=analysis["selection"]["articles"]
         if analysis.get("selection")
         else None,
+        article_metadata=analysis.get("article_metadata"),
     )
     name = "quality_analysis.html"
     return (
@@ -1644,7 +1646,10 @@ def _quality_analysis_view(  # ruff: ignore[too-many-arguments]
     )
     prepare_author_articles(
         context["quality_authorship"]["authors"],
-        analysis,
+        {
+            **analysis,
+            "editor_histories": authorship.get("editor_histories", {}),
+        },
         page.interface,
     )
     return context
@@ -1656,6 +1661,7 @@ def _quality_resources(
     prefix: str,
     *,
     directory: list[dict] | None = None,
+    article_metadata: dict | None = None,
 ) -> None:
     """Separate the optional catalog and author details from a page."""
     analysis = context["quality_analysis"]
@@ -1680,6 +1686,7 @@ def _quality_resources(
                 for article in directory
             ],
             **author_data,
+            "article_metadata": article_metadata or {},
             "last_year": matrix["last_year"],
             "grades": [grade["value"] for grade in matrix["grades"]],
             "importance": [level["value"] for level in matrix["importance"]],
@@ -1749,7 +1756,7 @@ def _quality_author_resources(
     analysis = context["quality_analysis"]
     defaults = set(selected_ids) if selected_ids is not None else None
     return_url = local_url(
-        "/quality-analysis/",
+        "/article-list/",
         lang=analysis["locale"],
         **({"all_grades": "1"} if analysis["all_grades"] else {}),
         **({"listing_authors": "1"} if analysis["listing_authors"] else {}),

@@ -224,7 +224,7 @@ def _quality_documents(
     """
     documents = {}
     resources = {}
-    prefix = f"/quality-analysis/resources/{locale}/0/current/"
+    prefix = f"/article-list/resources/{locale}/0/current/"
     documents["quality-analysis"] = render_quality_analysis(
         analysis,
         fixture["status"],

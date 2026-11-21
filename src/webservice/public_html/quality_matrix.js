@@ -235,9 +235,10 @@ function proseLengthLabel(value) {
 
 /** Give each percentile mark its own localized native tooltip. */
 export function violinMarkerTitle(kind, value, labels) {
-    const names = {minimum: "Minimum", p25: "Lower quartile", p50: "Median", p75: "Upper quartile", maximum: "Maximum", mean: "Mean"};
-    const template = labels[`violin_${kind}`] || `${names[kind]}: {value} characters`;
-    return template.replaceAll("{value}", proseLengthLabel(value));
+    const names = {minimum: "Shortest length", p25: "Lower quartile length", p50: "Median length", p75: "Upper quartile length", maximum: "Longest length", mean: "Average length"};
+    const template = labels[`violin_${kind}`] || `${names[kind]} ({value} {unit})`;
+    return template.replaceAll("{value}", groupedNumber(value / 1000, true))
+        .replaceAll("{unit}", labels.words || "thousand characters");
 }
 
 /** Keep article counts exact while rounding length labels for display. */
@@ -440,7 +441,9 @@ function violinFigure(summary, group, option, labels, maximum, maximumMeasured) 
                 ...(kind === "minimum" || kind === "maximum" ? {"data-extreme": kind} : {}),
             });
         }
-        mark.setAttribute("aria-label", kind === "length" ? description : violinMarkerTitle(kind, value, labels));
+        const title = kind === "length" ? description : violinMarkerTitle(kind, value, labels);
+        mark.setAttribute("aria-label", title);
+        if (kind !== "length") mark.dataset.markerLabel = title;
         plot.append(mark);
     }
     const link = chartLink(group, option.value, option.label, undefined, true);
@@ -551,7 +554,7 @@ export function initializeQualityFigures(form) {
 
 const catalogRecords = new WeakMap();
 const catalogPreparation = new WeakMap();
-const catalogFields = ["page_id", "title", "grade", "importance", "listed_date", "listed_oldid", "prose_characters", "source_bytes", "authors", "title_label", "date_label", "authorship", "review_url", "main_contributors"];
+const catalogFields = ["page_id", "title", "grade", "importance", "listed_date", "listed_oldid", "prose_characters", "source_bytes", "authors", "title_label", "date_label", "authorship", "review_url", "main_contributors", "details"];
 
 /** Build one light sortable record without creating table elements. */
 function catalogRecord(values, data, gradeOrder, importanceOrder) {
@@ -609,14 +612,17 @@ export function directoryRows(data, rows) {
 }
 
 /** Build a fresh visible row with the same markup as the prepared article table. */
-export function articleElement(record) {
-    if (!record.article) return record.cloneNode(true);
+export function articleElement(record, includeContributors = false) {
+    if (!record.article) {
+        const copy = record.cloneNode(true);
+        if (includeContributors) attachInlineChartDetail(copy);
+        return copy;
+    }
     const article = record.article, metadata = record.metadata, row = node("tr");
     const labels = metadata.labels;
     row.setAttribute("data-analysis-row", ""); Object.assign(row.dataset, record.dataset);
-    const wikiLink = (title, label) => {const link = node("a", label); link.href = `https://zh.wikipedia.org/wiki/${encodeURIComponent(title.replaceAll(" ", "_"))}`; return link;};
     for (const cell of record.cells) {const item = node("td", cell.textContent); Object.assign(item.dataset, cell.dataset); row.append(item);}
-    row.cells[1].replaceChildren(wikiLink(article.title, article.title_label));
+    row.cells[1].replaceChildren(articleLink(article));
     for (const [column, options, value] of [[2, metadata.grades, article.grade], [3, metadata.importance, article.importance]]) {
         const assessment = options.find(item => item.value === value);
         const label = node("span", undefined, "analysis-assessment-label");
@@ -638,9 +644,9 @@ export function articleElement(record) {
         } else row.cells[4].append(time);
     } else row.cells[4].append(node("span", labels.unknown_listing, "context"));
     renderMainContributors(row.cells[5], article, labels);
-    row.cells[1].append(document.createTextNode(" "), articleAttributionLink(article, metadata));
-    if ((article.authorship?.editors?.length || 0) > (article.main_contributors?.length || 0))
-        row.cells[5].append(document.createTextNode(" "), articleAttributionLink(article, metadata, true));
+    row.cells[1].append(document.createTextNode(" "), articleDetailLink(article, metadata, {includeContributors}));
+    if (!includeContributors && article.authorship?.available)
+        row.cells[5].append(document.createTextNode(" "), articleDetailLink(article, metadata, {more: true}));
     displayProse(row.cells[6], article.prose_characters, labels.words);
     row.cells[7].textContent = article.source_bytes === null ? "—" : groupedNumber(article.source_bytes / 1000, true);
     for (const column of [0, 6, 7]) row.cells[column].classList.add("analysis-number");
@@ -648,11 +654,23 @@ export function articleElement(record) {
     return row;
 }
 
-function articleAttributionLink(article, metadata, more = false) {
-    const popupId = `quality-article-${article.page_id}-authorship`;
+function articleLink(article) {
+    const link = node("a", article.title_label);
+    link.href = `https://zh.wikipedia.org/wiki/${encodeURIComponent(article.title.replaceAll(" ", "_"))}`;
+    return link;
+}
+
+function articleDetailLink(article, metadata, {more = false, includeContributors = false}) {
+    const labels = metadata.labels;
+    const suffix = more ? "authorship" : includeContributors ? "chart-details" : "details";
+    const popupId = `quality-article-${article.page_id}-${suffix}`;
     const details = node("a", undefined, "analysis-authorship-info");
-    details.href = `#${popupId}`; details.title = metadata.labels.authorship_details.replace("{title}", article.title_label);
-    details.setAttribute("aria-label", details.title); details.setAttribute("aria-haspopup", "dialog"); details.setAttribute("aria-controls", popupId);
+    const title = (more ? labels.authorship_details : labels.article_details) || "{title}";
+    details.href = `#${popupId}`;
+    details.title = title.replace("{title}", article.title_label);
+    details.setAttribute("aria-label", details.title);
+    details.setAttribute("aria-haspopup", "dialog");
+    details.setAttribute("aria-controls", popupId);
     if (more) {
         const plus = node("span", "+", "analysis-more-authors");
         plus.setAttribute("aria-hidden", "true");
@@ -661,19 +679,138 @@ function articleAttributionLink(article, metadata, more = false) {
         const icon = svgNode("svg", {width:16,height:16,viewBox:"0 0 20 20","aria-hidden":"true",focusable:"false"});
         icon.append(svgNode("use", {href: metadata.authorshipIcon})); details.append(icon);
     }
-    details.addEventListener("click", event => {
-        if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-        if (document.getElementById(popupId)?.matches("dialog:not([data-catalog-authorship])")) return;
-        event.preventDefault(); event.stopPropagation();
-        let dialog = document.querySelector("[data-catalog-authorship]");
-        if (!dialog) {dialog = node("dialog", undefined, "ui-dialog page-updates analysis-authorship-dialog"); dialog.setAttribute("data-catalog-authorship", ""); document.body.append(dialog);}
-        dialog.id = popupId; dialog.setAttribute("aria-labelledby", `${popupId}-heading`);
-        const header = node("header", undefined, "ui-dialog__header"), heading = node("h3", details.getAttribute("aria-label"), "ui-dialog__header__title"), close = node("button", "×", "ui-button ui-dialog__header__close-button"), body = node("div", undefined, "ui-dialog__body");
-        heading.id = `${popupId}-heading`; close.type = "button"; close.addEventListener("click", () => dialog.close()); header.append(heading, close); body.append(node("p", metadata.labels.authorship_note));
-        renderAuthorshipDetails(body, article.authorship, metadata.labels);
-        dialog.replaceChildren(header, body); details.focus(); dialog.showModal();
+    bindArticleDialog(details, more, labels.close, body => {
+        if (!more) renderArticleDetails(body, article, labels);
+        if (more || includeContributors) {
+            const proof = more ? body : contributorSection(body, labels.significant_contributors);
+            proof.append(node("p", labels.authorship_note));
+            renderAuthorshipDetails(proof, article.authorship, labels);
+        }
     });
     return details;
+}
+
+function contributorSection(body, title) {
+    const section = node("section", undefined, "analysis-article-contributors");
+    section.append(node("h4", title));
+    body.append(section);
+    return section;
+}
+
+/** Give chart rows their own combined details even with an inline catalog. */
+function attachInlineChartDetail(row) {
+    const link = row.cells[1].querySelector?.("a[aria-controls]");
+    const id = link?.getAttribute("aria-controls");
+    const source = id && document.getElementById(id);
+    if (!source?.matches(".analysis-article-dialog")) return;
+    const grid = source.querySelector(".analysis-detail-grid");
+    const proof = document.getElementById(id.replace(/-details$/, "-authorship"));
+    const chartId = id.replace(/-details$/, "-chart-details");
+    link.href = `#${chartId}`;
+    link.setAttribute("aria-controls", chartId);
+    bindArticleDialog(link, false, source.querySelector("button").getAttribute("aria-label"), body => {
+        body.append(grid.cloneNode(true));
+        const section = contributorSection(body, grid.dataset.significantLabel);
+        if (proof) {
+            for (const child of proof.querySelector(".ui-dialog__body").children) section.append(child.cloneNode(true));
+        } else {
+            section.append(node("p", grid.dataset.authorshipUnavailable, "notice"));
+        }
+    });
+}
+
+function bindArticleDialog(link, authorshipOnly, closeLabel, render) {
+    link.addEventListener("click", event => {
+        if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        const id = link.getAttribute("aria-controls");
+        if (document.getElementById(id)?.matches("dialog:not([data-catalog-authorship])")) return;
+        event.preventDefault();
+        event.stopPropagation();
+        let dialog = document.querySelector("[data-catalog-authorship]");
+        if (!dialog) {
+            dialog = node("dialog");
+            dialog.setAttribute("data-catalog-authorship", "");
+            document.body.append(dialog);
+        }
+        const kind = authorshipOnly ? "analysis-authorship-dialog" : "analysis-article-dialog";
+        dialog.className = `ui-dialog page-updates ${kind}`;
+        dialog.id = id;
+        dialog.setAttribute("aria-labelledby", `${id}-heading`);
+        const header = node("header", undefined, "ui-dialog__header");
+        const heading = node("h3", link.title, "ui-dialog__header__title");
+        heading.id = `${id}-heading`;
+        const close = node("button", "×", "ui-button ui-dialog__header__close-button");
+        close.type = "button";
+        close.setAttribute("aria-label", closeLabel || "Close");
+        close.addEventListener("click", () => dialog.close());
+        header.append(heading, close);
+        const body = node("div", undefined, "ui-dialog__body");
+        render(body);
+        dialog.replaceChildren(header, body);
+        link.focus();
+        dialog.showModal();
+    });
+}
+
+function detailTime(stamp, unknown) {
+    const time = stamp ? node("time", stamp.label) : node("span", unknown);
+    if (stamp) time.dateTime = stamp.value;
+    return time;
+}
+
+function detailField(fields, label, content) {
+    const value = node("dd");
+    value.append(content);
+    fields.append(node("dt", label), value);
+}
+
+function renderArticleDetails(body, article, labels) {
+    const details = article.details || article;
+    const unknown = details.unknown || labels.unknown || "—";
+    const grid = node("div", undefined, "analysis-detail-grid");
+    const fields = node("dl", undefined, "analysis-detail-fields");
+    detailField(fields, labels.article, articleLink(article));
+    detailField(fields, labels.created, detailTime(details.created, unknown));
+    detailField(fields, labels.last_edited, detailTime(details.latest, unknown));
+    const prose = node("span");
+    displayProse(prose, details.prose_characters, labels.words);
+    detailField(fields, labels.prose, prose);
+    const size = node("span", details.source_bytes == null ? "—" : groupedNumber(details.source_bytes / 1000, true));
+    if (details.source_bytes != null) size.append(measurementUnit("kB"));
+    detailField(fields, labels.source_size, size);
+    const column = node("div");
+    const english = node("span");
+    if (details.english) {
+        const link = node("a", details.english.title);
+        link.href = details.english.url;
+        link.lang = "en";
+        english.append(link);
+        if (details.english.grade) {
+            const grade = node("span", details.english.grade);
+            grade.lang = "en";
+            english.append(" · ", grade);
+        }
+    } else english.textContent = unknown;
+    const context = node("dl", undefined, "analysis-detail-fields");
+    detailField(context, labels.english_article, english);
+    detailField(context, labels.peak_edit_year, String(details.activity?.peak_year ?? unknown));
+    column.append(context);
+    if (details.activity) column.append(editActivity(details.activity, labels.edit_history));
+    grid.append(fields, column);
+    body.append(grid);
+}
+
+function editActivity(chart, label) {
+    const activity = node("div", undefined, "analysis-activity");
+    const svg = svgNode("svg", {viewBox: chart.viewbox, role: "img", "aria-label": `${label} · ${chart.peak_label}`});
+    const peak = svgNode("circle", {cx: chart.peak_x, cy: chart.peak_y, r: 3});
+    peak.append(svgNode("title", {}, chart.peak_label));
+    svg.append(svgNode("path", {d: "M 4 44 H 212"}), svgNode("polyline", {points: chart.points}), peak);
+    const years = node("div", undefined, "analysis-activity-years");
+    years.append(node("span", chart.first));
+    if (chart.first !== chart.last) years.append(node("span", chart.last));
+    activity.append(svg, years);
+    return activity;
 }
 
 /** Show qualified main contributors without turning missing evidence into none. */

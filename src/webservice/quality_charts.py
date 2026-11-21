@@ -321,7 +321,7 @@ def _violin_summary(
     if marks and measured < _QUARTILE_SAMPLE:
         details = [titles["range"].format(**counts, **values)]
         details.extend(
-            titles[kind].format(value=values[kind]) + "."
+            _marker_title(titles, kind, marks[kind]) + "."
             for kind in ("p50", "mean")
             if kind in values
         )
@@ -329,6 +329,18 @@ def _violin_summary(
     return titles["summary"].format(
         **counts,
         **(dict.fromkeys(_STATISTICS, "—") | values),
+    )
+
+
+def _marker_title(titles: dict, kind: str, value: float) -> str:
+    """Format a violin mark in the same thousands shown by the guide.
+
+    Returns:
+        A localized name and bracketed length.
+    """
+    return titles[kind].format(
+        value=grouped_number(value / 1000, decimals=1),
+        unit=titles["unit"],
     )
 
 
@@ -425,14 +437,23 @@ def _violin(  # ruff: ignore[too-many-arguments,too-many-locals] - Explicit char
             elif mark_class == "extreme":
                 attributes["data-extreme"] = kind
         artist.set_gid(identifier)
+        title = (
+            summary
+            if kind == "length"
+            else _marker_title(
+                titles,
+                kind,
+                value,
+            )
+        )
         annotations[identifier] = {
+            "title": title,
             "attributes": {
                 **attributes,
                 "data-statistic": kind,
                 "data-value": str(value),
-                "aria-label": summary
-                if kind == "length"
-                else titles[kind].format(value=_number(value)),
+                "aria-label": title,
+                "data-marker-label": title if kind != "length" else "",
             },
         }
     result = _svg(

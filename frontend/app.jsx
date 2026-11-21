@@ -38,7 +38,7 @@ function Navigation({ context }) {
     const primary = [
         ["/", t.nav.dashboard],
         ["/discussions/", t.discussions.heading],
-        ["/quality-analysis/", t.quality_analysis.heading],
+        ["/article-list/", t.quality_analysis.heading],
     ];
     const tools = [
         ["/reports/", t.nav.reports],

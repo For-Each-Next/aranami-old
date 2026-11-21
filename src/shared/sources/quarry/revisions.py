@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 import polars as pl
 import pywikibot
-from sqlalchemy import select, tuple_
+from sqlalchemy import Integer, cast, func, select, tuple_
 
 from shared.sources.quarry import Replica, tables
 
@@ -30,6 +30,47 @@ _SCHEMA = {
     "parent_id": pl.Int64,
     "hidden": pl.Int64,
 }
+
+
+def article_edit_years(site: BaseSite, page_ids: list[int]) -> pl.DataFrame:
+    """Read annual revision counts and visible timestamp bounds by page.
+
+    Returns:
+        One row per page and year with its first and last timestamps.
+    """
+    revision = tables.Revision
+    year = cast(func.substr(revision.rev_timestamp, 1, 4), Integer)
+    statement = (
+        select(
+            revision.rev_page.label("page_id"),
+            year.label("year"),
+            func.count().label("edits"),
+            func.min(revision.rev_timestamp).label("first_edit"),
+            func.max(revision.rev_timestamp).label("last_edit"),
+        )
+        .where(revision.rev_page.in_(page_ids))
+        .group_by(revision.rev_page, year)
+    )
+    return (
+        _replica(site.dbName())
+        .query(
+            statement,
+            schema_overrides={
+                "page_id": pl.Int64,
+                "year": pl.Int32,
+                "edits": pl.Int64,
+                "first_edit": pl.String,
+                "last_edit": pl.String,
+            },
+        )
+        .collect()
+        .with_columns(
+            pl.col("first_edit", "last_edit").str.to_datetime(
+                "%Y%m%d%H%M%S",
+                time_zone="UTC",
+            ),
+        )
+    )
 
 
 @cache

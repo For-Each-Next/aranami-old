@@ -76,7 +76,7 @@ export function loadQualityDetail(value, id) {
 /** Resolve an expired detail by finding the same author in the latest report. */
 async function refreshQualityDetail(link, expiredUrl) {
     const author = link.closest("[data-matrix-author]")?.dataset.matrixAuthor;
-    if (!author || location.pathname !== "/quality-analysis/") return null;
+    if (!author || location.pathname !== "/article-list/") return null;
     const reportUrl = new URL(location.href);
     reportUrl.hash = "";
     reportUrl.searchParams.set("render", "html");

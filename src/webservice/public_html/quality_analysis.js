@@ -369,7 +369,7 @@ function initializeChartArticles(rows, form) {
         body.replaceChildren(...ordered.map((source, index) => {
             const row = document.createElement("tr");
             row.dataset.chartArticle = source.dataset.title;
-            const cells = [...articleElement(source).cells];
+            const cells = [...articleElement(source, true).cells];
             for (const column of chartArticleColumns) {
                 const cell = cells[column];
                 if (!column) cell.textContent = String(start + index + 1);

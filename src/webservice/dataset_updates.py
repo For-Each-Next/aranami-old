@@ -129,7 +129,7 @@ def _reports(filename: str, interface: Interface) -> list[dict]:
     ):
         reports.append({
             "name": interface.text("quality_analysis.heading"),
-            "url": "/quality-analysis/",
+            "url": "/article-list/",
         })
     if filename == "data/parsed/dashboard.parquet":
         reports.append({"name": interface.text("nav.dashboard"), "url": "/"})

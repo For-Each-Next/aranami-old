@@ -577,5 +577,9 @@ def read_directory(path: Path, name: str, locale: str, encoded: str) -> dict:
             interface,
         )
     page = _page(_sort_articles(filtered, record, query, interface), query)
-    page["rows"] = [catalog_article(row, interface) for row in page["rows"]]
+    metadata = saved.get("article_metadata", {})
+    page["rows"] = [
+        catalog_article(row, interface, metadata.get(str(row["page_id"])))
+        for row in page["rows"]
+    ]
     return {**page, "cohort": len(cohort), "suggestions": suggestions}

@@ -104,7 +104,8 @@ class MatplotlibChartTests(TestCase):
         } == expected
         assert all(
             element.get("aria-label")
-            and element.find(f"{{{charts._SVG}}}title") is None
+            == element.findtext(f"{{{charts._SVG}}}title")
+            == element.get("data-marker-label")
             for element in statistics.values()
         )
         assert "lengths collected for 4 articles" in svg.get("aria-label")

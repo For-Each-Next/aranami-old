@@ -6,7 +6,7 @@ from itertools import batched
 from typing import TYPE_CHECKING
 
 import polars as pl
-from sqlalchemy import Column, MetaData, Table, select
+from sqlalchemy import Column, Integer, MetaData, Table, cast, func, select
 
 from shared.sources.quarry import Replica, tables
 
@@ -55,10 +55,61 @@ _REVISION_USER_INDEX = Table(
     "revision_userindex",
     MetaData(),
     Column("rev_id", tables.Revision.rev_id.type),
+    Column("rev_page", tables.Revision.rev_page.type),
     Column("rev_actor", tables.Revision.rev_actor.type),
     Column("rev_timestamp", tables.Revision.rev_timestamp.type),
     Column("rev_deleted", tables.Revision.rev_deleted.type),
 )
+
+
+def project_editor_edit_years(
+    site: BaseSite,
+    names: list[str],
+    project_name: str,
+) -> pl.DataFrame:
+    """Count public edits to current mainspace project pages.
+
+    Returns:
+        One row per registered account and UTC year with public edits.
+    """
+    actor, revision, page = tables.Actor, _REVISION_USER_INDEX.c, tables.Page
+    assessment = tables.PageAssessments
+    project = tables.PageAssessmentsProjects
+    year = cast(func.substr(revision.rev_timestamp, 1, 4), Integer)
+    statement = (
+        select(
+            actor.actor_name.label("name"),
+            year.label("year"),
+            func.count().label("edits"),
+        )
+        .select_from(actor)
+        .join(_REVISION_USER_INDEX, revision.rev_actor == actor.actor_id)
+        .join(page, page.page_id == revision.rev_page)
+        .join(assessment, assessment.pa_page_id == page.page_id)
+        .join(project, project.pap_project_id == assessment.pa_project_id)
+        .where(
+            actor.actor_name.in_(names),
+            actor.actor_user.is_not(None),
+            revision.rev_deleted.bitwise_and(_HIDDEN_USER) == 0,
+            page.page_namespace == 0,
+            page.page_is_redirect == 0,
+            project.pap_project_title == project_name,
+        )
+        .group_by(actor.actor_name, year)
+    )
+    return (
+        Replica
+        .from_site(site)
+        .query(
+            statement,
+            schema_overrides={
+                "name": pl.String,
+                "year": pl.Int32,
+                "edits": pl.Int64,
+            },
+        )
+        .collect()
+    )
 
 
 def fetch_user_activity(site: BaseSite, names: Iterable[str]) -> pl.DataFrame:

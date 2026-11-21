@@ -6,6 +6,21 @@ const figures = new WeakMap();
 const violinGuides = new WeakSet();
 let lengthLabel;
 
+function hoveredMark(svg, event) {
+    const target = event.target.closest("[data-statistic]");
+    if (target) return target;
+    let nearest, distance = 5;
+    for (const mark of svg.querySelectorAll("[data-statistic]")) {
+        const bounds = mark.getBoundingClientRect();
+        if (event.clientY < bounds.top - 4 || event.clientY > bounds.bottom + 4) continue;
+        const offset = Math.abs(event.clientX - (bounds.left + bounds.right) / 2);
+        if (offset >= distance) continue;
+        nearest = mark;
+        distance = offset;
+    }
+    return nearest;
+}
+
 function addLengthGuide(svg) {
     if (violinGuides.has(svg)) return;
     const start = Number(svg.dataset.lengthStart), end = Number(svg.dataset.lengthEnd);
@@ -22,7 +37,8 @@ function addLengthGuide(svg) {
         if (!bounds.width) return;
         const cursor = view.x + (event.clientX - bounds.left) / bounds.width * view.width;
         const position = Math.max(0, Math.min(1000, 1000 * (cursor - start) / (end - start)));
-        const marker = event.target.closest("[data-statistic]")?.dataset.value;
+        const mark = hoveredMark(svg, event);
+        const marker = mark?.dataset.value;
         const length = marker === undefined ? proseLengthAt(position, maximum) : Number(marker);
         const x = marker === undefined ? start + position / 1000 * (end - start)
             : start + proseLengthPosition(length, maximum) / 1000 * (end - start);
@@ -37,8 +53,9 @@ function addLengthGuide(svg) {
             lengthLabel.setAttribute("aria-hidden", "true");
             document.body.append(lengthLabel);
         }
-        lengthLabel.textContent = groupedNumber(length / 1000, true);
-        lengthLabel.dataset.unit = svg.dataset.lengthUnit;
+        const title = mark?.dataset.markerLabel;
+        lengthLabel.textContent = title || groupedNumber(length / 1000, true);
+        lengthLabel.dataset.unit = title ? "" : svg.dataset.lengthUnit;
         lengthLabel.hidden = false;
         const markerX = bounds.left + (x - view.x) / view.width * bounds.width;
         lengthLabel.style.left = Math.max(4, Math.min(markerX + 6, innerWidth - lengthLabel.offsetWidth - 4)) + "px";

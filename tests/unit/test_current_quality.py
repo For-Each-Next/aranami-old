@@ -915,7 +915,9 @@ class CurrentQualityTests(TestCase):
                 "prepared_at",
                 "authors",
                 "all_grades",
+                "editor_histories",
             }
+            assert expanded["authorship"]["editor_histories"] == {}
             assert (
                 default["observed_at"]
                 == expanded["observed_at"]

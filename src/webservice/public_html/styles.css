@@ -1452,7 +1452,7 @@ ul.consistency-cards {
 }
 
 @media (scripting: none) {
-    .page-updates.ui-dialog:is(:target, :has(.analysis-authorship-dialog:target)) {
+    .page-updates.ui-dialog:is(:target, :has(.analysis-article-dialog:target)) {
         display: flex;
         position: relative;
         inline-size: 100%;
@@ -1543,10 +1543,11 @@ table.quality-chart-articles {
 
 table.quality-author-directory {
     inline-size: 100%;
+    min-inline-size: 41rem;
 }
 
 .quality-data-table .quality-column-ordinal {
-    inline-size: 4em;
+    inline-size: calc(6ch + 1.2rem);
 }
 
 .quality-data-table .quality-column-grade,
@@ -1559,7 +1560,7 @@ table.quality-author-directory {
 }
 
 .quality-data-table .quality-column-listed {
-    inline-size: 12em;
+    inline-size: 8.75em;
 }
 
 .quality-data-table .quality-column-authors {
@@ -1610,8 +1611,8 @@ table.quality-author-articles {
 }
 
 .quality-data-table th:first-child {
-    inline-size: 4em;
-    min-inline-size: 4em;
+    inline-size: calc(6ch + 1.2rem);
+    min-inline-size: calc(6ch + 1.2rem);
     box-sizing: border-box;
     text-align: end;
 }
@@ -1625,12 +1626,6 @@ table.quality-author-articles {
 .quality-data-table th,
 .quality-data-table td {
     overflow-wrap: anywhere;
-}
-
-.page-updates .quality-column-ordinal,
-.page-updates .quality-data-table th:first-child {
-    inline-size: 5em;
-    min-inline-size: 5em;
 }
 
 .quality-data-table thead th,

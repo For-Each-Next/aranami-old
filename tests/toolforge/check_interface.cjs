@@ -58,14 +58,14 @@ async function checkInterface(assetRoot) {
     const server = http.createServer((request, response) => {
         const requestURL = new URL(request.url, "http://localhost");
         const locale = locales.includes(requestURL.searchParams.get('lang')) ? requestURL.searchParams.get('lang') : 'en';
-        if (requestURL.pathname === '/quality-analysis/charts/') {
+        if (requestURL.pathname === '/article-list/charts/') {
             response.writeHead(500).end('Figures must render in the browser.');
             return;
         }
         const attribution = {
             '/checks/': 'checks',
             '/discussions/': 'discussions',
-            '/quality-analysis/': 'quality-analysis',
+            '/article-list/': 'quality-analysis',
             '/quality-authorship/': 'quality-authorship',
             '/reports/': requestURL.searchParams.get('page') === '2' ? 'reports2' : 'reports',
             '/data/': requestURL.searchParams.get('page') === '2' ? 'dataset2' : 'dataset',
@@ -93,7 +93,7 @@ async function checkInterface(assetRoot) {
             response.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
             response.setHeader("Content-Type", ({ ".html": "text/html; charset=utf-8", ".json": "application/json", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png" })[path.extname(filename)] || "text/plain");
             const send = () => response.end(fs.readFileSync(filename));
-            if (pathname.startsWith('/quality-analysis/resources/')) {
+            if (pathname.startsWith('/article-list/resources/')) {
                 qualityResourceRequests.push(pathname);
                 if (pathname.endsWith('.html') && qualityDetailFailures > 0) {
                     qualityDetailFailures--;
@@ -224,19 +224,19 @@ async function checkInterface(assetRoot) {
                     const heading = table.tHead.rows[0].cells[0];
                     const cell = [...table.tBodies[0].rows].find(row => !row.hidden)?.cells[0];
                     const fontSize = parseFloat(getComputedStyle(heading).fontSize);
-                    const width = heading.getBoundingClientRect().width, target = fontSize * (table.closest("dialog") ? 5 : 4);
-                    if (!cell) return {width, target, fits: true};
+                    const width = heading.getBoundingClientRect().width, max = fontSize * 6;
+                    if (!cell) return {width, max, fits: true};
                     const original = cell.textContent;
-                    cell.textContent = '999';
+                    cell.textContent = '999999';
                     const range = document.createRange(); range.selectNodeContents(cell);
                     const text = range.getBoundingClientRect(), box = cell.getBoundingClientRect();
                     const fits = text.left >= box.left && text.right <= box.right && getComputedStyle(cell).whiteSpace === 'nowrap';
                     cell.textContent = original;
-                    return {width, target, fits, aligned: getComputedStyle(heading).textAlign === 'center' && ['right', 'end'].includes(getComputedStyle(cell).textAlign)};
+                    return {width, max, fits, aligned: getComputedStyle(heading).textAlign === 'center' && ['right', 'end'].includes(getComputedStyle(cell).textAlign)};
                 });
             })()`);
-            assert.ok(columns.length > 0 && columns.every(column => Math.abs(column.width - column.target) <= 1 && column.fits && column.aligned !== false),
-                'quality ordinal columns must stay four em wide, or five in dialogs, with centered headings and right-aligned three-digit values: ' + JSON.stringify(columns));
+            assert.ok(columns.length > 0 && columns.every(column => column.width <= column.max && column.fits && column.aligned !== false),
+                'quality ordinal columns must stay compact with centered headings and right-aligned six-digit values: ' + JSON.stringify(columns));
         };
         const checkQualityTableLayout = async locale => {
             const tables = await evaluate(`(() => [...document.querySelectorAll('.quality-data-table')].filter(table => table.getBoundingClientRect().width > 0).map(table => {
@@ -272,7 +272,7 @@ async function checkInterface(assetRoot) {
                 return {kind:table.className, widths, centered: headings.every(cell => getComputedStyle(cell).textAlign === 'center' && (!cell.querySelector('button') || getComputedStyle(cell.querySelector('button')).justifyContent === 'center')), widerTitle: compact.every(width => widths[title] > width * 1.2),
                     localScroll: table.getBoundingClientRect().width <= scroller.clientWidth + 1 || ['auto', 'scroll'].includes(getComputedStyle(scroller).overflowX),
                     fits: document.documentElement.scrollWidth <= innerWidth + 1 && (!dialog || dialog.scrollWidth <= dialog.clientWidth + 1),
-                    articleTitleBounded: !table.classList.contains('quality-article-directory') || widths[title] <= 320.5,
+                    articleTitleBounded: !table.closest('.analysis-directory') || widths[title] <= 320.5,
                     missing, authorDirectory, missingLabel: ${JSON.stringify(interfaceMessages['quality_analysis.unknown_listing'][locale])}, misleadingLabel: ${JSON.stringify(interfaceMessages['quality_authorship.current_revision'][locale])}};
             }))()`);
             assert.ok(tables.length > 0 && tables.every(table => table.centered && table.widerTitle && table.localScroll && table.fits && table.articleTitleBounded), 'article/user names need more room than compact columns and overflow must stay in table scrollers: ' + JSON.stringify(tables));
@@ -1600,8 +1600,13 @@ async function checkInterface(assetRoot) {
                         const label = document.querySelector('.analysis-violin-length-label');
                         const shown = guide && guide.getAttribute('x1') === guide.getAttribute('x2') &&
                             label && !label.hidden && label.dataset.unit === plot.dataset.lengthUnit && /[0-9]+\\.[0-9]$/.test(label.textContent);
+                        const mark = [...document.querySelectorAll('[data-marker-label]')].find(node => node.dataset.markerLabel);
+                        const bounds = mark.getBoundingClientRect();
+                        mark.dispatchEvent(new PointerEvent('pointermove', {bubbles: true, clientX: (bounds.left + bounds.right) / 2, clientY: (bounds.top + bounds.bottom) / 2, pointerType: 'mouse'}));
+                        const named = label.textContent === mark.dataset.markerLabel && !label.dataset.unit;
+                        mark.closest('svg').dispatchEvent(new PointerEvent('pointerleave'));
                         plot.dispatchEvent(new PointerEvent('pointerleave'));
-                        return Boolean(shown && !plot.querySelector('.analysis-violin-guide') && label.hidden);
+                        return Boolean(shown && named && !plot.querySelector('.analysis-violin-guide') && label.hidden);
                     })()`), true, 'hovering a measured violin must show a short reading and a vertical guide on the plot');
 
                     const initialYears = await evaluate(`(() => {
@@ -1619,7 +1624,7 @@ async function checkInterface(assetRoot) {
                             const host = document.querySelector('[data-quality-analysis]'), form = document.querySelector('[data-quality-matrix]');
                             const original = window.fetch; let requests = 0;
                             window.fetch = (...args) => {
-                                if (new URL(args[0], location.href).pathname.startsWith('/quality-analysis/')) requests++;
+                                if (new URL(args[0], location.href).pathname.startsWith('/article-list/')) requests++;
                                 return original(...args);
                             };
                             const apply = async () => {
@@ -1634,7 +1639,17 @@ async function checkInterface(assetRoot) {
                                 return [style.fontFamily, style.fontSize, style.lineHeight, style.textAlign, style.paddingInlineStart, style.paddingInlineEnd];
                             });
                             const initialStyles = rowStyles(host.querySelector('[data-analysis-row]'));
-                            const proofLink = host.querySelector('.analysis-authorship-info');
+                            const articleRow = host.querySelector('[data-page-id="1"]');
+                            const infoLink = articleRow.cells[1].querySelector('.analysis-authorship-info');
+                            infoLink.click();
+                            const info = document.getElementById(infoLink.getAttribute('aria-controls'));
+                            const detailColumns = getComputedStyle(info.querySelector('.analysis-detail-grid')).gridTemplateColumns.split(' ').length;
+                            const articleDetails = info.open && Boolean(info.querySelector('.analysis-activity polyline')) &&
+                                info.querySelectorAll('time').length === 2 && info.textContent.includes('2008') &&
+                                Boolean(info.querySelector('a[href="https://en.wikipedia.org/wiki/Example_game"]')) &&
+                                !info.querySelector('.analysis-editor-table') && detailColumns === (innerWidth <= 680 ? 1 : 2);
+                            info.close();
+                            const proofLink = articleRow.cells[5].querySelector('.analysis-more-authors').closest('a');
                             proofLink.click();
                             const proofDialog = document.getElementById(proofLink.getAttribute('aria-controls'));
                             const anonymous = [...proofDialog.querySelectorAll('tbody th')].find(cell => cell.textContent.trim() === '192.0.2.1');
@@ -1750,9 +1765,9 @@ async function checkInterface(assetRoot) {
                             form.querySelector('[data-matrix-cell]').dispatchEvent(new Event('change'));
                             await apply();
                             window.fetch = original;
-                            return {attribution:Boolean(attribution),expanded,unchangedUntilApply,applying,ranged,exact,pagination,rowParity,freshRows,shortHeaders,compactUnits,chartPagination,chartSorting,chartSortReset,roles:exactRoles && secondaryNotMain && secondarySignificant && primaryMatches && boundaryIncluded,totalsOnly,yearSelection,quantileStates,emptySelection,requests};
+                            return {articleDetails,attribution:Boolean(attribution),expanded,unchangedUntilApply,applying,ranged,exact,pagination,rowParity,freshRows,shortHeaders,compactUnits,chartPagination,chartSorting,chartSortReset,roles:exactRoles && secondaryNotMain && secondarySignificant && primaryMatches && boundaryIncluded,totalsOnly,yearSelection,quantileStates,emptySelection,requests};
                         })()`, 60000);
-                        assert.deepEqual(interaction, {attribution:true,expanded:true,unchangedUntilApply:true,applying:true,ranged:true,exact:true,pagination:true,rowParity:true,freshRows:true,shortHeaders:true,compactUnits:true,chartPagination:true,chartSorting:true,chartSortReset:true,roles:true,totalsOnly:true,yearSelection:true,quantileStates:true,emptySelection:true,requests:0});
+                        assert.deepEqual(interaction, {articleDetails:true,attribution:true,expanded:true,unchangedUntilApply:true,applying:true,ranged:true,exact:true,pagination:true,rowParity:true,freshRows:true,shortHeaders:true,compactUnits:true,chartPagination:true,chartSorting:true,chartSortReset:true,roles:true,totalsOnly:true,yearSelection:true,quantileStates:true,emptySelection:true,requests:0});
                         await checkQualityPagination(locale);
                         await checkQualityDistributions('filtered');
                         await evaluate("document.querySelector('[data-chart-group]').dispatchEvent(new MouseEvent('click', {bubbles:true,cancelable:true}))");
@@ -2110,7 +2125,7 @@ async function checkInterface(assetRoot) {
         let qualityLazyDetails = 0;
         let qualityDetailFallbacks = 0;
         if (surfaces.includes('quality-analysis')) for (const locale of locales) {
-            const label = `${locale}/quality-analysis/deferred-resources`;
+            const label = `${locale}/article-list/deferred-resources`;
             try {
                 await call('Emulation.setDeviceMetricsOverride', {width: 1440, height: 936, deviceScaleFactor: 1, mobile: false}, sessionId);
                 pendingQualityCatalogs = [];
@@ -2302,7 +2317,7 @@ async function checkInterface(assetRoot) {
                 assert.ok(fallback.visible && fallback.rows > 0 && fallback.back, 'standalone details must remain readable when JavaScript cannot load');
                 await checkQualityTableLayout(locale);
                 await checkQualityText('standalone author detail');
-                assert.equal(new URL(fallback.returnUrl).pathname, '/quality-analysis/');
+                assert.equal(new URL(fallback.returnUrl).pathname, '/article-list/');
                 qualityDetailFallbacks++;
             } catch (error) {
                 failures.push({label, error: error.message});
@@ -2528,7 +2543,7 @@ async function checkInterface(assetRoot) {
                     assert.ok(nativeDetail.visible && nativeDetail.rows > 0, 'author evidence must remain readable through native detail navigation');
                     assert.equal(nativeDetail.locale.toLowerCase(), locale);
                     const returnUrl = new URL(nativeDetail.returnUrl);
-                    assert.equal(returnUrl.pathname, '/quality-analysis/');
+                    assert.equal(returnUrl.pathname, '/article-list/');
                     assert.equal(returnUrl.searchParams.get('lang'), locale);
                     const returned = wait('Page.loadEventFired', sessionId);
                     await evaluate(`document.getElementById(${JSON.stringify(detail)}).querySelector('noscript a').click()`);

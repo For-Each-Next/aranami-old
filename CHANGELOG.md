@@ -5,12 +5,18 @@ v0.8.8 was consolidated into the v0.9.2 release.
 
 ## Until 0.11
 
-### 0.10.0.dev14 (2026-11-21 11:36 UTC)
+### 0.10.0.dev15 (2026-11-21 11:56 UTC)
 
 Overview: Separated source acquisition from analysis and publication while
-consolidating Toolforge services, standardizing saved tables, and refining
-Article Statistics and Parquet previews.
+consolidating Toolforge services, standardizing saved tables, and expanding
+the Article List and Parquet previews.
 
+- Moved the Article List to `/article-list/`, added field explanations,
+  and ordered coverage by total, length, dates, and contributors.
+- Added article and editor edit histories, English counterparts, separate
+  contributor controls, and the unattributed share in contribution tables.
+- Compactly displayed ordinal and assessment columns, centered the annual
+  legend, and labeled violin markers in thousands of characters.
 - Fixed the newsletter's annual chart captions and deferred offscreen previews.
 - Reduced newsletter startup data and reused validated historical results on
   warm page requests. Loaded versioned stylesheets in parallel.

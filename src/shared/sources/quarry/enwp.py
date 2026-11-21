@@ -67,6 +67,11 @@ _TALK_SCHEMA = {
 }
 _SITELINK_SCHEMA = {"item_id": pl.Int64, "zh_title": pl.String}
 _LABEL_SCHEMA = {"item_id": pl.Int64, "lang": pl.String, "label": pl.String}
+_EN_COUNTERPART_SCHEMA = {
+    "page_id": pl.Int64,
+    "english_title": pl.String,
+    "english_grade": pl.String,
+}
 _ZH_SCHEMA = {
     "zh_title": pl.String,
     "zh_is_redirect": pl.Int64,
@@ -477,4 +482,96 @@ def fetch_zh_page_states(zh_titles: Sequence[str]) -> pl.DataFrame:
             pl.col("zh_title").str.replace_all("_", " ", literal=True),
         )
         .unique("zh_title", keep="first", maintain_order=True)
+    )
+
+
+def english_counterparts(page_ids: list[int]) -> pl.DataFrame:
+    """Read English sitelinks and their Video games assessments.
+
+    Returns:
+        Chinese page IDs with English titles and available grades.
+    """
+    props = tables.PageProps
+    items = (
+        Replica("zhwiki")
+        .query(
+            select(
+                props.pp_page.label("page_id"),
+                props.pp_value.label("qid"),
+            ).where(
+                props.pp_page.in_(page_ids),
+                props.pp_propname == "wikibase_item",
+            ),
+            schema_overrides={"page_id": pl.Int64, "qid": pl.String},
+        )
+        .collect()
+        .with_columns(
+            pl
+            .col("qid")
+            .str.extract(r"^Q([1-9][0-9]*)$")
+            .cast(pl.Int64)
+            .alias("item_id"),
+        )
+        .drop_nulls("item_id")
+    )
+    if items.is_empty():
+        return pl.DataFrame(schema=_EN_COUNTERPART_SCHEMA)
+    site = tables.WbItemsPerSite
+    links = (
+        Replica("wikidatawiki")
+        .query(
+            select(
+                site.ips_item_id.label("item_id"),
+                site.ips_site_page.label("english_title"),
+            ).where(
+                site.ips_item_id.in_(items["item_id"].to_list()),
+                site.ips_site_id == "enwiki",
+            ),
+            schema_overrides={"item_id": pl.Int64, "english_title": pl.String},
+        )
+        .collect()
+    )
+    if links.is_empty():
+        return pl.DataFrame(schema=_EN_COUNTERPART_SCHEMA)
+    links = links.with_columns(
+        pl.col("english_title").str.replace_all(" ", "_", literal=True),
+    )
+    grades = _english_counterpart_grades(links["english_title"].to_list())
+    return (
+        items
+        .join(links, on="item_id", how="inner", validate="m:1")
+        .join(grades, on="english_title", how="left", validate="m:1")
+        .select(list(_EN_COUNTERPART_SCHEMA))
+    )
+
+
+def _english_counterpart_grades(titles: list[str]) -> pl.DataFrame:
+    """Return the English Video games grade for each assessed title.
+
+    Returns:
+        Titles with their current project assessment.
+    """
+    page, assessment = tables.Page, tables.PageAssessments
+    project = tables.PageAssessmentsProjects
+    return (
+        Replica("enwiki")
+        .query(
+            select(
+                page.page_title.label("english_title"),
+                assessment.pa_class.label("english_grade"),
+            )
+            .select_from(page)
+            .join(assessment, assessment.pa_page_id == page.page_id)
+            .join(project, project.pap_project_id == assessment.pa_project_id)
+            .where(
+                page.page_namespace == Namespace.MAIN,
+                page.page_title.in_(titles),
+                project.pap_project_title == "Video games",
+            ),
+            schema_overrides={
+                "english_title": pl.String,
+                "english_grade": pl.String,
+            },
+        )
+        .collect()
     )

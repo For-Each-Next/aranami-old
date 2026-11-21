@@ -39,11 +39,26 @@ class QualityAuthorshipHTTPTests(TestCase):
                 )
                 assert response.status_code == HTTPStatus.MOVED_PERMANENTLY
                 target = urlsplit(response.headers["Location"])
-                assert target.path == "/quality-analysis/"
+                assert target.path == "/article-list/"
                 assert parse_qs(target.query) == {
                     "lang": [locale],
                     "all_grades": ["1"],
                 }
+            response = client.get(
+                "/quality-authorship/?lang=zh-hans&listing_authors=1&render=html",
+                follow_redirects=False,
+            )
+            assert response.status_code == HTTPStatus.MOVED_PERMANENTLY
+            assert response.headers["Location"] == (
+                "/article-list/?lang=zh-hans&render=html&listing_authors=1"
+            )
+            assert (
+                client.get(
+                    "/quality-analysis/",
+                    follow_redirects=False,
+                ).status_code
+                == HTTPStatus.NOT_FOUND
+            )
             read.assert_not_called()
             assert not runtime.exists()
 
@@ -55,7 +70,7 @@ class QualityAuthorshipHTTPTests(TestCase):
             patch("webservice.server.quality_pages.read") as read,
         ):
             client = TestClient(create_app(Path(directory)))
-            for route in ("quality-authorship", "quality-analysis"):
+            for route in ("quality-authorship", "article-list"):
                 for query in (
                     "user=Someone",
                     "all_grades=",
@@ -120,7 +135,7 @@ class QualityAuthorshipHTTPTests(TestCase):
             prepare_quality_pages(runtime)
             client = TestClient(create_app(runtime))
             for query in ("", "?all_grades=1"):
-                response = client.get("/quality-analysis/" + query)
+                response = client.get("/article-list/" + query)
                 assert response.status_code == HTTPStatus.OK
                 assert 'id="analysis-overview"' in response.text
                 assert 'id="analysis-articles"' in response.text
@@ -147,7 +162,7 @@ class QualityAuthorshipHTTPTests(TestCase):
             ),
         ):
             response = TestClient(create_app(Path(directory))).get(
-                "/quality-analysis/?lang=en",
+                "/article-list/?lang=en",
             )
             assert response.status_code == HTTPStatus.OK
             assert (
