@@ -33,6 +33,9 @@ lazy from data.articles.current_quality import (
     refresh_saved_quality as _refresh_saved_quality,
 )
 lazy from data.articles.storage import AUTHORSHIP_PATH, HISTORY_PATH
+lazy from data.caching.authorship import (
+    DEFAULT_PATH as AUTHORSHIP_ATTEMPT_PATH,
+)
 lazy from data.collection_leases import collection_lease
 lazy from runtime.fetch.project_observations import project_cycle
 lazy from shared.identity import configure_pywikibot
@@ -440,7 +443,7 @@ def _collect_historical_authorship(
         site,
         path=runtime / AUTHORSHIP_PATH,
         max_requests=10,
-        attempt_path=runtime / "cache/article-authorship-attempts",
+        attempt_path=runtime / AUTHORSHIP_ATTEMPT_PATH,
         should_yield=paused,
     )
     if not paused():

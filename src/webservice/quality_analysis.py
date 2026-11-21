@@ -36,7 +36,6 @@ from webservice.quality_authorship import grade_label, review_url
 ARTICLE_PAGE_SIZE = 10
 ARTICLE_PAGE_SIZES = (ARTICLE_PAGE_SIZE, 20, 50, 100)
 _PROFILE = assessment_profile("zhwiki", "电子游戏")
-_ENGLISH_PROFILE = assessment_profile("enwiki", "Video games")
 _GRADES = tuple(
     label.code
     for label in _PROFILE.classes
@@ -532,7 +531,7 @@ def _article_details(row: dict, saved: dict, interface: Interface) -> dict:
     """Localize full-article measurements and edit metadata.
 
     Returns:
-        Available timestamps, lengths, counterpart and editing activity.
+        Available timestamps, lengths, and editing activity.
     """
     proof = row.get("authorship") or {}
     created = (
@@ -547,13 +546,10 @@ def _article_details(row: dict, saved: dict, interface: Interface) -> dict:
             latest = proof.get("range_end_timestamp")
         elif revision == row.get("authorship_end_revision"):
             latest = row.get("authorship_end_timestamp")
-    english = saved.get("english_title")
-    english_grade = _ENGLISH_PROFILE.resolve(
-        saved.get("english_grade"),
-        "class",
-    )
     return {
         "date_status": saved.get("date_status"),
+        "authorship_status": saved.get("authorship_status"),
+        "length_status": saved.get("length_status"),
         "created": {"value": created, "label": utc_time(created)}
         if created
         else None,
@@ -561,13 +557,6 @@ def _article_details(row: dict, saved: dict, interface: Interface) -> dict:
         if latest
         else None,
         "activity": _edit_activity(saved.get("years", [])),
-        "english": {
-            "url": title_url(english, "enwiki"),
-            "title": english.replace("_", " "),
-            "grade": english_grade.long_name if english_grade else None,
-        }
-        if english
-        else None,
         "prose_characters": row.get("prose_characters"),
         "characters_label": _thousands(row.get("prose_characters")),
         "source_bytes": row.get("source_bytes"),
@@ -806,6 +795,35 @@ def catalog_article(
     ]
 
 
+def comparison_details(
+    rows: list[dict],
+    articles: list[dict],
+    metadata: dict,
+    interface: Interface,
+) -> list[dict]:
+    """Attach article details to the selected comparison rows.
+
+    Returns:
+        Records with available measurements and contributor evidence.
+        A category-only page can open details without a catalog entry.
+    """
+    page_ids = {row["page_id"] for row in rows}
+    matched = {
+        row["page_id"]: row for row in articles if row["page_id"] in page_ids
+    }
+    return [
+        {
+            **row,
+            "article": catalog_article(
+                matched.get(row["page_id"], {**row, "listed_date": None}),
+                interface,
+                metadata.get(str(row["page_id"])),
+            ),
+        }
+        for row in rows
+    ]
+
+
 def contributor_names(row: dict, interface: Interface) -> dict:
     """Use the same evidence thresholds in display and search.
 
@@ -928,7 +946,7 @@ def prepare_author_articles(
     analysis: dict,
     interface: Interface,
 ) -> None:
-    """Attach localized article rows and contribution totals."""
+    """Attach localized article rows and sort by attributed prose."""
     page_ids = {
         page_id
         for author in authors
@@ -1005,6 +1023,15 @@ def prepare_author_articles(
             contributed_bytes=totals["bytes"],
             contributed_bytes_label=_thousands(totals["bytes"]),
         )
+    authors.sort(
+        key=lambda author: (
+            author["contributed_prose"] is not None,
+            author["contributed_prose"] or 0,
+        ),
+        reverse=True,
+    )
+    for number, author in enumerate(authors, 1):
+        author["number"] = number
 
 
 def _coverage_cards(data: dict, interface: Interface) -> list[dict]:
@@ -1125,9 +1152,11 @@ def quality_analysis_context(
     selection = data.get("selection")
     matrix = None
     shown = data.get("articles", [])
+    comparison = data.get("assessment_comparison")
     if selection:
-        defaults = selection["defaults"][int(bool(data.get("all_grades")))]
-        ordered = defaults["articles"]
+        ordered = selection["defaults"][int(bool(data.get("all_grades")))][
+            "articles"
+        ]
         if paged:
             ordered = sorted(
                 ordered,
@@ -1148,6 +1177,16 @@ def quality_analysis_context(
             }
             shown = [row for row in shown if row["page_id"] in default_ids]
     if selection:
+        if comparison and not paged:
+            comparison = {
+                **comparison,
+                "rows": comparison_details(
+                    comparison.get("rows", []),
+                    selection["articles"],
+                    data.get("article_metadata", {}),
+                    interface,
+                ),
+            }
         codes = [
             code
             for code in _GRADES
@@ -1156,7 +1195,7 @@ def quality_analysis_context(
         ]
         matrix = {
             "cells": selection["cells"],
-            "assessment_comparison": data.get("assessment_comparison"),
+            "assessment_comparison": comparison,
             "length_scale_maximum": length_maximum,
             "extra": []
             if paged
@@ -1193,7 +1232,6 @@ def quality_analysis_context(
                         "last_edited",
                         "peak_edit_year",
                         "edit_history",
-                        "english_article",
                         "prose",
                         "source_size",
                         "review",
@@ -1270,23 +1308,26 @@ def quality_analysis_context(
             "listing_authors": data.get("authorship_basis") == "listed",
             "total": _number(total),
             "coverage_cards": _coverage_cards(data, interface),
-            "assessment_comparison": data.get("assessment_comparison"),
+            "assessment_comparison": comparison,
             "coverage_labels": {
                 key: interface.text(f"quality_coverage.{key}")
                 for key in (
                     "comparison",
                     "missing_authorship",
                     "missing_dates",
-                    "date_status",
-                    "date_unassessed",
+                    "lookup_pending",
+                    "lookup_retry",
+                    "lookup_unassessed",
+                    "lookup_unrecorded",
                     "date_no_talk",
-                    "date_pending",
                     "date_awaiting_update",
                     "date_interrupted",
                     "date_in_progress",
                     "date_no_date",
-                    "date_unrecorded",
                     "missing_length",
+                    "length_needs_measurement",
+                    "authorship_no_date",
+                    "authorship_revision_retry",
                     "no_missing",
                     "comparison_unavailable",
                     "category",

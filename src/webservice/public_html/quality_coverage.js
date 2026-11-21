@@ -1,7 +1,7 @@
 /** Show evidence coverage and bounded lists for the selected article cohort. */
 import { groupedNumber } from "./number_format.js";
 import { initializeQualityPageInput, updateQualityPageInput } from "./quality_authorship.js";
-import { qualityMetadata, requestQualityPage } from "./quality_matrix.js";
+import { articleDetailLink, catalogArticle, qualityMetadata, requestQualityPage } from "./quality_matrix.js";
 
 let cohortListenerInstalled = false;
 
@@ -43,6 +43,7 @@ export function initializeQualityCoverage() {
     const empty = dialog.querySelector("[data-coverage-empty]");
     const status = dialog.querySelector("[data-coverage-page-status]");
     const table = body.closest("table");
+    const lookupColumn = table.querySelector("[data-coverage-status-column], [data-coverage-date-column]");
     const pager = status.closest("nav");
     const size = pager.querySelector("select");
     const form = document.querySelector("[data-quality-matrix]");
@@ -75,35 +76,54 @@ export function initializeQualityCoverage() {
     }
 
     /** Replace the requested page and retain its navigation controls. */
-    function showPage(visible, available) {
+    function showPage(visible, source) {
         const limit = Number(size?.value || 10);
         const pages = Math.max(1, Math.ceil(total / limit));
         const start = (page - 1) * limit;
+        const catalog = metadata();
+        const statusKind = kind === "dates" ? "date" : kind;
+        const stateKey = `${statusKind}_status`;
+        const datasetKey = kind === "dates" ? "assessmentDateStatus" : `${kind}Status`;
         body.replaceChildren(...visible.map((record, index) => {
             const row = node("tr"), titleCell = node("td");
-            const title = record.title ?? record.article?.title ?? record.dataset.title;
-            const label = record.article?.title_label ?? title.replaceAll("_", " ");
+            const article = kind === "total" && record.article ? catalogArticle(record.article) : record.article;
+            const title = article?.title ?? record.title ?? record.dataset.title;
+            const label = article?.title_label ?? title.replaceAll("_", " ");
             const link = node("a", label);
             link.href = `https://zh.wikipedia.org/wiki/${encodeURIComponent(title.replaceAll(" ", "_"))}`;
             titleCell.append(link);
             const ordinal = node("td", groupedNumber(start + index + 1));
             ordinal.className = "analysis-number";
             row.append(ordinal, titleCell);
-            if (kind === "dates") {
-                const state = record.date_status ?? record.article?.details?.date_status ?? record.dataset?.assessmentDateStatus;
-                row.append(node("td", labels[`date_${state}`] || labels.date_unrecorded || "—"));
+            if (kind === "total") {
+                const category = record.category_grades.map(gradeLabel).join(" / ") || "—";
+                const pageAssessments = gradeLabel(record.pageassessments_grade);
+                const difference = labels[record.kind] || record.kind;
+                row.append(node("td", category), node("td", pageAssessments), node("td", difference));
+                if (article && catalog) {
+                    const fields = [[labels.category, category], [labels.pageassessments, pageAssessments], [labels.difference, difference]];
+                    for (const [name, stamp] of [
+                        [labels.categories_updated, source?.category_observed_at],
+                        [labels.pa_updated, source?.pageassessments_observed_at],
+                    ]) {
+                        if (!stamp) continue;
+                        const time = node("time", stamp.slice(0, 16).replace("T", " ") + " UTC");
+                        time.dateTime = stamp;
+                        fields.push([name, time]);
+                    }
+                    titleCell.append(" ", articleDetailLink(article, catalog, {includeContributors: true, comparison: fields}));
+                }
+            } else {
+                const fallback = kind === "dates" ? "unrecorded" : "pending";
+                const state = record[stateKey] ?? article?.details?.[stateKey] ?? record.dataset?.[datasetKey] ?? fallback;
+                row.append(node("td", labels[`${statusKind}_${state}`] || labels[`lookup_${state}`] || labels.lookup_unrecorded || labels.date_unrecorded || "—"));
             }
-            if (kind === "total") row.append(
-                node("td", record.category_grades.map(gradeLabel).join(" / ") || "—"),
-                node("td", gradeLabel(record.pageassessments_grade)),
-                node("td", labels[record.kind] || record.kind));
             return row;
         }));
         for (const heading of dialog.querySelectorAll("[data-coverage-comparison-column]")) heading.hidden = kind !== "total";
-        const dateHeading = dialog.querySelector("[data-coverage-date-column]");
-        if (dateHeading) dateHeading.hidden = kind !== "dates";
+        if (lookupColumn) lookupColumn.hidden = kind === "total";
         empty.hidden = total > 0;
-        empty.textContent = kind === "total" && !available ? labels.comparison_unavailable : labels.no_missing;
+        empty.textContent = kind === "total" && !source?.available ? labels.comparison_unavailable : labels.no_missing;
         table.hidden = total === 0;
         status.textContent = status.dataset.template.replace("{start}", groupedNumber(total ? start + 1 : 0))
             .replace("{end}", groupedNumber(start + visible.length)).replace("{total}", groupedNumber(total));
@@ -117,7 +137,7 @@ export function initializeQualityCoverage() {
         if (!remote) {
             page = Math.max(1, Math.min(page, Math.ceil(total / limit)));
             const start = (page - 1) * limit;
-            showPage(selected.slice(start, start + limit), comparison()?.available);
+            showPage(selected.slice(start, start + limit), comparison());
             return;
         }
         pending?.abort();
@@ -130,7 +150,7 @@ export function initializeQualityCoverage() {
             if (request.signal.aborted || !dialog.open) return;
             total = response.total;
             page = response.page;
-            showPage(response.rows, response.available);
+            showPage(response.rows, response);
         } catch {
             if (!request.signal.aborted && dialog.open) status.textContent = form.dataset.pageFailed;
         }

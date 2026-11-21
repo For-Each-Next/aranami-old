@@ -493,6 +493,22 @@ def write_interface_fixtures(
         now,
         runtime=destination / ".quality-chart-runtime",
     )
+    analysis["analysis"]["assessment_comparison"] = {
+        "available": True,
+        "category_observed_at": now.isoformat(),
+        "pageassessments_observed_at": now.isoformat(),
+        "rows": [
+            {
+                "page_id": 1,
+                "title": analysis["analysis"]["selection"]["articles"][0][
+                    "title"
+                ],
+                "category_grades": ["GA"],
+                "pageassessments_grade": "FA",
+                "kind": "grade_mismatch",
+            },
+        ],
+    }
     newsletter_charts = destination / "newsletter/charts"
     newsletter_charts.mkdir(parents=True, exist_ok=True)
     (newsletter_charts / "fixture.png").write_bytes(

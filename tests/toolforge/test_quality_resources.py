@@ -15,6 +15,7 @@ from http import HTTPStatus
 from math import isclose
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 from matplotlib.cbook import violin_stats
@@ -41,6 +42,9 @@ from webservice.quality_analysis import (
     quality_analysis_context,
 )
 from webservice.server import create_app
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 _NOW = dt.datetime(2026, 11, 14, 12, tzinfo=dt.UTC)
 _PREFIX = "/article-list/resources/en/0/current/"
@@ -107,6 +111,64 @@ def _resource(content: str) -> str:
     return f"catalog-{sha256(content.encode()).hexdigest()}.json"
 
 
+def _coverage_fixture() -> dict:
+    """Provide missing evidence and an article outside the directory.
+
+    Returns:
+        A catalog with attempted and unrecorded lookups to compare.
+    """
+    data = _catalog_fixture()
+    analysis = data["analysis"]
+    articles = analysis["selection"]["articles"]
+    analysis["article_metadata"] = {
+        "3": {"authorship_status": "retry", "length_status": "retry"},
+    }
+    analysis["assessment_comparison"] = {
+        "available": True,
+        "category_observed_at": _NOW.isoformat(),
+        "rows": [
+            {
+                "page_id": 1,
+                "title": articles[0]["title"],
+                "category_grades": ["FA", "GA"],
+                "pageassessments_grade": "FA",
+                "kind": "grade_mismatch",
+            },
+            {
+                "page_id": 101,
+                "title": "Only found in categories",
+                "category_grades": ["FA"],
+                "pageassessments_grade": None,
+                "kind": "only_categories",
+            },
+        ],
+    }
+    for row in articles[2:4]:
+        row["prose_characters"] = None
+    return data
+
+
+def _check_coverage_pages(
+    client: TestClient,
+    query: Callable[..., str],
+) -> None:
+    """Check lookup statuses and both comparison entry types."""
+    for kind in ("authorship", "length"):
+        result = client.get(query(view="coverage", value=kind)).json()
+        assert [row[f"{kind}_status"] for row in result["rows"][:2]] == [
+            "retry",
+            "pending",
+        ]
+    compared = client.get(query(view="coverage", value="total")).json()
+    assert compared["category_observed_at"] == _NOW.isoformat()
+    both, category_only = compared["rows"]
+    assert both["category_grades"] == ["FA", "GA"]
+    assert both["pageassessments_grade"] == "FA"
+    assert both["article"][11]["available"]
+    assert category_only["article"][:2] == [101, "Only found in categories"]
+    assert category_only["article"][11] is None
+
+
 class QualityResourcePresentationTests(unittest.TestCase):
     """Keep saved results while deferring optional payloads."""
 
@@ -162,7 +224,8 @@ class QualityResourcePresentationTests(unittest.TestCase):
         info = output.split('<dialog id="quality-article-1-details"', 1)[
             1
         ].split("</dialog>", 1)[0]
-        assert "https://en.wikipedia.org/wiki/Example_game" in info
+        assert "https://en.wikipedia.org/wiki/Example_game" not in info
+        assert "英语维基百科" not in info
         assert 'datetime="2007-01-01T00:00:00Z"' in info
         assert 'datetime="2024-06-01T09:10:11Z"' in info
         assert "高峰编辑年份</dt><dd>2008</dd>" in info
@@ -1233,7 +1296,7 @@ class QualityResourceHTTPTests(unittest.TestCase):
     @staticmethod
     def test_directory_reads_only_requested_rows() -> None:
         """Page a private catalog and search all its articles."""
-        data = _catalog_fixture()
+        data = _coverage_fixture()
         selection = data["analysis"]["selection"]
         selection["articles"][-1]["title"] = "超級馬力歐銀河2"
         selection["cells"] = [
@@ -1242,8 +1305,8 @@ class QualityResourceHTTPTests(unittest.TestCase):
                 "importance": "High",
                 "year": 2026,
                 "pages": 100,
-                "measured": 100,
-                "histogram": [{"value": 1000, "count": 100}],
+                "measured": 98,
+                "histogram": [{"value": 1000, "count": 98}],
                 "density": [{"position": 1000, "density": 1}],
             },
         ]
@@ -1343,9 +1406,12 @@ class QualityResourceHTTPTests(unittest.TestCase):
                     result = client.get(url).json()
                     assert result["total"] == expected
                     assert len(result["rows"]) == 10
+                _check_coverage_pages(client, query)
                 author = data["authorship"]["authors"][0]["name"]
-                result = client.get(query(author=author)).json()
-                assert [row[0] for row in result["rows"]] == [1, 2]
+                assert [
+                    row[0]
+                    for row in client.get(query(author=author)).json()["rows"]
+                ] == [1, 2]
                 summary = client.get(query(view="summary")).json()
                 assert "rows" not in summary
                 assert "histogram" not in summary["cells"][0]
@@ -1361,7 +1427,7 @@ class QualityResourceHTTPTests(unittest.TestCase):
                     "total": 100,
                     "authorship": 2,
                     "dates": 100,
-                    "length": 100,
+                    "length": 98,
                 }
                 length = summary["lengths"]["grade"]["FA"]
                 assert length["quartiles"] == [1000, 1000]

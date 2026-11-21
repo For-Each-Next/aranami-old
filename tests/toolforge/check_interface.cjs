@@ -1567,23 +1567,49 @@ async function checkInterface(assetRoot) {
                     assert.deepEqual(metrics, {rows: 10, records: 48, enhanced: true, unknown: true, countsHidden: true, fixedTables: true, from: '2009', chartDataRemoved: true, pies: 2, footer: true, sizesUnlinked: true, fits: true});
                     await checkQualityOrdinals();
                     await checkQualityTableLayout(locale);
-                    const coverage = await evaluate(`(() => {
+                    const coverage = await evaluate(`(async () => {
                         const dialog = document.getElementById('analysis-coverage-dialog');
-                        return [...document.querySelectorAll('[data-coverage-open]')].map(opener => {
+                        const states = [];
+                        for (const opener of document.querySelectorAll('[data-coverage-open]')) {
                             opener.click();
                             const table = dialog.querySelector('table'), heading = table.tHead.rows[0].cells[0];
                             const font = parseFloat(getComputedStyle(heading).fontSize);
-                            const result = {kind:opener.dataset.coverageOpen, open:dialog.open, empty:table.hidden,
+                            const state = {kind:opener.dataset.coverageOpen, open:dialog.open, empty:table.hidden,
                                 ordinal:heading.getBoundingClientRect().width, target:font * 5,
-                                dateStatus: !table.querySelector('[data-coverage-date-column]').hidden,
-                                populated: [...table.tBodies[0].rows].every(row => row.cells.length === 3 && row.cells[2].textContent.trim()),
+                                lookupStatus: !table.querySelector('[data-coverage-status-column]').hidden,
+                                populated: table.tBodies[0].rows.length > 0 &&
+                                    [...table.tBodies[0].rows].every(row => row.cells.length === 3 && row.cells[2].textContent.trim()),
                                 fits:dialog.scrollWidth <= dialog.clientWidth + 1};
+                            if (state.kind === 'total') {
+                                const row = table.tBodies[0].rows[0], link = row.cells[1].querySelector('[aria-haspopup="dialog"]');
+                                link.click();
+                                const detail = document.getElementById(link.getAttribute('aria-controls'));
+                                const values = [...detail.querySelectorAll('.analysis-source-comparison dd')];
+                                state.detail = dialog.open && detail.open &&
+                                    values.slice(0, 3).every((value, index) => value.textContent === row.cells[index + 2].textContent) &&
+                                    values.length === 5 && Boolean(detail.querySelector('.analysis-activity polyline')) &&
+                                    Boolean(detail.querySelector('.analysis-article-contributors .analysis-editor-total'));
+                                detail.close();
+                                state.returned = document.activeElement === link && dialog.open;
+                            }
+                            states.push(state);
+                            const closed = new Promise(resolve => dialog.addEventListener('close', resolve, {once: true}));
                             dialog.close();
-                            return result;
-                        });
+                            await closed;
+                        }
+                        return states;
                     })()`);
                     assert.ok(coverage.length === 4 && coverage.every(state => state.open && state.fits && (state.empty || Math.abs(state.ordinal - state.target) <= 1)), 'coverage and missing-page dialogs must keep five-em ordinal columns: ' + JSON.stringify(coverage));
-                    assert.ok(coverage.every(state => state.dateStatus === (state.kind === 'dates') && (!state.dateStatus || state.populated)), 'only missing assessment dates show lookup status');
+                    assert.ok(coverage.every(state => state.kind === 'total'
+                        ? !state.lookupStatus && state.detail && state.returned
+                        : state.lookupStatus && state.populated), 'missing evidence shows lookup status and assessment differences open article details: ' + JSON.stringify(coverage));
+                    assert.ok(await evaluate(`(() => {
+                        const table = document.querySelector('.quality-author-directory');
+                        const values = [...table.tBodies[0].rows].filter(row => !row.hidden)
+                            .map(row => row.cells[3].dataset.sort === '' ? -Infinity : Number(row.cells[3].dataset.sort));
+                        return table.tHead.rows[0].cells[3].getAttribute('aria-sort') === 'descending' &&
+                            values.every((value, index) => !index || values[index - 1] >= value);
+                    })()`), 'the author directory defaults to descending attributed prose');
                     await checkQualityDistributions('initial');
                     const chartControls = await evaluate(`(() => [...document.querySelectorAll('[data-quality-chart]')].map(host => {
                         const svg = host.querySelector('svg'), original = svg.getAttribute('viewBox');
@@ -1650,7 +1676,7 @@ async function checkInterface(assetRoot) {
                             const detailColumns = getComputedStyle(info.querySelector('.analysis-detail-grid')).gridTemplateColumns.split(' ').length;
                             const articleDetails = info.open && Boolean(info.querySelector('.analysis-activity polyline')) &&
                                 info.querySelectorAll('time').length === 2 && info.textContent.includes('2008') &&
-                                Boolean(info.querySelector('a[href="https://en.wikipedia.org/wiki/Example_game"]')) &&
+                                !info.querySelector('a[href^="https://en.wikipedia.org/"]') &&
                                 !info.querySelector('.analysis-editor-table') && detailColumns === (innerWidth <= 680 ? 1 : 2);
                             info.close();
                             const plus = articleRow.cells[5].querySelector('svg.analysis-more-authors use');

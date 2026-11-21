@@ -21,6 +21,7 @@ from webservice.quality_analysis import (
     ARTICLE_PAGE_SIZES,
     author_contribution_totals,
     catalog_article,
+    comparison_details,
     contributor_names,
 )
 
@@ -428,6 +429,7 @@ def _coverage(
     cohort: list[dict],
     query: dict,
     chosen: set[str],
+    interface: Interface,
 ) -> dict:
     """Read one page of missing evidence or source comparison.
 
@@ -438,8 +440,9 @@ def _coverage(
         ValueError: The coverage category is unknown.
     """
     kind = query.get("value")
-    comparison = saved["comparison"] or {}
+    metadata = saved.get("article_metadata", {})
     if kind == "total":
+        comparison = saved["comparison"] or {}
         grades = {cell.split(":", 1)[0] for cell in chosen}
         rows = [
             row
@@ -447,9 +450,20 @@ def _coverage(
             if row["pageassessments_grade"] in grades
             or grades.intersection(row["category_grades"])
         ]
+        result = _page(rows, query)
         return {
-            **_page(rows, query),
+            **result,
+            "rows": comparison_details(
+                result["rows"],
+                saved["articles"],
+                metadata,
+                interface,
+            ),
             "available": bool(comparison.get("available")),
+            "category_observed_at": comparison.get("category_observed_at"),
+            "pageassessments_observed_at": comparison.get(
+                "pageassessments_observed_at",
+            ),
         }
     acquired = {
         "authorship": _has_authorship,
@@ -466,18 +480,14 @@ def _coverage(
             reverse=True,
         )
     result = _page(missing, query)
-    metadata = saved.get("article_metadata", {})
+    status = "date_status" if kind == "dates" else f"{kind}_status"
+    default = None if kind == "dates" else "pending"
     result["rows"] = [
         {
             "title": row["title"],
-            **(
-                {
-                    "date_status": metadata.get(str(row["page_id"]), {}).get(
-                        "date_status",
-                    ),
-                }
-                if kind == "dates"
-                else {}
+            status: metadata.get(str(row["page_id"]), {}).get(
+                status,
+                default,
             ),
         }
         for row in result["rows"]
@@ -578,9 +588,9 @@ def read_directory(path: Path, name: str, locale: str, encoded: str) -> dict:
     view = query["view"]
     if view == "summary":
         return _summary(saved, cohort, query, cells)
-    if view == "coverage":
-        return _coverage(saved, cohort, query, cells)
     interface = Interface(locale)
+    if view == "coverage":
+        return _coverage(saved, cohort, query, cells, interface)
     if view == "chart":
         filtered = _chart_articles(cohort, query, saved)
         suggestions = []

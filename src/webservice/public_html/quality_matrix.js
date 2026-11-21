@@ -555,9 +555,14 @@ const catalogRecords = new WeakMap();
 const catalogPreparation = new WeakMap();
 const catalogFields = ["page_id", "title", "grade", "importance", "listed_date", "listed_oldid", "prose_characters", "source_bytes", "authors", "title_label", "date_label", "authorship", "review_url", "main_contributors", "details"];
 
+/** Read one saved article without constructing a directory row. */
+export function catalogArticle(values) {
+    return Object.fromEntries(catalogFields.map((key, index) => [key, values[index]]));
+}
+
 /** Build one light sortable record without creating table elements. */
 function catalogRecord(values, data, gradeOrder, importanceOrder) {
-    const article = Object.fromEntries(catalogFields.map((key, index) => [key, values[index]]));
+    const article = catalogArticle(values);
     return {
         article, metadata: data,
         dataset: {pageId: String(article.page_id), title: article.title, grade: article.grade, importance: article.importance, year: article.listed_date?.slice(0, 4) || "", measured: article.prose_characters === null ? "0" : "1", cohort: "0", mainAuthors: JSON.stringify(article.authorship?.available === true ? article.authors || [] : []), mainAuthorLabels: JSON.stringify(article.authorship?.available === true ? (article.main_contributors || []).map(author => author.label) : []), significantAuthors: JSON.stringify(article.authorship?.available === true ? article.authorship.editors.map(editor => editor.name) : [])},
@@ -659,9 +664,10 @@ function articleLink(article) {
     return link;
 }
 
-function articleDetailLink(article, metadata, {more = false, includeContributors = false}) {
+/** Open article metadata, contributor evidence, or a saved grade comparison. */
+export function articleDetailLink(article, metadata, {more = false, includeContributors = false, comparison} = {}) {
     const labels = metadata.labels;
-    const suffix = more ? "authorship" : includeContributors ? "chart-details" : "details";
+    const suffix = more ? "authorship" : comparison ? "comparison-details" : includeContributors ? "chart-details" : "details";
     const popupId = `quality-article-${article.page_id}-${suffix}`;
     const details = node("a", undefined, "analysis-authorship-info");
     const title = (more ? labels.authorship_details : labels.article_details) || "{title}";
@@ -677,6 +683,11 @@ function articleDetailLink(article, metadata, {more = false, includeContributors
     details.append(icon);
     bindArticleDialog(details, more, labels.close, body => {
         if (!more) renderArticleDetails(body, article, labels);
+        if (comparison) {
+            const fields = node("dl", undefined, "analysis-detail-fields analysis-source-comparison");
+            for (const [label, content] of comparison) detailField(fields, label, content);
+            body.append(fields);
+        }
         if (more || includeContributors) {
             const proof = more ? body : contributorSection(body, labels.significant_contributors);
             proof.append(node("p", labels.authorship_note));
@@ -775,20 +786,7 @@ function renderArticleDetails(body, article, labels) {
     if (details.source_bytes != null) size.append(measurementUnit("kB"));
     detailField(fields, labels.source_size, size);
     const column = node("div");
-    const english = node("span");
-    if (details.english) {
-        const link = node("a", details.english.title);
-        link.href = details.english.url;
-        link.lang = "en";
-        english.append(link);
-        if (details.english.grade) {
-            const grade = node("span", details.english.grade);
-            grade.lang = "en";
-            english.append(" · ", grade);
-        }
-    } else english.textContent = unknown;
     const context = node("dl", undefined, "analysis-detail-fields");
-    detailField(context, labels.english_article, english);
     detailField(context, labels.peak_edit_year, String(details.activity?.peak_year ?? unknown));
     column.append(context);
     if (details.activity) column.append(editActivity(details.activity, labels.edit_history));

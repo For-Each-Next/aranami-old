@@ -670,13 +670,14 @@ test("violin marker tooltips use localized names and tenths of a thousand", () =
         for (const kind of kinds) {
             const title = context.violinMarkerTitle(kind, 52318, labels);
             assert.equal(title, labels['violin_' + kind].replace('{value}', '52.3').replace('{unit}', labels.words));
+            assert.match(title, /^52\.3.*[（(]/);
             assert.doesNotMatch(title, /P25|P50|P75|articles|条目|條目|\{value\}|\{unit\}/);
         }
     }
-    assert.equal(context.violinMarkerTitle("p25", 11500, {
+    assert.equal(context.violinMarkerTitle("p75", 11500, {
         words: "千字",
-        violin_p25: interfaceMessages["quality_analysis.violin_p25"]["zh-hans"],
-    }), "下四分位长度（下四分位值：11.5千字）");
+        violin_p75: interfaceMessages["quality_analysis.violin_p75"]["zh-hant"],
+    }), "11.5千字（上四分位值）");
 });
 
 test("the original length positions remain fixed", () => {

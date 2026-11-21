@@ -3403,16 +3403,20 @@
   "quality_coverage.comparison": {"en": "Category and PageAssessments differences", "zh-hans": "分类与PageAssessments评级差异", "zh-hant": "分類與PageAssessments評級差異"},
   "quality_coverage.missing_authorship": {"en": "Pages without contributor information", "zh-hans": "尚未获取贡献者信息的页面", "zh-hant": "尚未取得貢獻者資訊的頁面"},
   "quality_coverage.missing_dates": {"en": "Pages without assessment dates", "zh-hans": "尚未获取评级时间的页面", "zh-hant": "尚未取得評級時間的頁面"},
-  "quality_coverage.date_status": {"en": "Lookup status", "zh-hans": "查询状态", "zh-hant": "查詢狀態"},
-  "quality_coverage.date_unassessed": {"en": "Unassessed", "zh-hans": "未评级", "zh-hant": "未評級"},
+  "quality_coverage.lookup_status": {"en": "Lookup status", "zh-hans": "查询状态", "zh-hant": "查詢狀態"},
+  "quality_coverage.lookup_pending": {"en": "No lookup recorded yet", "zh-hans": "暂无查询记录", "zh-hant": "尚無查詢紀錄"},
+  "quality_coverage.lookup_retry": {"en": "Attempted, awaiting retry", "zh-hans": "已尝试，待重试", "zh-hant": "已嘗試，待重試"},
+  "quality_coverage.lookup_unassessed": {"en": "Unassessed", "zh-hans": "未评级", "zh-hant": "未評級"},
+  "quality_coverage.lookup_unrecorded": {"en": "Status unavailable", "zh-hans": "状态未记录", "zh-hant": "狀態未記錄"},
   "quality_coverage.date_no_talk": {"en": "Talk-page information unavailable", "zh-hans": "缺少讨论页资料", "zh-hant": "缺少討論頁資料"},
-  "quality_coverage.date_pending": {"en": "No lookup recorded yet", "zh-hans": "暂无查询记录", "zh-hant": "尚無查詢紀錄"},
   "quality_coverage.date_awaiting_update": {"en": "Date found, awaiting update", "zh-hans": "已查到日期，待更新", "zh-hant": "已查到日期，待更新"},
   "quality_coverage.date_interrupted": {"en": "Lookup interrupted, awaiting retry", "zh-hans": "查询中断，待重试", "zh-hant": "查詢中斷，待重試"},
   "quality_coverage.date_in_progress": {"en": "Lookup incomplete", "zh-hans": "查询未完成，待续查", "zh-hant": "查詢未完成，待續查"},
   "quality_coverage.date_no_date": {"en": "Checked, no date confirmed", "zh-hans": "已查询，日期未确认", "zh-hant": "已查詢，日期未確認"},
-  "quality_coverage.date_unrecorded": {"en": "Status unavailable", "zh-hans": "状态未记录", "zh-hant": "狀態未記錄"},
+  "quality_coverage.authorship_no_date": {"en": "Assessment date needed", "zh-hans": "缺少评级时间", "zh-hant": "缺少評級時間"},
+  "quality_coverage.authorship_revision_retry": {"en": "Assessment revision unavailable, awaiting retry", "zh-hans": "评级时的版本未查到，待重试", "zh-hant": "評級時的版本未查到，待重試"},
   "quality_coverage.missing_length": {"en": "Pages without prose lengths", "zh-hans": "尚未获取页面字数的页面", "zh-hant": "尚未取得頁面字數的頁面"},
+  "quality_coverage.length_needs_measurement": {"en": "Saved measurement needs a prose count", "zh-hans": "已有测量记录，待补正文字数", "zh-hant": "已有測量紀錄，待補正文字數"},
   "quality_coverage.no_missing": {"en": "No matching pages.", "zh-hans": "没有符合条件的页面。", "zh-hant": "沒有符合條件的頁面。"},
   "quality_coverage.comparison_unavailable": {"en": "The comparison has not been collected yet.", "zh-hans": "尚未取得分类与PageAssessments的对照数据。", "zh-hant": "尚未取得分類與PageAssessments的對照資料。"},
   "quality_coverage.category": {"en": "Category grades", "zh-hans": "分类评级", "zh-hant": "分類評級"},
@@ -4632,11 +4636,6 @@
     "zh-hans": "历年编辑次数",
     "zh-hant": "歷年編輯次數"
   },
-  "quality_analysis.english_article": {
-    "en": "English Wikipedia",
-    "zh-hans": "英语维基百科",
-    "zh-hant": "英語維基百科"
-  },
   "quality_analysis.authorship_details": {
     "en": "Significant contributors to {title}",
     "zh-hans": "{title}的重大贡献者",
@@ -4960,34 +4959,34 @@
     "zh-hant": "{value} 字（{pages} 個條目及列表中有 {measured} 個測得此長度）"
   },
   "quality_analysis.violin_minimum": {
-    "en": "Shortest length ({value} {unit})",
-    "zh-hans": "最短长度（最小值：{value}{unit}）",
-    "zh-hant": "最短長度（最小值：{value}{unit}）"
+    "en": "{value} {unit} (minimum)",
+    "zh-hans": "{value}{unit}（最小值）",
+    "zh-hant": "{value}{unit}（最小值）"
   },
   "quality_analysis.violin_p25": {
-    "en": "Lower quartile length ({value} {unit})",
-    "zh-hans": "下四分位长度（下四分位值：{value}{unit}）",
-    "zh-hant": "下四分位長度（下四分位值：{value}{unit}）"
+    "en": "{value} {unit} (lower quartile)",
+    "zh-hans": "{value}{unit}（下四分位值）",
+    "zh-hant": "{value}{unit}（下四分位值）"
   },
   "quality_analysis.violin_p50": {
-    "en": "Median length ({value} {unit})",
-    "zh-hans": "中位长度（中位值：{value}{unit}）",
-    "zh-hant": "中位長度（中位值：{value}{unit}）"
+    "en": "{value} {unit} (median)",
+    "zh-hans": "{value}{unit}（中位值）",
+    "zh-hant": "{value}{unit}（中位值）"
   },
   "quality_analysis.violin_p75": {
-    "en": "Upper quartile length ({value} {unit})",
-    "zh-hans": "上四分位长度（上四分位值：{value}{unit}）",
-    "zh-hant": "上四分位長度（上四分位值：{value}{unit}）"
+    "en": "{value} {unit} (upper quartile)",
+    "zh-hans": "{value}{unit}（上四分位值）",
+    "zh-hant": "{value}{unit}（上四分位值）"
   },
   "quality_analysis.violin_maximum": {
-    "en": "Longest length ({value} {unit})",
-    "zh-hans": "最长长度（最大值：{value}{unit}）",
-    "zh-hant": "最長長度（最大值：{value}{unit}）"
+    "en": "{value} {unit} (maximum)",
+    "zh-hans": "{value}{unit}（最大值）",
+    "zh-hant": "{value}{unit}（最大值）"
   },
   "quality_analysis.violin_mean": {
-    "en": "Average length ({value} {unit})",
-    "zh-hans": "平均长度（平均值：{value}{unit}）",
-    "zh-hant": "平均長度（平均值：{value}{unit}）"
+    "en": "{value} {unit} (mean)",
+    "zh-hans": "{value}{unit}（平均值）",
+    "zh-hant": "{value}{unit}（平均值）"
   },
   "quality_analysis.anonymous_user": {
     "en": "Anonymous user",

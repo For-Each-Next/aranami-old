@@ -24,6 +24,7 @@ from data.articles import (
     rating_history,
 )
 from data.articles.storage import AUTHORSHIP_PATH, HISTORY_PATH
+from data.caching import authorship as authorship_attempts
 from data.reports import ReportResult, ReportStore
 from webservice.pages import render_quality_analysis
 from webservice.quality_analysis import main_author_directory
@@ -999,6 +1000,56 @@ class CurrentQualityTests(TestCase):
             "6": "pending",
             "7": "no_talk",
             "8": "unassessed",
+        }
+
+    @staticmethod
+    def test_authorship_status_respects_the_selected_basis() -> None:
+        """Use attempts for the exact revision or listing event."""
+        articles = _articles().with_columns(
+            pl.when(pl.col("page_id") != 3).then(pl.col("listed_date")),
+        )
+        tables = _b_tables()
+        tables["members"] = tables["members"].with_columns(
+            pl.lit(None, dtype=pl.Int64).alias("revision_id"),
+        )
+        tables["attempts"] = pl.DataFrame(
+            [(1, 99, _NOW), (2, None, _NOW), (3, 103, _NOW)],
+            schema=current_authorship.ATTEMPT_SCHEMA,
+            orient="row",
+        )
+        reviewed = pl.DataFrame(
+            [
+                (1, _DAY, "GA", "added", _NOW),
+                (4, _DAY - dt.timedelta(days=1), "FL", "added", _NOW),
+            ],
+            schema=authorship_attempts.SCHEMA,
+            orient="row",
+        )
+        assert store._authorship_lookup_statuses(
+            articles,
+            tables,
+            reviewed,
+        ) == {
+            "current": {"3": "retry"},
+            "listed": {"1": "retry", "2": "revision_retry", "3": "no_date"},
+        }
+        assert store._authorship_lookup_statuses(
+            articles.filter(pl.col("page_id") == 2).with_columns(
+                pl.col("talk_revision_id") + 1,
+            ),
+            tables,
+            reviewed,
+        ) == {"current": {}, "listed": {}}
+
+    @staticmethod
+    def test_prose_lookup_status_distinguishes_old_measurements() -> None:
+        """Treat reported zero as a completed measurement."""
+        articles = _articles().with_columns(
+            pl.when(pl.col("page_id") != 1).then(pl.col("prose_characters")),
+        )
+        assert store._missing_length_statuses(articles) == {
+            "1": "needs_measurement",
+            "3": "retry",
         }
 
     @staticmethod

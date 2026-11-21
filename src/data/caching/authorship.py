@@ -9,15 +9,13 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import polars as pl
 
 from shared.support.cache import ParquetCache
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
+DEFAULT_PATH = Path("cache/article-authorship-attempts")
 KEY = ["page_id", "date", "grade", "action"]
 SCHEMA = {
     "page_id": pl.Int64,

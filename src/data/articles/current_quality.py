@@ -27,6 +27,7 @@ from data.articles import (
     rating_history,
 )
 from data.articles.storage import AUTHORSHIP_PATH, DEFAULT_ROOT, HISTORY_PATH
+from data.caching import authorship as authorship_attempts
 from data.reports import ReportStore
 from shared.assessment_profiles import assessment_profile
 from shared.support.dataset_activity import dataset_activity
@@ -144,6 +145,24 @@ _MAX_BYTES = 64 * 1024 * 1024
 _TALK_IDENTITY = ["page_id", "talk_page_id", "talk_revision_id"]
 
 
+def _listing_keys(articles: pl.DataFrame) -> pl.DataFrame:
+    """Match reviewed listings to both retained A-list spellings.
+
+    Returns:
+        Listing identities keyed by subject, grade and date.
+    """
+    # WAR records both article and list passes with the source grade A.
+    return articles.select(
+        "page_id",
+        pl
+        .when(pl.col("grade") == "AL")
+        .then(pl.lit(["AL", "A"]))
+        .otherwise(pl.concat_list("grade"))
+        .alias("grade"),
+        pl.col("listed_date").alias("date"),
+    ).explode("grade")
+
+
 def _proofs(
     articles: pl.DataFrame,
     high: pl.DataFrame,
@@ -154,16 +173,7 @@ def _proofs(
     Returns:
         At most one saved authorship proof for each current page.
     """
-    # WAR records both article and list passes with the source grade A.
-    selected = articles.select(
-        "page_id",
-        pl
-        .when(pl.col("grade") == "AL")
-        .then(pl.lit(["AL", "A"]))
-        .otherwise(pl.concat_list("grade"))
-        .alias("grade"),
-        pl.col("listed_date").alias("date"),
-    ).explode("grade")
+    selected = _listing_keys(articles)
     relevant = high.filter(
         pl.col("contract").is_in(authorship_store.CURRENT_CONTRACTS)
         & (pl.col("action") == "added"),
@@ -1091,6 +1101,97 @@ def _assessment_date_coverage(
     )
 
 
+def _authorship_lookup_statuses(
+    articles: pl.DataFrame,
+    b_tables: dict[str, pl.DataFrame],
+    reviewed_attempts: pl.DataFrame,
+) -> dict[str, dict[str, str]]:
+    """Match recorded attribution attempts to the selected proof basis.
+
+    Returns:
+        States for recorded attempts and missing listing dates by basis.
+        Missing attempts stay absent from the result.
+    """
+    attempts = b_tables["attempts"]
+    current = articles.select(
+        "page_id",
+        pl.col("article_revision_id").alias("revision_id"),
+    ).join(attempts, on=current_authorship.KEY, how="semi")
+    reviewed = _listing_keys(articles.filter(pl.col("grade").is_in(_QUALITY)))
+    retried = reviewed.join(
+        reviewed_attempts,
+        on=["page_id", "grade", "date"],
+        how="semi",
+    )
+    inferred = (
+        b_tables["members"]
+        .filter(pl.col("listing_timestamp").is_not_null())
+        .join(
+            attempts,
+            on=current_authorship.KEY,
+            how="semi",
+            nulls_equal=True,
+        )
+        .select(
+            "page_id",
+            "grade",
+            "talk_page_id",
+            pl.col("talk_revision").alias("talk_revision_id"),
+            pl
+            .when(pl.col("revision_id").is_null())
+            .then(pl.lit("revision_retry"))
+            .otherwise(pl.lit("retry"))
+            .alias("status"),
+        )
+        .join(
+            articles.select(*_TALK_IDENTITY, "grade"),
+            on=[*_TALK_IDENTITY, "grade"],
+            how="semi",
+        )
+        .select(pl.col("page_id").cast(pl.String), "status")
+    )
+    missing_dates = articles.filter(pl.col("listed_date").is_null()).select(
+        pl.col("page_id").cast(pl.String),
+        pl
+        .when(pl.col("grade") == "Unassessed")
+        .then(pl.lit("unassessed"))
+        .otherwise(pl.lit("no_date")),
+    )
+    return {
+        "current": dict.fromkeys(current["page_id"].cast(pl.String), "retry"),
+        "listed": {
+            **dict(missing_dates.iter_rows()),
+            **dict.fromkeys(retried["page_id"].cast(pl.String), "retry"),
+            **dict(inferred.iter_rows()),
+        },
+    }
+
+
+def _missing_length_statuses(articles: pl.DataFrame) -> dict[str, str]:
+    """Describe recorded measurements that still lack a prose count.
+
+    Returns:
+        States for attempted measurements or retained older metrics.
+    """
+    return dict(
+        articles
+        .filter(
+            pl.col("prose_characters").is_null(),
+            pl.any_horizontal(
+                pl.col("measured_at", "attempted_at").is_not_null(),
+            ),
+        )
+        .select(
+            pl.col("page_id").cast(pl.String),
+            pl
+            .when(pl.col("measured_at").is_not_null())
+            .then(pl.lit("needs_measurement"))
+            .otherwise(pl.lit("retry")),
+        )
+        .iter_rows(),
+    )
+
+
 def _coverage_clocks(
     articles: pl.DataFrame,
     high: pl.DataFrame,
@@ -1117,15 +1218,7 @@ def _coverage_clocks(
         )["fetched_at"]
         .max()
     )
-    listing_keys = articles.select(
-        "page_id",
-        pl
-        .when(pl.col("grade") == "AL")
-        .then(pl.lit(["AL", "A"]))
-        .otherwise(pl.concat_list("grade"))
-        .alias("grade"),
-        pl.col("listed_date").alias("date"),
-    ).explode("grade")
+    listing_keys = _listing_keys(articles)
     listed_high = (
         high
         .filter(
@@ -1260,8 +1353,17 @@ def _refresh_locked(runtime: Path) -> bool:
     _validate(selection)
     dates, date_statuses = _assessment_date_coverage(articles, runtime)
     details = quality_details.presentation(runtime, articles["page_id"])
-    for page_id, state in date_statuses.items():
-        details["articles"].setdefault(page_id, {})["date_status"] = state
+    for key, statuses in (
+        ("date_status", date_statuses),
+        ("length_status", _missing_length_statuses(articles)),
+    ):
+        for page_id, state in statuses.items():
+            details["articles"].setdefault(page_id, {})[key] = state
+    details["authorship_lookup"] = _authorship_lookup_statuses(
+        articles,
+        b_tables,
+        authorship_attempts.load(runtime / authorship_attempts.DEFAULT_PATH),
+    )
     document = {
         "schema": 1,
         "details": details,
@@ -1442,6 +1544,15 @@ def _select_quality(
     observed = document["observed_at"]
     prepared = document["prepared_at"]
     coverage_clocks = document["coverage_updated_at"]
+    details = document.get("details", {})
+    metadata = dict(details.get("articles", {}))
+    for page_id, state in (
+        details.get("authorship_lookup", {}).get(authorship_basis, {}).items()
+    ):
+        metadata[page_id] = {
+            **metadata.get(page_id, {}),
+            "authorship_status": state,
+        }
     analysis = {
         "available": True,
         "all_grades": all_grades,
@@ -1450,7 +1561,7 @@ def _select_quality(
         "importance_available": True,
         "lengths_available": True,
         "selection": matrix,
-        "article_metadata": document.get("details", {}).get("articles", {}),
+        "article_metadata": metadata,
         "authorship_basis": authorship_basis,
         "assessment_comparison": comparison,
         "coverage_updated_at": {
@@ -1490,7 +1601,7 @@ def _select_quality(
         "observed_at": observed,
         "prepared_at": prepared,
         "authors": selected["authors"],
-        "editor_histories": document.get("details", {}).get("editors", {}),
+        "editor_histories": details.get("editors", {}),
         "all_grades": all_grades,
     }
     return {

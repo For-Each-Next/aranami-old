@@ -114,8 +114,6 @@
   </dl>
   <div>
     <dl class="analysis-detail-fields">
-      <dt>{{ t.quality_analysis.english_article }}</dt>
-      <dd>{% if details.english %}<a href="{{ details.english.url }}" lang="en">{{ details.english.title }}</a>{% if details.english.grade %} · <span lang="en">{{ details.english.grade }}</span>{% endif %}{% else %}{{ t.data.unknown }}{% endif %}</dd>
       <dt>{{ t.quality_analysis.peak_edit_year }}</dt><dd>{{ details.activity.peak_year if details.activity else t.data.unknown }}</dd>
     </dl>
     {{ edit_activity(details.activity) }}

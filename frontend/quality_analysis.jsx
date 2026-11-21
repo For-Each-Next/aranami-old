@@ -416,7 +416,7 @@ function QualityOverview(context) {
                                         <tr>
                                             <th scope="col">{"#"}</th>
                                             <th scope="col">{display(t.quality_authorship.article)}</th>
-                                            <th scope="col" data-coverage-date-column="" hidden>{t.quality_coverage.date_status}</th>
+                                            <th scope="col" data-coverage-status-column="" hidden>{t.quality_coverage.lookup_status}</th>
                                             <th scope="col" data-coverage-comparison-column={""}>
                                                 {display(t.quality_coverage.category)}
                                             </th>
@@ -838,11 +838,6 @@ function ArticleDetailsDialog(context, article, returnTo, includeContributors = 
                 </dl>
                 <div>
                     <dl class="analysis-detail-fields">
-                        <dt>{labels.english_article}</dt>
-                        <dd>{details.english ? <>
-                            <a href={attribute(details.english.url)} lang="en">{display(details.english.title)}</a>
-                            {details.english.grade ? <>{" · "}<span lang="en">{display(details.english.grade)}</span></> : null}
-                        </> : display(details.unknown)}</dd>
                         <dt>{labels.peak_edit_year}</dt><dd>{display(details.activity?.peak_year ?? details.unknown)}</dd>
                     </dl>
                     <EditActivity chart={details.activity} label={labels.edit_history} />
@@ -1000,6 +995,8 @@ function ArticleDirectory(context) {
                                                     data-importance={attribute(article?.importance)}
                                                     data-title={attribute(article?.title)}
                                                     data-assessment-date-status={article?.details?.date_status || undefined}
+                                                    data-authorship-status={article?.details?.authorship_status || undefined}
+                                                    data-length-status={article?.details?.length_status || undefined}
                                                     data-year={attribute(
                                                         hasContent(article?.listed_date)
                                                             ? article?.listed_date?.slice(0, 4)
@@ -1145,7 +1142,7 @@ function QualityContributors(context) {
                 <div
                     class="quality-authorship-table"
                     {...table_labels(context)}
-                    data-default-sort="column2"
+                    data-default-sort="column3"
                 >
                     <div class="ui-table">
                         <div
@@ -1175,7 +1172,7 @@ function QualityContributors(context) {
                                         <th scope="col" data-sort-type="number">
                                             {display(t.quality_authorship.main_article_count)}
                                         </th>
-                                        <th scope="col" data-sort-type="number">{display(t.quality_analysis.prose)}</th>
+                                        <th scope="col" data-sort-type="number" aria-sort="descending">{display(t.quality_analysis.prose)}</th>
                                         <th scope="col" data-sort-type="number">{display(t.quality_analysis.source_size)}</th>
                                         <th scope="col">
                                             {display(t.quality_authorship.latest_active)}
