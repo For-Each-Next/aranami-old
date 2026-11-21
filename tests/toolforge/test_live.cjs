@@ -1221,7 +1221,11 @@ test("dataset update sections reconcile separately and elapsed clocks need no fi
     await page.respond();
     assert.equal(page.datasetClock.textContent, "1:05.00");
     const requests = page.requests.length;
-    page.jump(1250);
+    page.jump(109);
+    assert.equal(page.datasetClock.textContent, "1:05.00");
+    page.jump(1);
+    assert.equal(page.datasetClock.textContent, "1:05.11");
+    page.jump(1140);
     assert.equal(page.datasetClock.textContent, "1:06.25");
     assert.equal(page.requests.length, requests);
     const next = fixture(1250, false, true, true, false, true);

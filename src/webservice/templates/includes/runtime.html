@@ -1,5 +1,5 @@
 <div id="server-runtime" class="ui-table">
-<div class="ui-table__table-wrapper">
+<div class="ui-table__table-wrapper table-scroll" tabindex="0" role="region" aria-labelledby="server-status-heading">
 {% if server.jobs %}
 <table class="ui-table__table server-jobs" data-no-pagination>
 <caption class="visually-hidden">{{ t.server.heading }}</caption>
@@ -13,8 +13,8 @@
 <tbody>
 {% for job in server.jobs %}
 <tr data-key="{{ job.key }}">
-<th scope="row">{{ job.name }}</th>
-<td>{{ job.type }}</td>
+<th scope="row" title="{{ job.name }}">{{ job.key }}</th>
+<td{% if job.cron %} title="{{ job.cron }}"{% endif %}>{{ job.type }}</td>
 <td><span{% if job.expires %} data-observation-expires="{{ job.expires }}" data-stale-text="{{ t.server.job_unknown }}"{% endif %}>{{ job.status }}</span></td>
 {% for metric in ('memory', 'cpu') %}
 <td><span{% if job.expires %} data-observation-expires="{{ job.expires }}" data-stale-text="{{ job.idle_usage[metric] }}"{% endif %}>{{ job.usage[metric] }}</span></td>

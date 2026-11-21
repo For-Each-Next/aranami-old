@@ -376,13 +376,14 @@ class DatasetUpdateContextTests(TestCase):
         assert "<h4>Dataset files</h4>" in rendered
 
     @staticmethod
-    def test_job_table_shows_localized_names_and_cpu_cores() -> None:
-        """Render installed jobs with bounded current samples."""
+    def test_job_table_shows_toolforge_names_status_and_usage() -> None:
+        """Show installed jobs with current usage and allocation."""
         status = status_snapshot()
         status["toolforge_schedules"] = {
             "active_since": (_NOW - dt.timedelta(hours=1)).isoformat(),
             "routines": {},
-            "collections": {
+            "collections": {},
+            "services": {
                 "project-data": {
                     "job_name": "aranami-project-data",
                     "state": "scheduled",
@@ -391,25 +392,62 @@ class DatasetUpdateContextTests(TestCase):
                     "memory_limit_bytes": 1024**3,
                     "cpu_limit": 1,
                 },
+                "pageviews": {
+                    "job_name": "aranami-pageviews",
+                    "state": "scheduled",
+                    "next_run_at": (
+                        _NOW + dt.timedelta(minutes=37)
+                    ).isoformat(),
+                    "cron": "37 * * * *",
+                    "memory_limit_bytes": 2 * 1024**3,
+                    "cpu_limit": 2,
+                },
             },
+        }
+        running = {
+            "started_at": (_NOW - dt.timedelta(seconds=10)).isoformat(),
+            "observed_at": _NOW.isoformat(),
+            "expires_at": (_NOW + dt.timedelta(seconds=35)).isoformat(),
+            "outcome": "running",
+            "resources": {"cpu_percent": 3, "memory_bytes": 768 * 1024**2},
         }
         status["toolforge_samples"] = {
-            "project-data": {
-                "started_at": (_NOW - dt.timedelta(seconds=10)).isoformat(),
-                "observed_at": _NOW.isoformat(),
-                "expires_at": (_NOW + dt.timedelta(seconds=35)).isoformat(),
-                "outcome": "running",
-                "resources": {"cpu_percent": 3, "memory_bytes": 768 * 1024**2},
+            "project-data": running,
+            "article-statistics": running,
+            "pageviews": {
+                "started_at": (_NOW - dt.timedelta(minutes=4)).isoformat(),
+                "observed_at": (_NOW - dt.timedelta(minutes=3)).isoformat(),
+                "expires_at": None,
+                "outcome": "succeeded",
+                "resources": {},
             },
         }
-        output = render_about(
-            {"version": "0.10.0.dev4"},
-            "zh-hans",
-            status=status,
-            now=_NOW,
+        config = {"version": "0.10.0.dev9"}
+        for output in (
+            render_about(config, "zh-hans", status=status, now=_NOW),
+            render_live_status(status, config, "zh-hans", _NOW),
+        ):
+            assert 'class="ui-table__table server-jobs"' in output
+            assert '<th scope="col">作业名称</th>' in output
+            assert 'title="网页服务">aranami-web</th>' in output
+            assert ">aranami-project-data</th>" in output
+            assert ">aranami-article-statistics</th>" in output
+            assert '<td title="0 * * * *">每小时第 00 分（UTC）</td>' in output
+            assert "<td>一次性</td>" in output
+            assert "已运行 10秒" in output
+            assert "已等待 3分0秒" in output
+            assert "0.03 核心 / 1 核心" in output
+            assert "768.0 MiB / 1.0 GiB" in output
+            assert "未记录 / 2.0 GiB" in output
+
+        expired = status_context(
+            Interface("en"),
+            status,
+            config["version"],
+            _NOW + dt.timedelta(seconds=35),
+        )["server"]["jobs"]
+        project = next(
+            row for row in expired if row["key"] == "aranami-project-data"
         )
-        assert '<th scope="row">网页服务</th>' in output
-        assert '<th scope="row">aranami-' not in output
-        assert "0.03 核心 / 1 核心" in output
-        assert "768.0 MiB / 1.0 GiB" in output
-        assert "每小时第 00 分" in output
+        assert project["status"] == "Unknown"
+        assert project["usage"] == project["idle_usage"]

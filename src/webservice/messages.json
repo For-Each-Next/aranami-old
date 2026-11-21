@@ -57,9 +57,10 @@
   "server.hub": {"en": "Hub", "zh-hans": "调度服务（Hub）", "zh-hant": "排程服務（Hub）"},
   "server.web": {"en": "Web", "zh-hans": "网页服务（Web）", "zh-hant": "網頁服務（Web）"},
   "server.web_service": {"en": "Web service", "zh-hans": "网页服务", "zh-hant": "網頁服務"},
-  "server.job": {"en": "Job", "zh-hans": "作业", "zh-hant": "作業"},
-  "server.job_type": {"en": "Schedule", "zh-hans": "运行方式", "zh-hant": "執行方式"},
+  "server.job": {"en": "Job name", "zh-hans": "作业名称", "zh-hant": "作業名稱"},
+  "server.job_type": {"en": "Job type", "zh-hans": "作业类型", "zh-hant": "作業類型"},
   "server.job_continuous": {"en": "Continuous", "zh-hans": "持续运行", "zh-hant": "持續執行"},
+  "server.job_one_off": {"en": "One-off", "zh-hans": "一次性", "zh-hant": "一次性"},
   "server.job_temporary": {"en": "On demand", "zh-hans": "按需运行", "zh-hant": "按需執行"},
   "server.job_succeeded": {"en": "Completed", "zh-hans": "已完成", "zh-hant": "已完成"},
   "server.job_hourly": {
@@ -96,6 +97,11 @@
   },
   "server.job_running": {"en": "Running", "zh-hans": "运行中", "zh-hant": "執行中"},
   "server.job_pending": {"en": "Pending", "zh-hans": "等待排程", "zh-hant": "等待排程"},
+  "server.job_pending_for": {
+    "en": "Pending for {duration}",
+    "zh-hans": "已等待 {duration}",
+    "zh-hant": "已等候 {duration}"
+  },
   "server.job_failed": {"en": "Failed", "zh-hans": "失败", "zh-hant": "失敗"},
   "server.job_deferred": {"en": "Deferred", "zh-hans": "已延后", "zh-hant": "已延後"},
   "server.job_interrupted": {"en": "Interrupted", "zh-hans": "已中断", "zh-hant": "已中斷"},
@@ -107,7 +113,7 @@
     "zh-hant": "最近觀測"
   },
   "server.memory": {
-    "en": "Memory",
+    "en": "RAM",
     "zh-hans": "内存",
     "zh-hant": "記憶體"
   },

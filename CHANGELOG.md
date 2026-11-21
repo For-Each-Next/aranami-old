@@ -27,6 +27,9 @@ Article Statistics.
 - Scaled violin height against the largest measured cohort and standardized
   percentile ticks, mean crosses, and label alignment.
 - Matched browser violin shapes to Matplotlib's default density settings.
+- Displayed Toolforge job names, types, status durations, RAM, and CPU in the
+  server status table.
+- Refreshed the running-job elapsed display every 110 ms in the browser.
 - Gave the destructive filter reset its own row and set table pages to ten.
 - Linked registered contributors by their saved Wikipedia IDs and retried
   incomplete significant-contributor measurements.

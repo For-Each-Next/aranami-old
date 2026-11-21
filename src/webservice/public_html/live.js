@@ -314,7 +314,7 @@
         updateClocks();
         updateNotice();
         const datasetClocks = [...(document.getElementById("dataset-updates-current")?.querySelectorAll("[data-clock]") || [])].some(node => node.dataset.clock === "dataset-elapsed");
-        clockTimer = setTimeout(tick, datasetClocks ? 100 : 1000);
+        clockTimer = setTimeout(tick, datasetClocks ? 110 : 1000);
     }
     const key = (node) =>
         node.nodeType === Node.ELEMENT_NODE

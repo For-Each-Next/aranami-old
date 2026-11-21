@@ -401,8 +401,8 @@ function JobTable({ jobs, t }) {
             <tbody>
                 {jobs.map(job => (
                     <tr key={job.key} data-key={job.key}>
-                        <th scope="row">{job.name}</th>
-                        <td>{job.type}</td>
+                        <th scope="row" title={job.name}>{job.key}</th>
+                        <td title={job.cron ?? undefined}>{job.type}</td>
                         <td>
                             <span data-observation-expires={job.expires ?? undefined}
                                 data-stale-text={job.expires ? t.server.job_unknown : undefined}>
@@ -429,7 +429,8 @@ export function Runtime(context) {
     const { server, t } = context;
     return (
         <div id="server-runtime" class="ui-table">
-            <div class="ui-table__table-wrapper">
+            <div class="ui-table__table-wrapper table-scroll" tabindex="0"
+                role="region" aria-labelledby="server-status-heading">
                 {server?.jobs?.length ? <JobTable jobs={server.jobs} t={t} /> : (
                 <table class="ui-table__table server-metrics" data-no-pagination="">
                     <caption class="visually-hidden">{t.server.heading}</caption>

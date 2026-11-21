@@ -662,20 +662,20 @@ def _job_state(
     interface: Interface,
     now: dt.datetime,
     outcome: str,
-    started: str | None,
+    since: str | None,
 ) -> str:
     """Localize the current lifecycle with elapsed time when observed.
 
     Returns:
         Human-readable lifecycle for the Toolforge status table.
     """
-    if outcome == "running" and (instant := timestamp(started)):
+    if outcome in {"running", "pending"} and (instant := timestamp(since)):
         elapsed = duration(
             max(0, (now - instant).total_seconds()),
             interface,
             running=True,
         ).removesuffix("…")
-        return interface.text("server.job_running_for", duration=elapsed)
+        return interface.text(f"server.job_{outcome}_for", duration=elapsed)
     return interface.text(f"server.job_{outcome}")
 
 
@@ -700,18 +700,26 @@ def _scheduled_job_row(
     expiry = None
     resources = {}
     outcome = "pending"
-    started = None
+    since = None
     if observed and (execution_at is None or execution_at <= observed):
-        started = sample["started_at"]
         outcome = sample["outcome"]
-        if outcome == "running" and sample["expires_at"]:
-            resources = sample["resources"]
-            expiry = sample["expires_at"]
+        since = sample["started_at"]
+        if outcome == "succeeded":
+            since = sample["observed_at"]
         elif outcome == "running":
-            outcome = "unknown"
+            expires = timestamp(sample["expires_at"])
+            if expires and now < expires:
+                resources = sample["resources"]
+                expiry = sample["expires_at"]
+            else:
+                outcome = "unknown"
     elif execution_at is not None:
-        started = execution["started_at"]
         outcome = execution["outcome"]
+        since = (
+            execution.get("finished_at")
+            if outcome == "succeeded"
+            else execution["started_at"]
+        )
         heartbeat = timestamp(execution.get("updated_at"))
         if outcome == "running":
             expires = (
@@ -721,14 +729,18 @@ def _scheduled_job_row(
                 expiry = expires.isoformat()
             else:
                 outcome = "unknown"
-    if outcome == "succeeded" and schedule["cron"] is not None:
+    cron = schedule["cron"]
+    if outcome == "succeeded" and cron is not None:
         outcome = "pending"
     if schedule["state"] == "paused" and outcome != "running":
         outcome = "paused"
     return {
         "key": schedule["job_name"],
-        "type": job_schedule(interface, schedule),
-        "status": _job_state(interface, now, outcome, started),
+        "type": job_schedule(interface, schedule)
+        if cron is not None
+        else interface.text("server.job_one_off"),
+        "cron": cron,
+        "status": _job_state(interface, now, outcome, since),
         "expires": expiry,
         "usage": _job_usage(interface, resources, schedule),
         "idle_usage": _job_usage(interface, {}, schedule),
@@ -797,7 +809,10 @@ def _toolforge_rows(
                 if task not in schedules and task in samples
             },
         }
-    for task, schedule in schedules.items():
+    for task, schedule in sorted(
+        schedules.items(),
+        key=lambda item: (item[1]["cron"] is None, item[1]["job_name"]),
+    ):
         rows.append({
             **_scheduled_job_row(
                 interface,
