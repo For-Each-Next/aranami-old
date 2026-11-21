@@ -11,7 +11,6 @@ from operator import itemgetter
 from time import monotonic
 from typing import TYPE_CHECKING
 
-import polars as pl
 import regex
 
 from data.articles import quality_pages
@@ -60,7 +59,6 @@ _COLUMNS = (
     "prose_characters",
     "source_bytes",
 )
-_DENSITY = pl.List(pl.Struct({"position": pl.Float64, "density": pl.Float64}))
 
 
 class DirectorySearchError(ValueError):
@@ -443,57 +441,29 @@ def _coverage(
 
 
 def _violin_groups(cells: list[dict], query: dict) -> dict:
-    """Summarize saved histograms and densities per plotted category.
+    """Derive each cohort's density and marks from its histogram.
 
     Returns:
         The rendered violin inputs without per-cell samples.
     """
     summary = {"grade": {}, "importance": {}}
-    if not cells:
-        return summary
-    stats = quartiles(
+    for item in quartiles(
         cells,
         list({cell["grade"] for cell in cells}),
         query["last"],
-    )
-    frame = pl.DataFrame(
-        cells,
-        schema={
-            "grade": pl.String,
-            "importance": pl.String,
-            "density": _DENSITY,
-        },
-    )
-    for dimension in summary:
-        points = (
-            frame
-            .select(dimension, "density")
-            .explode("density")
-            .unnest("density")
-            .drop_nulls("position")
-            .group_by(dimension, "position")
-            .agg(pl.col("density").sum())
-            .with_columns(
-                (
-                    pl.col("density") / pl.col("density").max().over(dimension)
-                ).fill_nan(0),
-            )
-            .sort(dimension, "position")
-            .group_by(dimension, maintain_order=True)
-            .agg(pl.concat_list("position", "density").alias("points"))
-        )
-        density = dict(points.iter_rows())
-        summary[dimension] = {
-            item[dimension]: {
-                "minimum": item["minimum"],
-                "maximum": item["maximum"],
-                "mean": item["mean"],
-                "quartiles": [item["p25"], item["p75"]],
-                "quantiles": [None, None, item["p50"]],
-                "density": density.get(item[dimension], []),
-            }
-            for item in stats
-            if item["group"] == dimension
+        include_density=True,
+    ):
+        dimension = item["group"]
+        summary[dimension][item[dimension]] = {
+            "minimum": item["minimum"],
+            "maximum": item["maximum"],
+            "mean": item["mean"],
+            "quartiles": [item["p25"], item["p75"]],
+            "quantiles": [None, None, item["p50"]],
+            "density": [
+                [point["position"], point["density"]]
+                for point in item["density"]
+            ],
         }
     return summary
 

@@ -272,6 +272,7 @@ def _lengths(
             selection.get("cells", []),
             [row["grade"] for row in data.get("grade_totals", [])],
             selection.get("last_year", 9999),
+            include_density=True,
         )
     }
     visible = [
@@ -299,6 +300,7 @@ def _lengths(
         )
         lengths.append({
             **row,
+            "density": points.get("density", row.get("density", [])),
             "label": grade_label(row["grade"], interface)
             if row["group"] == "grade"
             else interface.text(f"assessment.importance.{row['importance']}"),

@@ -17,6 +17,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from matplotlib.cbook import violin_stats
+from matplotlib.mlab import GaussianKDE
 from starlette.testclient import TestClient
 from test_quality_analysis import analysis_fixture
 from test_quality_authorship import (
@@ -250,9 +252,25 @@ class QualityResourcePresentationTests(unittest.TestCase):
                 ],
             },
         ]
-        result = quartiles(cells, ["FA"], 2026)
-        assert all(isclose(row["mean"], 2000 / 3) for row in result)
-        assert all(row["maximum"] == 1000 for row in result)
+        result = quartiles(cells, ["FA"], 2026, include_density=True)
+        (reference,) = violin_stats(
+            [[0, 1000, 1000]],
+            lambda values, coordinates: GaussianKDE(values).evaluate(
+                coordinates,
+            ),
+        )
+        peak = reference["vals"].max()
+        for row in result:
+            assert isclose(row["mean"], 2000 / 3)
+            assert row["maximum"] == 1000
+            for point, coordinate, value in zip(
+                row["density"],
+                reference["coords"],
+                reference["vals"],
+                strict=True,
+            ):
+                assert isclose(point["position"], coordinate)
+                assert isclose(point["density"], value / peak)
 
     @staticmethod
     def test_missing_listing_dates_are_unlinked_in_every_directory() -> None:
@@ -794,6 +812,9 @@ class QualityResourcePresentationTests(unittest.TestCase):
             interface = Interface(locale)
             result = quality_analysis_context(data, interface)
             length = result["quality_analysis"]["lengths"][0]
+            assert len(length["density"]) == 100
+            assert length["density"][0]["position"] == 0
+            assert length["density"][-1]["position"] == 40
             assert (
                 result["quality_analysis"]["matrix"]["length_scale_maximum"]
                 == 25_000
@@ -1256,7 +1277,6 @@ class QualityResourceHTTPTests(unittest.TestCase):
                     "dates": 100,
                     "length": 100,
                 }
-                assert summary["lengths"]["grade"]["FA"]["quartiles"] == [
-                    1000,
-                    1000,
-                ]
+                length = summary["lengths"]["grade"]["FA"]
+                assert length["quartiles"] == [1000, 1000]
+                assert length["density"] == []

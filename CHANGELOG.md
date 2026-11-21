@@ -26,6 +26,7 @@ Article Statistics.
 - Used cards and execution details in About and localized weekly schedules.
 - Scaled violin height against the largest measured cohort and standardized
   percentile ticks, mean crosses, and label alignment.
+- Matched browser violin shapes to Matplotlib's default density settings.
 - Gave the destructive filter reset its own row and set table pages to ten.
 - Linked registered contributors by their saved Wikipedia IDs and retried
   incomplete significant-contributor measurements.

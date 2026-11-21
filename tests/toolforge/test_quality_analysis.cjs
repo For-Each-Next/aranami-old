@@ -92,8 +92,11 @@ test("saved cells combine exact quantiles without treating unknown measurements 
     assert.equal(combined.pages, 4);
     assert.equal(combined.measured, 3);
     assert.equal(combined.quantiles[2], 10);
-    assert.equal(combined.density[1][1], .6);
-    assert.ok(Math.abs(combined.density[0][1] - .3) < 1e-12);
+    assert.equal(combined.density.length, 100);
+    assert.equal(combined.density[0][0], 0);
+    assert.equal(combined.density.at(-1)[0], 20);
+    // Matplotlib's normalized default KDE for [0, 10, 20].
+    assert.ok(Math.abs(combined.density[0][1] - .7837268335149635) < 1e-12);
     assert.equal(context.combineCells([]).quantiles[2], null);
 });
 
@@ -692,16 +695,14 @@ test("violin scale maximum uses all observed catalog lengths and ignores empty b
 
 test("violin positions stay fixed when other groups and long articles are filtered", () => {
     const cell = maximum => ({pages: 3, measured: 3,
-        histogram: [{value: 0, count: 1}, {value: 50000, count: 1}, {value: maximum, count: 1}],
-        density: [{position: 50000, density: 1}, {position: maximum, density: .25}]});
+        histogram: [{value: 0, count: 1}, {value: 50000, count: 1}, {value: maximum, count: 1}]});
     const all = [cell(75000), cell(100000)], maximum = context.proseLengthMaximum(all);
     for (const selected of [[all[0]], [all[1]], all]) {
         const statistics = context.combineCells(selected);
         const expected = context.proseLengthPosition(50000, 100000);
         assert.equal(context.proseLengthPosition(statistics.quantiles[2], maximum), expected);
-        const anchor = statistics.density.find(([length]) => length === 50000);
-        assert.equal(context.proseLengthPosition(anchor[0], maximum), expected);
-        assert.equal(anchor[1], selected.length);
+        assert.equal(statistics.density[0][0], 0);
+        assert.equal(statistics.density.at(-1)[0], statistics.maximum);
     }
 });
 
@@ -885,12 +886,13 @@ test("tooltip lengths use two significant digits with integer display while arti
 });
 
 
-test("violin paths are smooth and annual ticks are plain rounded integers", () => {
-    const curve = context.violinDensityPath([[0, 0], [50, .8], [100, 1], [150, .3], [200, 0]], 25000);
-    assert.match(curve, /^M /);
-    assert.equal((curve.match(/ C /g) || []).length, 8);
-    assert.match(curve, / Z$/);
+test("violin paths mirror the sampled density and close at the measured endpoints", () => {
+    const curve = context.violinDensityPath([[0, .2], [100, 1], [200, .1]], 25000);
+    assert.equal(curve, "M 10.000 18.400 L 13.600 4.000 L 17.200 20.200 L 17.200 23.800 L 13.600 40.000 L 10.000 25.600 Z");
     assert.equal(context.violinDensityPath([[0, 1]], 25000), "");
+});
+
+test("annual ticks are plain rounded integers", () => {
     assert.deepEqual(Array.from(context.annualCountTicks(2200)), [0, 500, 1000, 1500, 2000, 2500]);
     assert.deepEqual(Array.from(context.annualCountTicks(2)), [0, 1, 2]);
     assert.equal(context.groupedNumber(13088), "13\u2009088");

@@ -71,16 +71,16 @@ Miniature horizontal violin charts sit beside the quality and importance
 counts. The first 90% of the horizontal axis covers 0–25,000 characters
 linearly. The remaining 10% uses a logarithmic tail up to the shared catalog
 maximum. Fill starts at the observed minimum and ends at the observed maximum.
-A shared vertical scale gives 10,000 measured items 100% reference area,
-1,000 items 90%, and 100 items 80%. Each tenfold decrease subtracts ten
-percentage points.
+The largest measured group sets the full height. Each tenfold decrease in
+measured items subtracts ten percentage points.
 
 One distinct length appears as a single bar. With two distinct measurements,
 the plot shows the extrema and the arithmetic mean. The median appears from
-three measured items and the quartiles from four. The red cross marks the
+three measured items and the quartiles from four. The cross marks the
 mean. Tooltips and the accessible label describe the visible statistics.
-The browser uses saved density samples and histograms. Matplotlib follows
-the same rules for the native figures.
+Browser figures follow Matplotlib's default Gaussian density settings.
+Each selected cohort uses 100 samples and Scott's bandwidth computed from
+its saved length histogram.
 
 NA and Bottom importance groups are omitted. A/AL groups hide when their
 current count is zero. Central 68% and 95% intervals use empirical
@@ -144,7 +144,7 @@ page, a server-side directory and individual contributor detail pages.
 The browser draws the default figures from the prepared summaries.
 Selecting **Apply filters** requests counts and plotted length summaries for
 the confirmed cohort. The pies and annual stacked bars use stored counts.
-Violin summaries use saved densities and exact length histograms.
+Violin summaries use exact saved length histograms.
 Focused figures accept arrow keys, plus/minus
 and Home for pan, zoom and reset. Figures link to paginated article lists.
 Script-free views use prepared Matplotlib figures and native tables.

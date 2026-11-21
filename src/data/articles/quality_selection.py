@@ -1,20 +1,21 @@
 """Prepare additive matrix cells for offline quality-report selection.
 
-Each grade, importance and year cell retains counts, a length histogram
-and a shared-grid Gaussian density sum. Browsers combine these saved
-statistics when filters change; the webservice never parses source text.
+Each grade, importance and year cell retains counts and a histogram.
+Chart consumers combine those histograms before sampling the density.
 """
 
 from __future__ import annotations
 
 import math
 
+import numpy as np
 import polars as pl
 
 from shared.support.files import encode_json
 
 KEY = ["grade", "importance", "year"]
 _POINTS = 129
+_VIOLIN_POINTS = 100
 _DEFAULT_VARIANTS = 2
 _MIN_YEAR = 2009
 _MAX_YEAR = 9999
@@ -109,12 +110,20 @@ def quartiles(
     saved: list[dict],
     grades: list[str],
     last_year: int,
+    *,
+    include_density: bool = False,
 ) -> list[dict]:
-    """Derive cohort quartiles, mean and extrema from saved histograms.
+    """Derive cohort statistics from saved histograms.
+
+    Args:
+        saved: Cells containing counted lengths.
+        grades: Assessment grades included in the cohort.
+        last_year: Inclusive final year for dated observations.
+        include_density: Calculate the display density for each cohort.
 
     Returns:
         P25, P50, P75, weighted mean and observed extrema for each grade
-        and importance group.
+        and importance group, plus display density when requested.
         Missing histograms produce no percentile observations.
     """
     if not saved:
@@ -164,12 +173,52 @@ def quartiles(
                 _weighted_quantile(0.25).alias("p25"),
                 _weighted_quantile(0.5).alias("p50"),
                 _weighted_quantile(0.75).alias("p75"),
+                *(["value", "count"] if include_density else []),
             )
         )
-        output.extend(
-            {"group": dimension, **row} for row in histogram.to_dicts()
-        )
+        for row in histogram.to_dicts():
+            if include_density:
+                row["density"] = _violin_density(
+                    row.pop("value"),
+                    row.pop("count"),
+                    row["mean"],
+                )
+            output.append({"group": dimension, **row})
     return output
+
+
+def _violin_density(
+    lengths: list[int],
+    counts: list[int],
+    mean: float,
+) -> list[dict[str, float]]:
+    """Sample Matplotlib's default KDE from counted observations.
+
+    Use Scott's factor and sample variance as if each count had been
+    expanded. Evaluate one position at a time to bound memory use.
+
+    Returns:
+        Peak-normalized density on 100 points from minimum to maximum,
+        or an empty list when every observation is the same.
+    """
+    if lengths[0] == lengths[-1]:
+        return []
+    values = np.asarray(lengths, dtype=np.float64)
+    frequencies = np.asarray(counts, dtype=np.float64)
+    count = frequencies.sum()
+    variance = (frequencies * np.square(values - mean)).sum() / (count - 1)
+    bandwidth = np.sqrt(variance) * count**-0.2
+    positions = np.linspace(values[0], values[-1], _VIOLIN_POINTS)
+    density = np.array([
+        (
+            frequencies * np.exp(-0.5 * np.square((values - x) / bandwidth))
+        ).sum()
+        for x in positions
+    ])
+    return [
+        {"position": float(x), "density": float(height)}
+        for x, height in zip(positions, density / density.max(), strict=True)
+    ]
 
 
 def _weighted_quantile(share: float) -> pl.Expr:

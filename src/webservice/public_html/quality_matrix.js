@@ -127,27 +127,42 @@ export function histogramQuantile(histogram, probability) {
     return low + (at(Math.ceil(position)) - low) * (position % 1);
 }
 
+/** Sample the selected cohort with Scott's bandwidth and peak normalization. */
+function violinDensity(histogram, minimum, maximum, count, mean) {
+    if (minimum === maximum) return [];
+    const variance = histogram.reduce((sum, [value, frequency]) => sum + frequency * (value - mean) ** 2, 0) / (count - 1);
+    const bandwidth = Math.sqrt(variance) * count ** -.2;
+    const samplePoints = 100;
+    const points = Array.from({length: samplePoints}, (_, index) => {
+        const position = minimum + (maximum - minimum) * (index / (samplePoints - 1));
+        const density = histogram.reduce((sum, [value, frequency]) =>
+            sum + frequency * Math.exp(-.5 * ((value - position) / bandwidth) ** 2), 0);
+        return [position, density];
+    });
+    const peak = Math.max(...points.map(([, density]) => density));
+    return points.map(([position, density]) => [position, density / peak]);
+}
+
 /** Add prepared cells, retaining missing length measurements separately. */
 export function combineCells(cells) {
     const histogram = new Map();
-    const points = new Map();
     let pages = 0, measured = 0;
     for (const cell of cells) {
         pages += cell.pages;
         measured += cell.measured;
         for (const item of cell.histogram) histogram.set(item.value, (histogram.get(item.value) || 0) + item.count);
-        for (const item of cell.density) points.set(item.position, (points.get(item.position) || 0) + item.density);
     }
-    const observed = [...histogram].filter(([, count]) => count > 0).map(([value]) => value);
-    const observedCount = observed.reduce((sum, value) => sum + histogram.get(value), 0);
+    const observed = [...histogram].filter(([, count]) => count > 0);
+    const lengths = observed.map(([value]) => value);
+    const count = observed.reduce((sum, [, frequency]) => sum + frequency, 0);
+    const mean = count ? observed.reduce((sum, [value, frequency]) => sum + value * frequency, 0) / count : null;
+    const minimum = count ? Math.min(...lengths) : null;
+    const maximum = count ? Math.max(...lengths) : null;
     return {
-        pages, measured,
-        mean: observedCount ? observed.reduce((sum, value) => sum + value * histogram.get(value), 0) / observedCount : null,
-        minimum: observed.length ? Math.min(...observed) : null,
-        maximum: observed.length ? Math.max(...observed) : null,
+        pages, measured, mean, minimum, maximum,
         quantiles: [.025, .16, .5, .84, .975].map(p => histogramQuantile(histogram, p)),
         quartiles: [.25, .75].map(p => histogramQuantile(histogram, p)),
-        density: [...points].sort((a, b) => a[0] - b[0]),
+        density: violinDensity(observed, minimum, maximum, count, mean),
     };
 }
 
@@ -315,26 +330,13 @@ export function violinHeight(measured, maximumMeasured) {
     return measured > 0 ? 1 + Math.log10(measured / maximumMeasured) / 10 : 0;
 }
 
-/** Draw symmetric curves with flat end caps inside the observed range. */
+/** Mirror the sampled density as a closed polygon over the observed range. */
 export function violinDensityPath(density, maximum, scale = 18) {
-    const points = density.map(([value, height]) => [10 + proseLengthPosition(value, maximum), scale * height]);
-    if (points.length < 2) return "";
-    const coordinate = ([x, height], side) => `${x.toFixed(3)} ${(22 + side * height).toFixed(3)}`;
-    function edge(points, side) {
-        return points.slice(1).map(([x, height], index) => {
-            const [previous, previousHeight] = points[index];
-            const span = (x - previous) / 3;
-            const controls = [[previous + span, previousHeight], [x - span, height], [x, height]];
-            return "C " + controls.map(point => coordinate(point, side)).join(" ");
-        });
-    }
-    return [
-        "M " + coordinate(points[0], -1),
-        ...edge(points, -1),
-        "L " + coordinate(points.at(-1), 1),
-        ...edge(points.toReversed(), 1),
-        "Z",
-    ].join(" ");
+    if (density.length < 2) return "";
+    const points = density.map(([value, height]) => [(10 + proseLengthPosition(value, maximum)).toFixed(3), scale * height]);
+    const top = points.map(([x, height]) => `${x} ${(22 - height).toFixed(3)}`);
+    const bottom = points.toReversed().map(([x, height]) => `${x} ${(22 + height).toFixed(3)}`);
+    return `M ${top.concat(bottom).join(" L ")} Z`;
 }
 
 /** Draw measured lengths and show one bar for a single distinct value. */
@@ -351,10 +353,13 @@ function violinFigure(summary, group, option, labels, maximum, maximumMeasured) 
     plot.append(svgNode("line", {x1: 10, x2: 1010, y1: 22, y2: 22, class: "analysis-violin-track"}));
     const height = 18 * violinHeight(summary.measured, maximumMeasured);
     const outline = violinDensityPath(summary.density, maximum, height);
+    const capHeight = outline ? height / 2 : 7;
     if (outline) {
         plot.append(svgNode("path", {
             d: outline,
             class: "analysis-violin-density", fill: option.color,
+        }), svgNode("line", {
+            x1: x(summary.minimum), x2: x(summary.maximum), y1: 22, y2: 22, class: "analysis-violin-spine",
         }));
     }
     const markers = summary.minimum !== null && summary.minimum === summary.maximum
@@ -383,10 +388,11 @@ function violinFigure(summary, group, option, labels, maximum, maximumMeasured) 
                 x1: position, x2: position, y1: 19, y2: 25,
             });
         } else {
+            const halfHeight = kind === "p50" ? 5 : capHeight;
             mark = svgNode("line", {
                 ...attributes, class: kind === "length" ? "analysis-violin-single"
                     : kind === "p50" ? "analysis-violin-median" : "analysis-violin-extreme",
-                x1: position, x2: position, y1: kind === "p50" ? 17 : 15, y2: kind === "p50" ? 27 : 29,
+                x1: position, x2: position, y1: 22 - halfHeight, y2: 22 + halfHeight,
                 ...(kind === "minimum" || kind === "maximum" ? {"data-extreme": kind} : {}),
             });
         }

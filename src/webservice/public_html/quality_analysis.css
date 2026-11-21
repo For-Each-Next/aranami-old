@@ -30,10 +30,15 @@
 .analysis-legend { display: flex; flex-wrap: wrap; gap: .4rem 1rem; list-style: none; padding: 0; font-size: .85rem; }
 .analysis-legend li { white-space: nowrap; }
 .analysis-violin-density { fill-opacity: .75; stroke: var(--border-color-interactive); stroke-width: 1; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.analysis-mini-violin[data-chart-renderer="browser"] .analysis-violin-density { fill-opacity: .3; stroke: none; }
 .analysis-violin-track { stroke: var(--border-color-subtle); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.analysis-violin-spine { stroke: var(--color-emphasized); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .analysis-violin-extreme, .analysis-violin-single { stroke: var(--color-emphasized); stroke-width: 2; vector-effect: non-scaling-stroke; }
 .analysis-violin-median, .analysis-violin-quartile, .analysis-violin-mean :is(line, use) { stroke: var(--color-emphasized); stroke-width: 1; vector-effect: non-scaling-stroke; }
-@media (forced-colors: active) { .analysis-violin-density { fill: Highlight; stroke: CanvasText; } .analysis-violin-track, .analysis-violin-median, .analysis-violin-extreme, .analysis-violin-single, .analysis-violin-quartile, .analysis-violin-mean line { stroke: CanvasText; } }
+@media (forced-colors: active) {
+    .analysis-violin-density, .analysis-mini-violin[data-chart-renderer="browser"] .analysis-violin-density { fill: Highlight; stroke: CanvasText; }
+    .analysis-violin-track, .analysis-violin-spine, .analysis-violin-median, .analysis-violin-extreme, .analysis-violin-single, .analysis-violin-quartile, .analysis-violin-mean line { stroke: CanvasText; }
+}
 .analysis-filters { display: grid; grid-template-columns: minmax(0, 1fr); gap: .5rem; margin-block: 1rem; }
 .analysis-filters[hidden], .analysis-directory [hidden] { display: none; }
 .analysis-filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; }
