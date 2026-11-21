@@ -49,8 +49,8 @@ ALLOCATIONS = {
     "quality-analysis": JobAllocation(42, 4, 1024, 200),
     "quality-authorship": JobAllocation(47, 11, 1536, 250),
 }
-WEB_MEMORY = 1024
-WEB_CPU = 250
+WEB_MEMORY = 2048
+WEB_CPU = 1000
 
 
 def next_launch(name: str, now: dt.datetime) -> dt.datetime:

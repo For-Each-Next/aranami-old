@@ -533,6 +533,21 @@ def _service_expiry(service: Record) -> str | None:
     return None
 
 
+def _core_label(interface: Interface, cores: float | None) -> str:
+    """Format an observed CPU count without losing small fractions.
+
+    Returns:
+        Localized cores, or the status label for a missing observation.
+    """
+    if cores is None:
+        return interface.text("ops.unavailable")
+    count = f"{cores:.3f}".rstrip("0").rstrip(".")
+    return interface.text(
+        "server.cpu_core" if count == "1" else "server.cpu_cores",
+        count=count,
+    )
+
+
 def _runtime_cells(
     interface: Interface,
     service: Record,
@@ -556,12 +571,12 @@ def _runtime_cells(
     limit = usage.get("memory_limit_bytes")
     cpu = usage.get("cpu_percent")
     cpu_limit = usage.get("cpu_limit")
-    cpu_label = f"{cpu:.1f}%" if cpu is not None else unknown
-    if cpu_limit is not None:
-        cpu_label += " " + interface.text(
-            "server.cpu_core" if cpu_limit == 1 else "server.cpu_cores",
-            count=f"{cpu_limit:g}",
-        )
+    cpu_label = (
+        f"{_core_label(interface, cpu / 100 if cpu is not None else None)}"
+        f" / {_core_label(interface, cpu_limit)}"
+        if cpu is not None or cpu_limit is not None
+        else unknown
+    )
     build = built_at or resources.get("aranami_built_at")
     heartbeat = service.get("heartbeat_at")
     return {

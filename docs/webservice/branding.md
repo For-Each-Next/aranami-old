@@ -6,11 +6,10 @@ accessible name “Aranami.” Artwork is under
 `src/webservice/public_html/assets/images/`: `aranami-wordmark.png`,
 `aranami-icon.png` and the 32-pixel `favicon.png`.
 
-The project artwork was generated with ImageGen and prepared for web use. Its
-visual specification is a compact curling wave suggesting an A in negative
-space, blue `#3366cc` and navy `#202122`, simple geometry and clear humanist
-lettering. It has no badge, decorative texture or shadow. New variants should
-remain recognizably consistent with that artwork and the project's CC0 license.
+The Aranami mark is an angular wave with a cutout that suggests an A. Use
+blue `#3366cc` and navy `#202122`, with flat fills and clear lettering.
+The vector source is `aranami.svg`. Use the same silhouette on browser and
+touch icons. The original project artwork is CC0.
 
 The interface uses native HTML and local CSS: neutral surfaces, accessible contrast,
 visible focus and native fallback controls. Header links use near-black text,

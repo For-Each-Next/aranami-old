@@ -42,8 +42,8 @@ class TestJobDefinitions(TestCase):
 
     @staticmethod
     def test_allocations_leave_promotion_headroom() -> None:
-        """Budget an extra web pod and the default setup one-off."""
-        max_pods, max_memory_mib, max_cpu_millicores = 10, 8192, 2000
+        """Budget a Recreate web job and the setup one-off."""
+        max_pods, max_memory_mib, max_cpu_millicores = 16, 8192, 16000
         for hour in range(24):
             for minute in range(60):
                 active = [
@@ -54,15 +54,13 @@ class TestJobDefinitions(TestCase):
                     <= minute
                     < limits.minute + limits.minutes
                 ]
-                assert 3 + len(active) <= max_pods
+                assert 2 + len(active) <= max_pods
                 assert (
-                    512
-                    + 2 * WEB_MEMORY
-                    + sum(limits.memory for limits in active)
+                    512 + WEB_MEMORY + sum(limits.memory for limits in active)
                     <= max_memory_mib
                 )
                 assert (
-                    100 + 2 * WEB_CPU + sum(limits.cpu for limits in active)
+                    100 + WEB_CPU + sum(limits.cpu for limits in active)
                     <= max_cpu_millicores
                 )
 

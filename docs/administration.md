@@ -167,14 +167,15 @@ cycle. Each job's lease and receipt guard duplicate runs.
 
 ### CPU and memory
 
-The starting profile has one continuous job and thirteen scheduled jobs. The
-published web job gets 1 GiB and 250 millicores, while the scheduled jobs get
-512 MiB to 2 GiB each. The projected maximum across planned launch windows
-is 5.75 GiB, 1.3 CPU cores and seven pods including web. With one additional web
-pod and a default setup job, the budget reaches 7.25 GiB, 1.65 cores and nine
-pods. Delayed pods and other jobs also draw from the tool's quota. Check
-actual allocations and runtimes on the tool account before changing limits
-or running extra jobs. [Job quotas][job-quotas] [Kubernetes quotas][quotas]
+The starting profile has one continuous job and thirteen scheduled jobs.
+The published web job gets 2 GiB and one CPU core based on its observed
+working set. Scheduled jobs get 512 MiB to 2 GiB each. The busiest planned
+window uses 6.75 GiB, 2.05 CPU cores and seven pods including web. The setup
+job raises that to 7.25 GiB, 2.15 cores and eight pods. Aranami's Toolforge
+account has 8 GiB, 16 cores and 16 pods. Its web Deployment uses Recreate,
+which releases its old pod before starting the replacement. Check actual
+allocations, other running jobs and rollout strategy before changing limits.
+[Job quotas][job-quotas] [Kubernetes quotas][quotas]
 
 [Jobs and allocations](../src/shared/toolforge_jobs.py) defines the launch
 minutes and per-job deadlines. Confirm that each collector and report finishes

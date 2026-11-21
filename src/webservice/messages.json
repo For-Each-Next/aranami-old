@@ -68,23 +68,18 @@
   },
   "server.cpu": {
     "en": "CPU use",
-    "zh-hans": "CPU使用率",
-    "zh-hant": "CPU使用率"
+    "zh-hans": "CPU 用量",
+    "zh-hant": "CPU 用量"
   },
   "server.cpu_core": {
-    "en": "({count} core)",
-    "zh-hans": "（{count}核心）",
-    "zh-hant": "（{count}核心）"
+    "en": "{count} core",
+    "zh-hans": "{count} 核心",
+    "zh-hant": "{count} 核心"
   },
   "server.cpu_cores": {
-    "en": "({count} cores)",
-    "zh-hans": "（{count}核心）",
-    "zh-hant": "（{count}核心）"
-  },
-  "server.cpu_cores_unknown": {
-    "en": "(core allocation unavailable)",
-    "zh-hans": "（核心数未获取）",
-    "zh-hant": "（核心數未取得）"
+    "en": "{count} cores",
+    "zh-hans": "{count} 核心",
+    "zh-hant": "{count} 核心"
   },
   "server.started": {
     "en": "started at ",

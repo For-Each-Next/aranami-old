@@ -319,11 +319,22 @@ class StatusPresentationTests(unittest.TestCase):  # ruff: ignore[too-many-publi
         )
         rows = self.context()["server"]["rows"]
         assert rows[2]["cells"][0]["value"].startswith("0 B / ")
-        assert rows[3]["cells"][0]["value"] == "0.0%"
+        unknown = Interface("en").text("ops.unavailable")
+        assert rows[3]["cells"][0]["value"] == f"0 cores / {unknown}"
+        resources = self.status["services"]["scheduler"]["resources"]
+        resources.update(cpu_percent=3, cpu_limit=1)
+        assert (
+            self.context()["server"]["rows"][3]["cells"][0]["value"]
+            == "0.03 cores / 1 core"
+        )
+        resources.update(cpu_percent=0.3)
+        assert (
+            self.context()["server"]["rows"][3]["cells"][0]["value"]
+            == "0.003 cores / 1 core"
+        )
         self.status["services"]["scheduler"]["freshness"] = "stale"
         assert (
-            "0.0%"
-            not in self.context()["server"]["rows"][3]["cells"][0]["value"]
+            self.context()["server"]["rows"][3]["cells"][0]["value"] == unknown
         )
 
     def test_one_version_uses_build_time_independently_of_restarts(

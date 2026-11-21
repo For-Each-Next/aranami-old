@@ -59,4 +59,4 @@ class ServerColumnsTests(TestCase):
         )
         assert hub_cpu["expires"] is None
         assert web_cpu["expires"] == "2026-10-18T12:01:55+00:00"
-        assert web_cpu["value"].startswith("12.5%")
+        assert web_cpu["value"] == "0.125 cores / 2 cores"

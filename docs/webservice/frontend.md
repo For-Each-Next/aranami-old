@@ -258,6 +258,8 @@ The Memory value shows the hub container's working set against its allocation:
 inactive filesystem cache while retaining active file pages, anonymous memory
 and kernel allocations. Missing counters display as unknown. The calculation
 does not reclaim caches or change the container's memory limit.
+CPU shows measured cores used over the container's allocated cores. A
+measurement of 100% in the saved CPU counter represents one used core.
 
 Support English, Simplified Chinese and Traditional Chinese. Query language
 precedes the one-year cookie and Accept-Language. Preserve canonical source
