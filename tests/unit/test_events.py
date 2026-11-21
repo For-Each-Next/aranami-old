@@ -25,7 +25,7 @@ from data.runtime.events import (
 )
 from data.runtime.log_store import ACTIVITY_RECORD_BYTES, read_activity
 from data.runtime.logs import open_run_log
-from runtime.dashboard import DashboardUpdater
+from runtime.fetch.dashboard import DashboardUpdater
 
 _NOW = dt.datetime(2026, 10, 3, 0, 30, tzinfo=dt.UTC)
 _BASE = {

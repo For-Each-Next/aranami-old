@@ -331,11 +331,11 @@ class TestSourcePayload(TestCase):
             in self.payload["scripts/toolforge/run-hub.sh"].decode()
         )
         assert (
-            'exec "$runtime_python" -m runtime.toolforge_job "$@"'
+            'exec "$runtime_python" -m runtime.services "$@"'
             in self.payload["scripts/toolforge/run-job.sh"].decode()
         )
-        assert "src/runtime/toolforge_job.py" in self.payload
-        assert "src/shared/toolforge_jobs.py" in self.payload
+        assert "src/runtime/services/__main__.py" in self.payload
+        assert "src/shared/toolforge/jobs.py" in self.payload
         assert not any(
             Path(name).suffix in {".php", ".mjs"} for name in self.payload
         )
@@ -722,7 +722,7 @@ class TestSourceImports(TestCase):
     @staticmethod
     def test_jobs_only_read_destinations_and_refresh_pexbot() -> None:
         """Limit report modules to destination reads and PexBot."""
-        jobs = _ROOT / "src/runtime/jobs"
+        jobs = _ROOT / "src/runtime/reporting"
         for name in ("__init__", "context", "dispatch", *TASK_DEFINITIONS):
             path = jobs / f"{name}.py"
             tree = ast.parse(path.read_text(), filename=str(path))
@@ -791,7 +791,7 @@ class TestSourceImports(TestCase):
             for node in ast.walk(public)
             if isinstance(node, ast.ImportFrom) and node.is_lazy
         ]
-        assert any(node.module == "runtime.runner" for node in lazy)
+        assert any(node.module == "runtime.scheduling.runner" for node in lazy)
 
     @staticmethod
     def test_imports_and_attribution_need_no_distribution_or_wiki_client() -> (
@@ -813,28 +813,28 @@ pywikibot.Site = forbidden
 pywikibot.Page.__init__ = forbidden
 from shared.config import TASK_DEFINITIONS
 from shared.deployment import project_version
-from runtime.execution import RuntimeContext
+from runtime.observability.execution import RuntimeContext
 from tasks.enwiki import key_articles
 from data.runtime import report_membership
 from shared.support import regions
-from runtime.jobs import JobContext
+from runtime.reporting import JobContext
 from updater.edit_summary import EditSummary
 assert issubclass(JobContext, RuntimeContext)
 assert key_articles.__name__ == "tasks.enwiki.key_articles"
 assert report_membership.__name__ == "data.runtime.report_membership"
 assert regions.__name__ == "shared.support.regions"
 for name in TASK_DEFINITIONS:
-    importlib.import_module(f"runtime.jobs.{name}")
+    importlib.import_module(f"runtime.reporting.{name}")
 import runtime.__main__
-import runtime.monitor as monitor
-import runtime.dashboard
+import runtime.scheduling.monitor as monitor
+import runtime.fetch.dashboard
 import webservice.server
-import runtime.hub
+import runtime.scheduling.hub
 import webservice.pages
 for name in (
     "data.runtime.logs",
     "data.runtime.status",
-    "runtime.schedule_status",
+    "runtime.observability.schedule_status",
 ):
     importlib.import_module(name)
 assert importlib.util.find_spec("wiki_report_updater") is None

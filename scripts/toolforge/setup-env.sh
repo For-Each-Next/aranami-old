@@ -70,11 +70,12 @@ from shared.deployment import project_version
 json.dumps(routine_configuration(), allow_nan=False)
 assert tomllib.loads((root / "pyproject.toml").read_text())["project"]["version"] == project_version()
 for name in TASK_DEFINITIONS:
-    importlib.import_module(f"runtime.jobs.{name}")
-import runtime.hub
+    importlib.import_module(f"runtime.reporting.{name}")
+import runtime.scheduling.hub
 import webservice.server
-import runtime.dashboard
-import runtime.toolforge_job
+import runtime.fetch.dashboard
+import runtime.services.__main__
+import runtime.services.workloads
 import tasks.website.collect
 import webservice.pages
 import matplotlib.font_manager

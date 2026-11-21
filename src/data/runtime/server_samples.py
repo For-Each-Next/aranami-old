@@ -15,7 +15,8 @@ from data.runtime.dataset_updates import planned_updates, read_updates
 from data.runtime.resources import validate_runtime, validate_usage
 from data.runtime.status import read_status
 from shared.support.files import atomic_json, read_json_object
-from shared.toolforge_jobs import JOB_DEFINITIONS, STATE_DIRECTORY
+from shared.toolforge.jobs import JOB_DEFINITIONS, ON_DEMAND, SERVICES
+from shared.toolforge.state import STATE_DIRECTORY
 
 if TYPE_CHECKING:
     from data.runtime.status import StatusReadCache
@@ -49,7 +50,7 @@ def save_job_sample(
         ValueError: The job, clock, state or resources are invalid.
     """
     if (
-        task not in JOB_DEFINITIONS
+        task not in JOB_DEFINITIONS | SERVICES | ON_DEMAND
         or outcome not in _JOB_OUTCOMES
         or started.utcoffset() != dt.timedelta(0)
     ):
@@ -78,7 +79,12 @@ def _job_samples(runtime: Path, status: dict) -> dict[str, dict]:
     now = dt.datetime.fromisoformat(status["as_of"])
     activated = dt.datetime.fromisoformat(schedules["active_since"])
     samples = {}
-    for task in schedules["collections"] | schedules["routines"]:
+    jobs = (
+        schedules["services"].keys() | ON_DEMAND.keys()
+        if "services" in schedules
+        else schedules["collections"].keys() | schedules["routines"].keys()
+    )
+    for task in jobs:
         try:
             sample = read_json_object(
                 runtime / _JOB_SAMPLE_PATH / f"{task}.json",
@@ -99,6 +105,8 @@ def _job_samples(runtime: Path, status: dict) -> dict[str, dict]:
         ):
             continue
         if not activated <= started <= observed <= now:
+            continue
+        if task in ON_DEMAND and now - observed >= dt.timedelta(days=1):
             continue
         samples[task] = {
             "started_at": sample["started_at"],
@@ -178,7 +186,7 @@ def read_live_status(
     service = status.get("services", {}).get("scheduler")
     if service is None or service.get("lifecycle") != "running":
         return status
-    try:  # ruff: ignore[too-many-statements-in-try-clause] - One bounded optional sample falls back atomically.
+    try:  # ruff: ignore[too-many-statements-in-try-clause] - Optional sample validation falls back atomically.
         sample = read_json_object(runtime / SAMPLE_PATH, _MAX_BYTES)
         if (
             set(sample) != {"schema", "boot_id", "observed_at", "resources"}

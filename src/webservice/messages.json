@@ -60,6 +60,8 @@
   "server.job": {"en": "Job", "zh-hans": "作业", "zh-hant": "作業"},
   "server.job_type": {"en": "Schedule", "zh-hans": "运行方式", "zh-hant": "執行方式"},
   "server.job_continuous": {"en": "Continuous", "zh-hans": "持续运行", "zh-hant": "持續執行"},
+  "server.job_temporary": {"en": "On demand", "zh-hans": "按需运行", "zh-hant": "按需執行"},
+  "server.job_succeeded": {"en": "Completed", "zh-hans": "已完成", "zh-hant": "已完成"},
   "server.job_hourly": {
     "en": "Hourly at :{minute} UTC",
     "zh-hans": "每小时第 {minute} 分（UTC）",
@@ -901,6 +903,11 @@
     "en": "Started at:",
     "zh-hans": "开始于：",
     "zh-hant": "開始於："
+  },
+  "dataset_updates.fetch_task": {
+    "en": "Source data for {task}",
+    "zh-hans": "{task}的源数据",
+    "zh-hant": "{task}的來源資料"
   },
   "dataset_updates.scheduled": {
     "en": "Scheduled:",
@@ -4447,6 +4454,41 @@
     "en": "Article authorship and rating history",
     "zh-hans": "条目作者与评级历史",
     "zh-hant": "條目作者與評級歷史"
+  },
+  "routine.data-fetch": {
+    "en": "Hourly data fetch",
+    "zh-hans": "每小时数据采集",
+    "zh-hant": "每小時資料擷取"
+  },
+  "routine.report-update": {
+    "en": "Data analysis and report updates",
+    "zh-hans": "数据分析与报告更新",
+    "zh-hant": "資料分析與報告更新"
+  },
+  "routine.article-statistics": {
+    "en": "Article Statistics backfill",
+    "zh-hans": "条目统计资料回填",
+    "zh-hant": "條目統計資料回填"
+  },
+  "routine.data-maintenance": {
+    "en": "Data completeness check",
+    "zh-hans": "数据完整性检查",
+    "zh-hant": "資料完整性檢查"
+  },
+  "routine.website-fetch": {
+    "en": "Website source data",
+    "zh-hans": "网页资料采集",
+    "zh-hant": "網頁資料擷取"
+  },
+  "routine.fetch-newsletter-daily": {
+    "en": "Newsletter source data",
+    "zh-hans": "简讯资料采集",
+    "zh-hant": "簡訊資料擷取"
+  },
+  "routine.article-statistics-output": {
+    "en": "Article Statistics outputs",
+    "zh-hans": "生成条目统计",
+    "zh-hant": "產生條目統計"
   },
   "routine.quality-analysis": {
     "en": "Article/list text lengths",

@@ -19,7 +19,7 @@ import polars as pl
 
 from data.paths import artifact_path
 from data.reports import ReportBundle, ReportResult, ReportStore, report_key
-from runtime.jobs import JobContext, ProposedEdit, job_run
+from runtime.reporting import JobContext, ProposedEdit, job_run
 from shared.deployment import project_version
 from tasks.zhwiki.new_pages import build_result
 
@@ -512,7 +512,7 @@ class TestStoredPublication(TestCase):
             TemporaryDirectory() as directory,
             patch("pathlib.Path.cwd", return_value=Path(directory)),
             patch(
-                "runtime.execution.project_snapshot_references",
+                "runtime.observability.execution.project_snapshot_references",
                 return_value=[reference],
             ),
         ):

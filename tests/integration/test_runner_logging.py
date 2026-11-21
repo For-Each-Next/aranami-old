@@ -17,8 +17,8 @@ from unittest.mock import Mock, patch
 import runtime
 from data.runtime.events import validate_event
 from data.runtime.logs import open_run_log
-from runtime import runner
-from runtime.jobs import JobContext, ProposedEdit, job_run
+from runtime.reporting import JobContext, ProposedEdit, job_run
+from runtime.scheduling import runner
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -77,12 +77,14 @@ def _offline_runner(root: Path) -> Iterator[dict[str, Mock]]:
         stack.enter_context(
             patch("data.runtime.logs.Path.cwd", return_value=root),
         )
-        site = stack.enter_context(patch("runtime.runner.pywikibot.Site"))
+        site = stack.enter_context(
+            patch("runtime.scheduling.runner.pywikibot.Site"),
+        )
         site.return_value.dbName.return_value = "zhwiki"
         yield {
             name: stack.enter_context(
                 patch.object(
-                    import_module(f"runtime.jobs.{name}"),
+                    import_module(f"runtime.reporting.{name}"),
                     "run",
                     side_effect=partial(_routine, name=name),
                 ),
@@ -201,7 +203,7 @@ class TestRunnerLoggingIntegration(TestCase):
                 assert call.call_count == runs
                 assert (
                     sum(
-                        "[runtime.execution.routine_run]" in line
+                        "[runtime.observability.execution.routine_run]" in line
                         and f": Started {name}" in line
                         for line in content.splitlines()
                     )
@@ -431,7 +433,7 @@ class TestRunnerLoggingIntegration(TestCase):
                 "data.runtime.logs.Path.cwd",
                 return_value=Path(directory),
             ),
-            patch("runtime.runner.pywikibot.Site") as site,
+            patch("runtime.scheduling.runner.pywikibot.Site") as site,
         ):
             with self.assertRaises(ValueError):  # ruff: ignore[pytest-unittest-raises-assertion]
                 runtime.run_once(dry=True, tasks=["unknown"])

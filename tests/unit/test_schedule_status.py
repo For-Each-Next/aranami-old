@@ -15,8 +15,8 @@ from apscheduler.triggers.interval import IntervalTrigger
 from status_fixtures import execution_record
 
 from data.runtime.status import read_status, status_path, update_status
-from runtime.idle_scheduler import IdleScheduler
-from runtime.schedule_status import write_schedule_status
+from runtime.observability.schedule_status import write_schedule_status
+from runtime.scheduling.idle_scheduler import IdleScheduler
 from shared.config import COLLECTION_DEFINITIONS, TASK_DEFINITIONS
 
 

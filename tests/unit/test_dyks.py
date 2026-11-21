@@ -17,7 +17,7 @@ from pywikibot.site import BaseSite, Namespace
 
 from data.caching import dyk as dyk_cache
 from data.runtime import report_membership
-from runtime.jobs import JobContext, dyks as dyk_job
+from runtime.reporting import JobContext, dyks as dyk_job
 from shared.sources.dyk import TalkPage
 from shared.support.dates import parse_date
 from shared.support.regions import region_content

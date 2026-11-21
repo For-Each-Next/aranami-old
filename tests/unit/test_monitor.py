@@ -16,9 +16,8 @@ from apscheduler.schedulers.base import STATE_PAUSED
 from apscheduler.triggers.cron import CronTrigger
 
 from data.runtime.status import read_status
-from runtime import monitor
-from runtime.idle_scheduler import IdleScheduler
-from runtime.jobs import (
+from runtime.observability.schedule_status import write_schedule_status
+from runtime.reporting import (
     assessment_lists,
     assessment_log,
     dyks,
@@ -27,7 +26,8 @@ from runtime.jobs import (
     pageviews,
     pexbot,
 )
-from runtime.schedule_status import write_schedule_status
+from runtime.scheduling import monitor
+from runtime.scheduling.idle_scheduler import IdleScheduler
 
 _PAGEVIEWS_GRACE_SECONDS = 3_500
 _FUTURE_SCHEDULE_YEAR = 2099
@@ -278,7 +278,7 @@ class TestMonitor(TestCase):
         with ExitStack() as patches:
             for name, callback in callbacks.items():
                 patches.enter_context(
-                    patch(f"runtime.jobs.{name}.run", callback),
+                    patch(f"runtime.reporting.{name}.run", callback),
                 )
             scheduler = monitor.start(dry=True)
         for callback in callbacks.values():
@@ -286,7 +286,7 @@ class TestMonitor(TestCase):
         job = scheduler.get_job("new_pages")
         assert job is not None
         with patch(
-            "runtime.jobs.new_pages.run",
+            "runtime.reporting.new_pages.run",
             callbacks["new_pages"],
         ):
             job.func(*job.args, **job.kwargs)
@@ -408,7 +408,7 @@ class TestMonitor(TestCase):
                 for name, callback in callbacks.items():
                     patches.enter_context(
                         patch(
-                            f"runtime.jobs.{name}.run",
+                            f"runtime.reporting.{name}.run",
                             callback,
                         ),
                     )

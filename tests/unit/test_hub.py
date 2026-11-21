@@ -17,9 +17,9 @@ from unittest.mock import Mock, call, patch
 import polars as pl
 
 from data.runtime.logs import open_run_log
-from runtime import hub
-from runtime.dashboard import DashboardUpdater
-from runtime.jobs import newsletter_history, website as website_job
+from runtime.fetch import newsletter_history, website as website_job
+from runtime.fetch.dashboard import DashboardUpdater
+from runtime.scheduling import hub
 from shared.sources.cycle import read_membership, read_top_pageviews
 from shared.sources.pageviews import TopPageviews
 

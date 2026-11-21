@@ -13,8 +13,11 @@ import polars as pl
 
 from data.runtime import dataset_updates as update_store
 from data.runtime.dataset_updates import read_updates, save_run
-from runtime.collection_status import collection_run
-from runtime.dataset_updates import DatasetUpdateRun, resumed_dataset_updates
+from runtime.observability.collection_status import collection_run
+from runtime.observability.dataset_updates import (
+    DatasetUpdateRun,
+    resumed_dataset_updates,
+)
 from shared.support.dataset_activity import dataset_activity
 from shared.support.files import atomic_json
 
@@ -113,7 +116,7 @@ class TestDatasetUpdateTracking(TestCase):
         """Do not leave a finished collection's plans looking queued."""
         pending = _file("data/raw/unstarted.parquet")
         with patch(
-            "runtime.dataset_updates.planned_files",
+            "runtime.observability.dataset_updates.planned_files",
             return_value=[pending],
         ):
             tracker = DatasetUpdateRun(

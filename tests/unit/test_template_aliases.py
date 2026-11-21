@@ -26,7 +26,7 @@ from sqlalchemy import (
 )
 from wiki_fixtures import OfflineSite
 
-from runtime.jobs import context as job_context
+from runtime.reporting import context as job_context
 from shared.sources import template_aliases as cache_source, wiki
 from shared.sources.quarry import Replica, templates as query_source
 from shared.sources.quarry.templates import TemplateAliasMetadata

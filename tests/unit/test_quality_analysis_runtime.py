@@ -16,7 +16,7 @@ from unittest.mock import Mock, call, patch
 
 from apscheduler.triggers.cron import CronTrigger
 
-from runtime import quality_analysis as worker
+from runtime.backfills import quality_analysis as worker
 from shared.config import COLLECTION_DEFINITIONS
 
 _BOOT = "a" * 32
@@ -69,12 +69,12 @@ class AnalysisWorkerTests(TestCase):
             worker.sys.executable,
             "-B",
             "-m",
-            "runtime.quality_analysis",
+            "runtime.backfills.quality_analysis",
         ]
         assert args[0][args[0].index("--owner-boot") + 1] == _BOOT
         assert options["cwd"] == Path.cwd().resolve()
         assert options["env"]["PYTHONPATH"] == str(
-            Path(worker.__file__).resolve().parents[1],
+            Path(worker.__file__).resolve().parents[2],
         )
         assert options["env"]["PYTHONDONTWRITEBYTECODE"] == "1"
         assert options["env"]["ARANAMI_DATASET_RUN_ID"] == _RUN

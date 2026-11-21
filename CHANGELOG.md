@@ -5,28 +5,21 @@ v0.8.8 was consolidated into the v0.9.2 release.
 
 ## Until 0.11
 
-### 0.10.0.dev4 (2026-11-21 05:27 UTC)
+### 0.10.0.dev5 (2026-11-21 06:08 UTC)
 
-Overview: Isolated Aranami's public website, data work and wiki reports in
-separate Toolforge jobs with per-job resource limits.
+Overview: Separated source acquisition from analysis and publication while
+consolidating Aranami's Toolforge services.
 
-- Generated one public web job and thirteen independently scheduled
-  collectors and report jobs with staggered starts.
-- Gated report work on committed project snapshots and guarded each job
-  against overlapping or duplicate publication.
-- Retired the paused legacy hub and retained an archived definition for
-  rollback. Individual wiki jobs continue during source promotions.
-- Used shared NFS for committed job results and Redis for authenticated,
-  compressed Article Statistics pages.
-- Displayed CPU use and allocation in cores and introduced an angular
-  wave mark for the header and icons.
-- Sized the web job against its observed memory use and verified
-  the concurrent schedule against Aranami's live quota.
-- Used installed Toolforge schedules and recorded job runs for the About
-  page, with job names in each interface language, a live memory and CPU
-  table, and dataset files attached to the job that recorded them.
-- Shortened current authorship filenames while retaining both selected
-  generations. Raised the authorship and newsletter history jobs to 0.75 cores.
+- Kept the continuous web and hourly project snapshot jobs, and consolidated
+  the other recurring work into hourly fetch and report-update jobs.
+- Added structured inputs and an hourly status handoff, with independent
+  checkpoints and retries for incomplete daily reports.
+- Added a temporary Article Statistics backfill and an on-demand completeness
+  check with optional weekly scheduling.
+- Reorganized runtime and deployment code by responsibility and removed the
+  individual-job dispatcher.
+- Displayed installed jobs, resource use and recorded work in About.
+- Kept authenticated Redis page caching and compact authorship generations.
 
 ## Until 0.10
 

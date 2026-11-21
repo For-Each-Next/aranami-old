@@ -9,9 +9,9 @@ from unittest.mock import Mock, patch
 from data.runtime.events import logging_context
 from data.runtime.progress import report_progress
 from data.runtime.status import read_status, record_dataset, status_path
-from runtime.collection_status import collection_run
-from runtime.dashboard import DashboardUpdater
-from runtime.publication_status import PublicationAttempt
+from runtime.fetch.dashboard import DashboardUpdater
+from runtime.observability.collection_status import collection_run
+from runtime.reporting.publication_status import PublicationAttempt
 
 
 def _manifest(*, day: str = "2026-11-02", generation: str = "first") -> dict:
@@ -201,7 +201,7 @@ class TestPublicationActivity(TestCase):
                 patch("pathlib.Path.cwd", return_value=root),
                 logging_context(run_id=run_id, parent_run_id=parent_id),
                 self.assertLogs(
-                    "runtime.publication_status",
+                    "runtime.reporting.publication_status",
                     level="INFO",
                 ) as log,
             ):

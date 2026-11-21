@@ -17,8 +17,8 @@ from data.observations import (
     membership_observed_at,
     project_snapshot_references,
 )
-from runtime.jobs import project_data as collection_job
-from runtime.project_observations import project_cycle
+from runtime.fetch import project_data as collection_job
+from runtime.fetch.project_observations import project_cycle
 from shared.sources.cycle import read_membership
 from tasks.website import collect
 
@@ -80,7 +80,7 @@ class TestProjectObservations(TestCase):
         fetch = Mock(side_effect=AssertionError("Live fallback"))
         with (
             patch(
-                "runtime.project_observations.project_capture.capture",
+                "runtime.fetch.project_observations.project_capture.capture",
                 return_value=snapshot,
             ) as capture,
             project_cycle(now=instant, dry=True),
@@ -120,10 +120,10 @@ class TestProjectObservations(TestCase):
                 fetch = Mock(return_value=pl.DataFrame({"page_id": [1]}))
                 with (
                     patch(
-                        "runtime.project_observations.project_capture.capture",
+                        "runtime.fetch.project_observations.project_capture.capture",
                     ) as capture,
                     patch(
-                        "runtime.project_observations.collect_project_membership",
+                        "runtime.fetch.project_observations.collect_project_membership",
                         side_effect=lambda *_, read=fetch, **__: read(),
                     ),
                     project_cycle(now=instant),
@@ -138,7 +138,7 @@ class TestProjectObservations(TestCase):
         fetch = Mock()
         with (
             patch(
-                "runtime.project_observations.project_capture.capture",
+                "runtime.fetch.project_observations.project_capture.capture",
                 side_effect=ValueError("Incomplete daily snapshot"),
             ),
             project_cycle(
@@ -196,7 +196,7 @@ class TestProjectObservations(TestCase):
 
         with (
             patch(
-                "runtime.project_observations.project_capture.capture",
+                "runtime.fetch.project_observations.project_capture.capture",
                 side_effect=capture,
             ),
             project_cycle(now=dt.datetime(2026, 11, 4, tzinfo=dt.UTC)),

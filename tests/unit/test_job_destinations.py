@@ -13,7 +13,12 @@ import polars as pl
 from pywikibot.page import Revision
 
 from data.runtime.report_membership import MembershipReport
-from runtime.jobs import assessment_lists, dyks, enwp_key_articles, new_pages
+from runtime.reporting import (
+    assessment_lists,
+    dyks,
+    enwp_key_articles,
+    new_pages,
+)
 from shared.config import TASK_DEFINITIONS
 from shared.support.regions import managed_region
 from tasks.enwiki.key_articles import ReportData

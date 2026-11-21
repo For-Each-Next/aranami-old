@@ -17,8 +17,8 @@ import polars as pl
 from data.paths import artifact_path
 from data.reports import ReportBundle, ReportResult, ReportStore, report_key
 from data.runtime.status import read_status, target_key
-from runtime.execution import RuntimeContext, routine_run
-from runtime.jobs import JobContext, ProposedEdit, dyks
+from runtime.observability.execution import RuntimeContext, routine_run
+from runtime.reporting import JobContext, ProposedEdit, dyks
 
 
 def _context(*, dry: bool = False) -> JobContext:
@@ -67,13 +67,13 @@ class TestReportLifecycle(TestCase):
         self.enterContext(patch("pathlib.Path.cwd", return_value=self.root))
         self.enterContext(
             patch(
-                "runtime.execution.open_run_log",
+                "runtime.observability.execution.open_run_log",
                 return_value=nullcontext(),
             ),
         )
         self.enterContext(
             patch(
-                "runtime.jobs.context.open_run_log",
+                "runtime.reporting.context.open_run_log",
                 return_value=nullcontext(),
             ),
         )

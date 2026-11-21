@@ -17,7 +17,10 @@ from data.runtime.status import (
     target_key,
     update_status,
 )
-from runtime.interrupted_runs import execution_lease, recover_interrupted_runs
+from runtime.observability.interrupted_runs import (
+    execution_lease,
+    recover_interrupted_runs,
+)
 
 
 class TestInterruptedRuns(TestCase):
@@ -128,7 +131,8 @@ class TestInterruptedRuns(TestCase):
         """Exercise ownership across independent interpreters."""
         source = Path(__file__).resolve().parents[2] / "src"
         command = (
-            "from runtime.interrupted_runs import execution_lease\n"
+            "from runtime.observability.interrupted_runs import "
+            "execution_lease\n"
             f"with execution_lease('{self.run['run_id']}'):\n"
             "    print('ready', flush=True)\n"
             "    input()\n"

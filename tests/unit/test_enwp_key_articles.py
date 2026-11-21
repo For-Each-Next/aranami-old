@@ -28,7 +28,7 @@ from data.article_changes import (
 )
 from data.runtime.report_membership import load_membership, save_membership
 from data.runtime.status import read_status
-from runtime.jobs import JobContext, enwp_key_articles as job
+from runtime.reporting import JobContext, enwp_key_articles as job
 from shared.sources.quarry import enwp
 from tasks.enwiki import key_articles as data_service
 from updater.services.zhwiki import enwp_key_articles as reports
@@ -963,15 +963,15 @@ class TestEnglishReportJob(TestCase):
             TemporaryDirectory() as temporary,
             patch("pathlib.Path.cwd", return_value=Path(temporary)),
             patch(
-                "runtime.execution.perf_counter",
+                "runtime.observability.execution.perf_counter",
                 side_effect=lambda: elapsed[0],
             ),
             patch(
-                "runtime.publication_status.perf_counter",
+                "runtime.reporting.publication_status.perf_counter",
                 side_effect=lambda: elapsed[0],
             ),
             patch(
-                "runtime.publication_status.utc_now",
+                "runtime.reporting.publication_status.utc_now",
                 side_effect=lambda: (
                     started + dt.timedelta(seconds=elapsed[0])
                 ).isoformat(timespec="microseconds"),

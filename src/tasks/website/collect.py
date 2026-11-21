@@ -813,7 +813,7 @@ def _with_extracts(
     }
 
 
-def collect_dashboard(  # ruff: ignore[too-many-arguments, too-many-statements, too-many-branches, too-many-locals, complex-structure]
+def collect_dashboard(  # ruff: ignore[too-many-arguments,too-many-statements,too-many-branches,too-many-locals,complex-structure]
     today: dt.date,
     days: int = 100,
     *,
@@ -829,6 +829,7 @@ def collect_dashboard(  # ruff: ignore[too-many-arguments, too-many-statements, 
     ),
     draft_archive_path: Path | None = DRAFT_ARCHIVE_PATH,
     prepare_newsletter: Callable[[dict], None] | None = None,
+    only_reports: frozenset[str] | None = None,
 ) -> dict[str, object]:
     """Refresh due Chinese reports and preserve independent successes.
 
@@ -845,6 +846,8 @@ def collect_dashboard(  # ruff: ignore[too-many-arguments, too-many-statements, 
         today_history_path: Wiki-wide OTD cache, or none for memory.
         draft_archive_path: Independent daily JSON facts, or none.
         prepare_newsletter: Optional asset preparation for saved issues.
+        only_reports: The reports whose source acquisition may run.
+            An empty set assembles the snapshot from saved reports.
 
     Returns:
         Schema-two snapshot with actual successful refresh timestamps,
@@ -868,6 +871,8 @@ def collect_dashboard(  # ruff: ignore[too-many-arguments, too-many-statements, 
         "end": (today + dt.timedelta(days=1)).isoformat(),
     }
     plan = _report_plan(cache_directory, intervals, days, clock)
+    if only_reports is not None:
+        plan["due"] = [name for name in plan["due"] if name in only_reports]
     if not plan["due"]:
         return _dashboard_snapshot(plan, intervals, period, stamp)
     # All source construction stays below persisted due selection.

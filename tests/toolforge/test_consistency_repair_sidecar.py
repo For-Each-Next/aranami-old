@@ -26,8 +26,8 @@ from data.website import (
     save_snapshot,
     validate_dashboard_snapshot,
 )
-from runtime import consistency_repairs as coordinator
-from runtime.dashboard import DashboardUpdater
+from runtime.fetch import consistency_repairs as coordinator
+from runtime.fetch.dashboard import DashboardUpdater
 from webservice import server
 
 

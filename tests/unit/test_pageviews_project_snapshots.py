@@ -18,8 +18,8 @@ from wiki_fixtures import OfflineSite
 from data import project_data
 from data.observations import project_snapshot_references
 from data.pageview_types import ReportPeriod, ReportSettings, TaskForce
-from runtime.jobs import JobContext, pageviews as job
-from runtime.project_observations import project_cycle
+from runtime.fetch.project_observations import project_cycle
+from runtime.reporting import JobContext, pageviews as job
 from shared.sources.quarry import projects
 from tasks import project_data as acquisition
 from tasks.zhwiki import pageviews

@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 
 from data.runtime.progress import report_progress
 from data.runtime.status import read_status, status_path
-from runtime.jobs import JobContext, ProposedEdit, job_run, pexbot
+from runtime.reporting import JobContext, ProposedEdit, job_run, pexbot
 from shared.support.cache import clear_runtime_cache
 from tasks.zhwiki import pexbot as pexbot_data
 
@@ -298,7 +298,7 @@ class TestRoutineOutput(TestCase):
             TemporaryDirectory() as directory,
             patch("pathlib.Path.cwd", return_value=Path(directory)),
             patch(
-                "runtime.execution.perf_counter",
+                "runtime.observability.execution.perf_counter",
                 return_value=100,
             ) as clock,
         ):
@@ -501,7 +501,7 @@ class TestRoutineOutput(TestCase):
                 TemporaryDirectory() as directory,
                 patch("pathlib.Path.cwd", return_value=Path(directory)),
                 patch(
-                    "runtime.jobs.context.pywikibot.Site",
+                    "runtime.reporting.context.pywikibot.Site",
                 ) as site,
                 patch(
                     "updater.publisher.pywikibot.Page",
@@ -551,7 +551,7 @@ class TestRoutineOutput(TestCase):
                 TemporaryDirectory() as directory,
                 patch("pathlib.Path.cwd", return_value=Path(directory)),
                 patch(
-                    "runtime.jobs.context.pywikibot.Site",
+                    "runtime.reporting.context.pywikibot.Site",
                 ) as site,
                 patch(
                     "updater.publisher.pywikibot.Page",

@@ -46,7 +46,8 @@ As the `aranami` tool account:
 cd /data/project/aranami
 toolforge jobs list
 toolforge jobs logs aranami-project-data
-toolforge jobs logs aranami-assessment-log
+toolforge jobs logs aranami-data-fetch
+toolforge jobs logs aranami-report-update
 toolforge jobs logs aranami-web
 tail -n 100 logs/diagnostics/YYYYMMDD.000.log
 ```
@@ -57,9 +58,9 @@ traffic facts, report results and newsletter archives. Read these through data A
 
 ## Routine names and UTC triggers
 
-The table gives source boundaries and earliest eligibility. Individual
-Toolforge jobs have staggered launches and scoped retries.
-[Job launch plan](administration.md#register-individual-jobs)
+The table gives source boundaries and earliest eligibility. The hourly fetch
+and report jobs dispatch due work and retry incomplete routines.
+[Job launch plan](administration.md#register-grouped-jobs)
 
 | Identifier | UTC trigger | Result |
 |---|---|---|
@@ -80,7 +81,7 @@ Collection identifiers are scheduler work, not `run_once(tasks=...)` wiki-task
 names. All daily consumers obtain their required committed project data before
 preparation. Page lists are collected first, followed by source data and then
 dependent reports. Hourly work at midnight uses the daily observation; later
-hours share disposable current-hour Parquet. Startup recovery keeps the next hourly boundary. Individual report jobs
+hours share disposable current-hour Parquet. Startup recovery keeps the next hourly boundary. The hourly report job
 wait for committed project data. Article statistics run later and yield to
 foreground work. PexBot skips reports
 updated by it within the preceding 24 hours.

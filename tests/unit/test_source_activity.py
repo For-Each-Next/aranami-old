@@ -14,7 +14,7 @@ import polars as pl
 from sqlalchemy import select
 
 from data.runtime.status import read_status
-from runtime.jobs import JobContext, ProposedEdit, job_run
+from runtime.reporting import JobContext, ProposedEdit, job_run
 from shared.sources.quarry import Replica, tables
 from shared.sources.wiki import read_page_ids
 from shared.support.activity import (
@@ -316,7 +316,10 @@ class TestPublicationStages(TestCase):
     def test_distinct_category_purposes_survive_source_sampling(self) -> None:
         """Keep completed and candidate selections as separate facts."""
         with (
-            patch("runtime.execution.perf_counter", return_value=100),
+            patch(
+                "runtime.observability.execution.perf_counter",
+                return_value=100,
+            ),
             job_run(
                 "dyks",
                 context=JobContext(self.site, dt.date(2026, 11, 3), dry=False),
@@ -351,7 +354,10 @@ class TestPublicationStages(TestCase):
         page.get.return_value = "old"
         with (
             patch("updater.publisher.pywikibot.Page", return_value=page),
-            patch("runtime.execution.perf_counter", return_value=100),
+            patch(
+                "runtime.observability.execution.perf_counter",
+                return_value=100,
+            ),
             job_run(
                 "dyks",
                 context=JobContext(self.site, dt.date(2026, 11, 3), dry=False),

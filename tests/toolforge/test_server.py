@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 from data.runtime.status import read_status
-from runtime.dashboard import (
+from runtime.fetch.dashboard import (
     DashboardHTTPServer,
     DashboardUpdater,
     collect_dashboard_pass,
@@ -344,7 +344,7 @@ class DashboardUpdaterTests(unittest.TestCase):
         assert "secret fixture" not in log
         assert "Website refresh failed after" in log
         assert "(RuntimeError). Previous data was retained." in log
-        assert " UTC ERROR [runtime.dashboard." in log
+        assert " UTC ERROR [runtime.fetch.dashboard." in log
 
     def test_partial_refresh_logs_a_natural_retry_explanation(self) -> None:
         """Describe source failures without copying private details."""

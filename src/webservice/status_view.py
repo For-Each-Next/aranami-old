@@ -10,6 +10,7 @@ import datetime as dt
 import operator
 from typing import TYPE_CHECKING
 
+from shared.toolforge.jobs import ON_DEMAND, job_name
 from webservice.dataset_updates import (
     dataset_updates_context,
     native_executions,
@@ -332,7 +333,7 @@ def _deferred_status(interface: Interface, run: Record) -> str:
     )
 
 
-def report_context(  # ruff: ignore[too-many-arguments] - Include the native table paging controls.
+def report_context(  # ruff: ignore[too-many-arguments] - Include native paging controls.
     interface: Interface,
     status: Record,
     definitions: Record,
@@ -632,6 +633,10 @@ def _occurrence(interface: Interface, schedule: Record) -> str:
     """
     instant = timestamp(schedule.get("next_run_at"))
     cron = schedule["cron"]
+    if cron is None:
+        return interface.text("server.job_temporary")
+    if cron.split()[-1] != "*":
+        return interface.text("server.job_scheduled", cron=cron)
     if instant is None:
         return interface.text("server.job_scheduled", cron=cron)
     if cron.split()[1] == "*":
@@ -734,7 +739,7 @@ def _scheduled_job_row(
                 expiry = expires.isoformat()
             else:
                 outcome = "unknown"
-    if outcome == "succeeded":
+    if outcome == "succeeded" and schedule["cron"] is not None:
         outcome = "pending"
     if schedule["state"] == "paused" and outcome != "running":
         outcome = "paused"
@@ -791,7 +796,26 @@ def _toolforge_rows(
     ):
         executions[run["task_id"]] = run
     samples = status.get("toolforge_samples", {})
-    for task, schedule in (plan["collections"] | plan["routines"]).items():
+    schedules = plan.get("services", plan["collections"] | plan["routines"])
+    if "services" in plan:
+        schedules = {
+            **schedules,
+            **{
+                task: {
+                    "job_name": job_name(task),
+                    "cron": None,
+                    "state": "manual",
+                    "memory_limit_bytes": int(
+                        ON_DEMAND[task]["mem"].removesuffix("Mi"),
+                    )
+                    * 1024**2,
+                    "cpu_limit": ON_DEMAND[task]["cpu"],
+                }
+                for task in ON_DEMAND
+                if task not in schedules and task in samples
+            },
+        }
+    for task, schedule in schedules.items():
         rows.append({
             **_scheduled_job_row(
                 interface,

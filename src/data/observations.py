@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 import polars as pl
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterable, Iterator
 
 _SNAPSHOTS: ContextVar[dict[tuple[str, str], dict[str, str]] | None] = (
     ContextVar("project_snapshot_references", default=None)
@@ -123,15 +123,23 @@ def record_project_snapshot(
 
 
 @contextmanager
-def observation_scope() -> Iterator[None]:
+def observation_scope(
+    snapshots: Iterable[dict[str, str]] = (),
+    page_keys: pl.DataFrame | None = None,
+) -> Iterator[None]:
     """Isolate source provenance and expire copies when a pass ends.
 
     Yields:
         Control with an empty independent provenance collection.
     """
-    references: dict[tuple[str, str], dict[str, str]] = {}
+    references = {
+        (record["wiki"], record["project"]): record.copy()
+        for record in snapshots
+    }
     token = _SNAPSHOTS.set(references)
     inputs: dict[tuple[str, str], pl.DataFrame] = {}
+    if page_keys is not None:
+        inputs.update(page_keys.partition_by("wiki", "project", as_dict=True))
     input_token = _PAGE_INPUTS.set(inputs)
     try:
         yield

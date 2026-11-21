@@ -20,7 +20,7 @@ from data.runtime.progress import (
     validate_progress,
 )
 from data.runtime.status import read_status, status_path
-from runtime.execution import RuntimeContext, routine_run
+from runtime.observability.execution import RuntimeContext, routine_run
 from tasks.zhwiki import pageviews
 
 _DAY = dt.date(2026, 10, 20)
@@ -107,7 +107,7 @@ class TestRoutineProgressLifecycle(TestCase):
             TemporaryDirectory() as directory,
             chdir(directory),
             patch(
-                "runtime.execution.open_run_log",
+                "runtime.observability.execution.open_run_log",
                 return_value=nullcontext(),
             ),
         ):
@@ -149,7 +149,7 @@ class TestRoutineProgressLifecycle(TestCase):
             TemporaryDirectory() as directory,
             chdir(directory),
             patch(
-                "runtime.execution.open_run_log",
+                "runtime.observability.execution.open_run_log",
                 return_value=nullcontext(),
             ),
         ):
@@ -180,7 +180,7 @@ class TestRoutineProgressLifecycle(TestCase):
             TemporaryDirectory() as directory,
             chdir(directory),
             patch(
-                "runtime.execution.open_run_log",
+                "runtime.observability.execution.open_run_log",
                 return_value=nullcontext(),
             ),
             routine_run("pageviews", _context(dry=True)),
@@ -201,7 +201,7 @@ class TestRoutineProgressLifecycle(TestCase):
             TemporaryDirectory() as directory,
             chdir(directory),
             patch(
-                "runtime.execution.open_run_log",
+                "runtime.observability.execution.open_run_log",
                 return_value=nullcontext(),
             ),
             routine_run("pageviews", _context()) as active,

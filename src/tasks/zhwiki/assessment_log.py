@@ -1150,7 +1150,7 @@ def _prepare_compact(  # ruff: ignore[too-many-arguments]
     )
 
 
-def prepare_data(  # ruff: ignore[too-many-arguments, too-many-locals]
+def prepare_data(  # ruff: ignore[too-many-arguments,too-many-locals]
     site: BaseSite,
     project: str,
     report_title: str,
@@ -1159,6 +1159,7 @@ def prepare_data(  # ruff: ignore[too-many-arguments, too-many-locals]
     observed_at: dt.datetime | None = None,
     dry: bool = False,
     snapshots: tuple[ReportBundle, ReportBundle] | None = None,
+    snapshot: ReportBundle | None = None,
 ) -> AssessmentLogData:
     """Prepare assessment changes and retained daily log bodies.
 
@@ -1175,6 +1176,7 @@ def prepare_data(  # ruff: ignore[too-many-arguments, too-many-locals]
         dry: Isolate newly collected daily snapshots from production.
         snapshots: Validated saved predecessor and current observations
             for a transitional comparison without acquisition.
+        snapshot: Current stored observation for scheduled analysis.
 
     Returns:
         Complete snapshots, differences, and parsed retained sections.
@@ -1204,7 +1206,7 @@ def prepare_data(  # ruff: ignore[too-many-arguments, too-many-locals]
             cutoff,
         )
         pruned = pruned or pending_pruned
-    snapshot = (
+    snapshot = snapshot or (
         snapshots[1]
         if snapshots is not None
         else get_snapshot(site, project, observed_at=instant, dry=dry)

@@ -26,6 +26,7 @@
     "run-hub.sh",
     "run-job.sh",
     "run-web.sh",
+    "services/activate.sh",
     "runtime-env.sh",
     "source-files.json",
     "validate-source.py",

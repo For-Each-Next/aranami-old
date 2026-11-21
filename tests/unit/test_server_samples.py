@@ -13,7 +13,7 @@ from unittest import TestCase
 from unittest.mock import Mock, call, patch
 
 from data.runtime import server_samples as samples
-from runtime import monitor
+from runtime.scheduling import monitor
 
 _NOW = dt.datetime(2026, 11, 13, 12, tzinfo=dt.UTC)
 _BOOT = "a" * 32

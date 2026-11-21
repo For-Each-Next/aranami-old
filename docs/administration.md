@@ -50,7 +50,7 @@ stays within one pod. [Toolforge shared storage][storage] [Managing files][files
 | `state/observability/status.json` | Versioned service, execution, dataset and publication observations |
 | `state/observability/web-status.json` | Independent Web lifecycle and resource heartbeat |
 | `state/` | Completion checkpoints, publication membership and active execution locks |
-| `state/toolforge-jobs/` | Individual job activation and UTC cycle receipts |
+| `state/toolforge-jobs/` | Service admission, UTC handoff and completeness results |
 | `cache/` | Disposable source and presentation optimizations |
 | `logs/activity/` | Versioned UTC activity segments correlated by service/run/attempt |
 | `logs/diagnostics/` | Readable UTC diagnostic segments with bounded tracebacks |
@@ -114,83 +114,73 @@ logs and state stay outside selected source.
 Keep both the new generation and the last validated recovery generation. Keep
 every generation used by an active job.
 
-## Register individual jobs
+## Register grouped jobs
 
-The generated configuration publishes only `aranami-web`. Each collector and
-wiki routine has its own scheduled Toolforge job, log stream, deadline, CPU
-limit and memory limit. The Jobs Framework runs each in its own pod. The website
-serves committed files, and its request load and container restarts are
-independent of report dispatch. [Toolforge Jobs Framework][jobs]
-
-Run these from the tool directory after promoting the source generation.
+On the first rollout after promoting the verified source, activate the grouped
+jobs as the tool account. The activation script backs up definitions, stops
+admission, waits for active workers, and replaces only Aranami's scheduled
+jobs. The web service uses its existing continuous definition. The grouped
+jobs read and write shared NFS files from their pinned source generation.
+[Toolforge Jobs Framework][jobs]
 
 ```shell
 toolforge jobs quota
-kubectl describe resourcequotas
-mkdir -p state
+sh app/scripts/toolforge/services/activate.sh
+toolforge jobs list
+```
+
+For a fresh tool, register the web service first with the generated manifest.
+
+```shell
 sh app/scripts/toolforge/run-job.sh --manifest > state/aranami-jobs.yaml
-toolforge jobs load state/aranami-jobs.yaml
+toolforge jobs load --job aranami-web state/aranami-jobs.yaml
+```
+
+| Job | UTC launch | Deadline | Memory |
+|---|---|---:|---:|
+| `aranami-web` | Continuous | — | 2 GiB |
+| `aranami-project-data` | Hourly at :00 | 8 minutes | 1,280 MiB |
+| `aranami-data-fetch` | Hourly at :02 | 33 minutes | 1,280 MiB |
+| `aranami-report-update` | Hourly at :10 | 48 minutes | 1,536 MiB |
+
+Fetch starts when the same hour's project snapshot succeeds. The report job
+waits for the fetch status and then checks the inputs for each output. Failed
+or unavailable inputs leave their reports due. Other ready reports can finish.
+Both scheduled worker groups get one Toolforge retry. They retain a checkpoint
+for each success, including a UTC-date checkpoint for daily routines. Daily
+work that fails remains due at the next hourly check. Pageviews uses 19:00 UTC
+readiness for yesterday and can retry older missing eligible data.
+
+To make a targeted job change, use `toolforge jobs load --job NAME FILE`.
+Refresh the saved schedule and allocation information afterward for About.
+
+```shell
 kubectl get cronjobs -o json | sh app/scripts/toolforge/run-job.sh --record-schedules
 ```
 
-The manifest uses JSON, which is accepted as YAML. Loading a changed job
-definition can replace that job. Use `toolforge jobs load --job NAME FILE`
-for a deliberate change to one job. A run pins the managed Python 3.15
-environment even though the Toolforge image label is `python3.13`.
-Refresh the recorded schedules after changing job definitions. Source
-promotion also refreshes them. About reads installed CronJob names, UTC
-schedules and suspension flags from shared storage. The server status table
-uses localized job names, installed limits and fresh container readings. Each
-scheduled worker samples its own memory working set and CPU use. Recent jobs
-uses up to 24 runs recorded in the last day and their saved file observations.
+### Run a backfill or completeness check
 
-For a fresh tool, enable the jobs after registration. For migration from a
-running hub, wait for its current work to finish and for its pod to terminate
-before enabling the schedules.
+Generate the optional definitions once and load the requested job by name.
 
 ```shell
-kubectl exec deployment/aranami-hub -- python3 /data/project/aranami/app/scripts/toolforge/drain-hub.py
-kubectl scale deployment aranami-hub --current-replicas=1 --replicas=0
-kubectl wait --for=delete pod -l app.kubernetes.io/name=aranami-hub --timeout=180s
-kubectl get pods -l app.kubernetes.io/name=aranami-hub
+sh app/scripts/toolforge/run-job.sh --manifest --on-demand > state/aranami-on-demand.yaml
+toolforge jobs load --job aranami-article-statistics state/aranami-on-demand.yaml
+toolforge jobs load --job aranami-data-maintenance state/aranami-on-demand.yaml
 ```
 
-Confirm the last command lists no pods. Save the hub definition with
-`toolforge jobs dump -f FILE` and retire it with
-`toolforge jobs delete aranami-hub`. Complete source promotions and
-cutovers outside 23:59:00–00:01:59 UTC to protect the daily capture. Enable
-the schedules and start primary collection for the current hour.
+The Article Statistics job continues across hours and resumes from saved
+revisions, attribution and rating checkpoints. It exits after checking the
+eligible backlog. Unavailable evidence remains identifiable in the coverage
+counts and gets further attempts in the hourly fetch job. The hourly report
+job generates updated web artifacts from retained inputs throughout.
 
-```shell
-mkdir -p state/toolforge-jobs
-touch state/toolforge-jobs/active
-toolforge jobs restart aranami-project-data
-```
-
-A short wait for this hour's collection receipt prevents dependent jobs from
-publishing with incomplete inputs. An absent receipt causes a failed run and
-the configured Toolforge retry. Daily reports select the committed midnight
-snapshot, and Pageviews checks its 19:00 UTC eligibility in the worker.
-`toolforge jobs restart NAME` can retry a failed scheduled job in the current
-cycle. Each job's lease and receipt guard duplicate runs.
-
-### CPU and memory
-
-The starting profile has one continuous job and thirteen scheduled jobs.
-The published web job gets 2 GiB and one CPU core based on its observed
-working set. Scheduled jobs get 512 MiB to 2 GiB each. The busiest planned
-window uses 6.75 GiB, 2.25 CPU cores and seven pods including web. The setup
-job raises that to 7.25 GiB, 2.35 cores and eight pods. Aranami's Toolforge
-account has 8 GiB, 16 cores and 16 pods. Its web Deployment uses Recreate,
-which releases its old pod before starting the replacement. Check actual
-allocations, other running jobs and rollout strategy before changing limits.
-[Job quotas][job-quotas] [Kubernetes quotas][quotas]
-
-[Jobs and allocations](../src/shared/toolforge_jobs.py) defines the launch
-minutes and per-job deadlines. Confirm that each collector and report finishes
-within its allocation after the first regular and midnight cycles. Use
-`toolforge jobs logs NAME` and inspect the pod status for deadline, scheduling
-or out-of-memory failures.
+The completeness check reads seven days of project snapshots, the latest
+service checkpoints and dashboard observations, and article coverage. It
+writes `state/toolforge-jobs/completeness.json` and prints its results to the job
+log. Enable the Sunday 03:40 UTC check by generating the manifest with
+`--weekly-maintenance` and loading just `aranami-data-maintenance`. Restart that
+CronJob to request another check. Review live quota before starting additional
+ad hoc jobs. [Job quotas][job-quotas] [Kubernetes quotas][quotas]
 
 ## Enable the shared page cache
 
@@ -215,7 +205,8 @@ through Toolforge Envvars to create a fresh namespace. [Toolforge Redis][redis]
 toolforge jobs list
 toolforge jobs show aranami-project-data
 toolforge jobs logs aranami-project-data
-toolforge jobs logs aranami-assessment-log
+toolforge jobs logs aranami-data-fetch
+toolforge jobs logs aranami-report-update
 toolforge jobs logs aranami-web
 ```
 
@@ -251,7 +242,7 @@ rotation prevents a busy day from silently stopping activity recording.
 ## Stop or restart a service
 
 Restart the website with `toolforge jobs restart aranami-web`. Use the named
-scheduled job for individual collector or report recovery.
+scheduled job to retry the current hourly phase.
 
 To roll back to the legacy hub, remove `state/toolforge-jobs/active` and wait
 for every running scheduled worker to exit. Check `kubectl get jobs` for active

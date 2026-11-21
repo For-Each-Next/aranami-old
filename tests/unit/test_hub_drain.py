@@ -12,7 +12,7 @@ from threading import Event
 from unittest import TestCase
 from unittest.mock import Mock, call, patch
 
-from runtime.hub import _serve_until_stopped
+from runtime.scheduling.hub import _serve_until_stopped
 
 _SCRIPT = (
     Path(__file__).resolve().parents[2] / "scripts/toolforge/drain-hub.py"
@@ -42,7 +42,7 @@ class HubDrainTests(TestCase):
 
         server.handle_request.side_effect = serve
         with patch(
-            "runtime.hub.stop_jobs",
+            "runtime.scheduling.hub.stop_jobs",
             side_effect=lambda *_: order.append("drained"),
         ) as stop:
             _serve_until_stopped(

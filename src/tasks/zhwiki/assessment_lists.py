@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 _REVIEW_HEADING_LEVEL = 2
 _REVIEW_SUFFIXES = (
-    r"[評评][審审選选級级]",
+    r"[評评重][審审選选級级]",
     r"(?<![A-Za-z])review(?![A-Za-z])",
     r"(?<![A-Za-z])assessment(?![A-Za-z])",
 )
@@ -223,15 +223,28 @@ def prepare_data(
 
     Returns:
         Complete rows, review links, settings, and membership changes.
+    """
+    return analyze(
+        collect(site, config, original_text),
+        original_text,
+        assessments=assessments,
+        previous_members=previous_members,
+    )
+
+
+def collect(
+    site: BaseSite,
+    config: AssessmentList,
+    original_text: str,
+) -> tuple[AssessmentList, dict[str, int | None], dict[str, str], str]:
+    """Read the configured category and its review anchors.
+
+    Returns:
+        Effective settings, article identities, anchors and wiki name.
 
     Raises:
-        ValueError: If a configured category title is empty.
+        ValueError: The configured category title is empty.
     """
-    original_members = article_members(original_text)
-    previous = {
-        title: (previous_members or {}).get(title)
-        for title in original_members
-    }
     options = region_options(original_text, "assessment-list")
     category = options.get("category", config.category_title).strip()
     if not category:
@@ -265,6 +278,32 @@ def prepare_data(
             targets[title] = (
                 f"{page.title()}#{heading}" if heading else page.title()
             )
+    return config, member_ids, targets, site.dbName()
+
+
+def analyze(
+    observations: tuple[
+        AssessmentList,
+        dict[str, int | None],
+        dict[str, str],
+        str,
+    ],
+    original_text: str,
+    *,
+    assessments: pl.DataFrame | None,
+    previous_members: Mapping[str, int | None] | None,
+) -> AssessmentData:
+    """Join saved grades and compare memberships.
+
+    Returns:
+        Enriched rows and changes from the original report.
+    """
+    config, member_ids, targets, wiki = observations
+    titles = sorted(member_ids, key=title_sort_key)
+    previous = {
+        title: (previous_members or {}).get(title)
+        for title in article_members(original_text)
+    }
     rows = pl.DataFrame(
         {
             "title": titles,
@@ -308,6 +347,6 @@ def prepare_data(
             tuple(removed),
             len(member_ids),
         ),
-        wiki=site.dbName(),
+        wiki=wiki,
         calculated_at=datetime.now(UTC),
     )

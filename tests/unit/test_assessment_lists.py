@@ -17,7 +17,7 @@ import polars as pl
 
 from data.runtime.report_membership import MembershipReport
 from data.runtime.status import read_status
-from runtime.jobs import JobContext, assessment_lists as job
+from runtime.reporting import JobContext, assessment_lists as job
 from tasks.zhwiki import assessment_lists as source
 from updater.edit_summary import MAX_EDIT_SUMMARY_BYTES
 from updater.services.zhwiki import assessment_lists as service
@@ -583,15 +583,15 @@ class TestAssessmentJob(TestCase):
             TemporaryDirectory() as temporary,
             patch("pathlib.Path.cwd", return_value=Path(temporary)),
             patch(
-                "runtime.execution.perf_counter",
+                "runtime.observability.execution.perf_counter",
                 side_effect=lambda: elapsed[0],
             ),
             patch(
-                "runtime.publication_status.perf_counter",
+                "runtime.reporting.publication_status.perf_counter",
                 side_effect=lambda: elapsed[0],
             ),
             patch(
-                "runtime.publication_status.utc_now",
+                "runtime.reporting.publication_status.utc_now",
                 side_effect=lambda: (
                     started + dt.timedelta(seconds=elapsed[0])
                 ).isoformat(timespec="microseconds"),
@@ -610,7 +610,7 @@ class TestAssessmentJob(TestCase):
                 return_value=MagicMock(get=MagicMock(return_value=_TEXT)),
             ),
             self.assertLogs(job.logger, level="ERROR"),
-            self.assertLogs("runtime.execution", level="INFO"),
+            self.assertLogs("runtime.observability.execution", level="INFO"),
         ):
             with self.assertRaises(ExceptionGroup):
                 job.run(

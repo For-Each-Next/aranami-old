@@ -9,7 +9,8 @@ from pathlib import Path
 from unittest import TestCase
 from unittest.mock import patch
 
-from runtime import __main__ as package_main, hub
+from runtime import __main__ as package_main
+from runtime.scheduling import hub
 
 
 class TestPackageMain(TestCase):

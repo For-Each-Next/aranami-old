@@ -41,12 +41,14 @@ class TestProjectLogs(TestCase):
         original = logging.root.level, tuple(logging.root.handlers)
         with open_run_log(self.root):
             with open_run_log(), logging_context(run_id="a" * 32):
-                logging.getLogger("runtime.dashboard").info("Refresh done.")
+                logging.getLogger("runtime.fetch.dashboard").info(
+                    "Refresh done.",
+                )
             logging.getLogger("shared.sources.wiki").warning("Retry later.")
         (path,) = (self.root / "diagnostics").glob("*.log")
         text = path.read_text()
         assert text.count("Refresh done.") == 1
-        assert "UTC INFO [runtime.dashboard." in text
+        assert "UTC INFO [runtime.fetch.dashboard." in text
         assert "run=" + "a" * 32 in text
         assert "run=-" in text
         assert not (self.root / "activity").exists()

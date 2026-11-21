@@ -21,7 +21,7 @@ from pywikibot.site import BaseSite, Namespace
 
 from data.reports import ReportResult
 from data.runtime.status import read_status
-from runtime.jobs import JobContext, pexbot as job
+from runtime.reporting import JobContext, pexbot as job
 from shared.support.cache import cache_key
 from tasks.zhwiki import pexbot as service
 
@@ -474,15 +474,15 @@ class TestPexbotJob(TestCase):
             TemporaryDirectory() as temporary,
             patch("pathlib.Path.cwd", return_value=Path(temporary)),
             patch(
-                "runtime.execution.perf_counter",
+                "runtime.observability.execution.perf_counter",
                 side_effect=lambda: elapsed[0],
             ),
             patch(
-                "runtime.publication_status.perf_counter",
+                "runtime.reporting.publication_status.perf_counter",
                 side_effect=lambda: elapsed[0],
             ),
             patch(
-                "runtime.publication_status.utc_now",
+                "runtime.reporting.publication_status.utc_now",
                 side_effect=lambda: (
                     started + dt.timedelta(seconds=elapsed[0])
                 ).isoformat(timespec="microseconds"),
@@ -491,7 +491,7 @@ class TestPexbotJob(TestCase):
             patch.object(service, "edited_by_between", side_effect=history),
             patch.object(job, "_refresh", side_effect=refresh),
             patch.object(job.time, "sleep", side_effect=cooldown) as pause,
-            self.assertLogs("runtime.execution", level="INFO"),
+            self.assertLogs("runtime.observability.execution", level="INFO"),
             self.assertLogs(job._LOGGER, level="INFO"),
         ):
             with (

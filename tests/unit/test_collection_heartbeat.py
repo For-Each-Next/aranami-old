@@ -10,7 +10,10 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from data.runtime.status import read_status
-from runtime.collection_status import CollectionExecution, collection_run
+from runtime.observability.collection_status import (
+    CollectionExecution,
+    collection_run,
+)
 
 
 def _heartbeat_seen(seen: Event) -> object:
@@ -45,7 +48,10 @@ class TestCollectionHeartbeat(TestCase):
         """Create a runtime with a short test heartbeat interval."""
         self.root = Path(self.enterContext(TemporaryDirectory()))
         self.enterContext(
-            patch("runtime.collection_status._HEARTBEAT_SECONDS", 0.01),
+            patch(
+                "runtime.observability.collection_status._HEARTBEAT_SECONDS",
+                0.01,
+            ),
         )
 
     def test_quiet_manual_collection_refreshes_without_new_progress(

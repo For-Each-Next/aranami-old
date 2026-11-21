@@ -16,7 +16,7 @@ import polars as pl
 from data import pageviews as pageview_data
 from data.paths import artifact_path
 from data.reports import ReportStore
-from runtime.jobs import JobContext, pageviews as job
+from runtime.reporting import JobContext, pageviews as job
 from tasks.zhwiki import pageviews
 
 _START = dt.date(2026, 1, 1)

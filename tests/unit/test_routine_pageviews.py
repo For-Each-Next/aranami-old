@@ -17,7 +17,7 @@ import polars as pl
 from dateutil.relativedelta import relativedelta
 
 from data.reports import ReportResult
-from runtime.jobs import JobContext, pageviews as job
+from runtime.reporting import JobContext, pageviews as job
 from tasks.zhwiki import pageviews
 from updater.edit_summary import MAX_EDIT_SUMMARY_BYTES, EditSummary
 from updater.services.zhwiki import pageviews as rendering

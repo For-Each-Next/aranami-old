@@ -44,7 +44,7 @@ are isolated under `tasks.zhwiki.legacy` and feed normal data interfaces.
 `data.project_data` owns the immutable snapshot contract. `tasks.project_data`
 provides the fresh source query; the store invokes the supplied builder only
 after acquiring the capture lock and checking for an existing file.
-`runtime.project_observations` selects daily versus hourly membership for a
+`runtime.fetch.project_observations` selects daily versus hourly membership for a
 source cycle. The generic cycle accepts this reader without importing runtime.
 `data.website` validates the same saved envelope for collection and HTTP reads.
 
@@ -96,37 +96,28 @@ counts are distinct. Stored Enum declarations preserve observed extra labels;
 readers validate the saved declaration and restore it when a Parquet reader
 returns String. Decode independent encodings before joining tables.
 
-## Toolforge jobs
+## Toolforge services
 
-The public HTTP service runs continuously. Source collection, website and
-newsletter preparation, article queries and each on-wiki routine run as
-individually named scheduled jobs. The Jobs Framework applies each pod's
-resource limits and wall-time deadline. Individual report and collection
-entry points live in `runtime.jobs`. The quality query workers live in
-`runtime.quality_analysis`, and the web entry point lives in `webservice`.
-Editable Vue modules live in `frontend/`, with served assets and templates
-under `src/webservice/`. The public site reads the last
-committed data from shared storage even while another pod starts, stops or
-retries. [Deployment and allocations](administration.md#register-individual-jobs)
+The continuous web service reads the last committed public outputs. An hourly
+project snapshot job owns shared membership and categories, including the
+immutable completed-day captures at midnight UTC. The data-fetch job waits for
+its UTC-hour receipt. It collects source observations and report destination
+baselines, validates them, and selects typed Parquet inputs with structured
+metadata. The report job checks the matching fetch status and processes each
+ready input. It compares memberships and assessment changes, publishes wiki
+reports through the updater, and generates web datasets and assets.
 
-The project-data job records a successful UTC hour only after its collection
-completes. Consumers wait for that receipt and use the existing validated
-source cycle. Newsletter preparation also waits for recognition history.
-Wiki reports have independent destinations and use their usual preparation,
-publication checks and completion data. A lease admits one invocation per
-job. Wiki jobs call the wiki directly. Optional article statistics
-launch later and yield to recently observed foreground work.
+The updater checks a destination against the saved baseline before publishing.
+Unconfirmed work stays due. Each daily success checkpoints its UTC day, and
+each hourly success checkpoints its UTC hour. Leases prevent concurrent owners.
+The disposable report inputs live under `cache/.toolforge-inputs`, with
+phase and workload receipts in `state/toolforge-jobs`. The recurring jobs
+continue after the temporary article backfill completes. The maintenance job
+uses saved data to check freshness and coverage. Read-only About status shows
+the installed services and independently retained workload outcomes.
 
-The activation marker selects individual schedules during cutover. The
-legacy hub remains an operational recovery path. The status reader exposes
-configured Toolforge launch times separately from execution and service
-observations. On-disk datasets and publication evidence are shared between
-the legacy hub and individual jobs.
-
-The tool home provides the shared NFS handoff for accepted data and report
-receipts. The web process can reuse authenticated Article Statistics HTML
-in Toolforge Redis. The cache has fixed variants, a short lifetime and a
-saved-file fallback. [Shared storage and Redis](administration.md)
+The public web process uses shared NFS and can reuse authenticated Article
+Statistics HTML in Toolforge Redis. [Deployment and allocations](administration.md#register-grouped-jobs)
 
 ## Scheduling and source selection
 

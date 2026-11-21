@@ -16,7 +16,7 @@ from pywikibot.page import Revision
 from pywikibot.site import BaseSite, Namespace
 
 from data.runtime.status import read_status
-from runtime.jobs import JobContext, new_pages as new_pages_job
+from runtime.reporting import JobContext, new_pages as new_pages_job
 from shared.support.regions import managed_region
 from tasks.zhwiki import new_pages
 from updater.edit_summary import (

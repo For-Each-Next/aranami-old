@@ -34,7 +34,7 @@ from shared.support.files import (
     open_regular,
     stat_identity,
 )
-from shared.toolforge_jobs import installed_schedules
+from shared.toolforge.jobs import installed_schedules
 lazy from data.runtime.events import current_log_context, event_extra
 
 if TYPE_CHECKING:

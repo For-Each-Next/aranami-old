@@ -15,7 +15,7 @@ from urllib.error import HTTPError
 import mwparserfromhell
 import polars as pl
 
-from runtime.jobs import pageviews as job
+from runtime.reporting import pageviews as job
 from tasks.zhwiki import pageviews
 from updater.services.zhwiki import pageviews as rendering
 

@@ -7,22 +7,18 @@ publication. Keep wiki extraction rules and schemas in their owning packages.
 - Target Python 3.15 and run from the immutable source generation selected by
   `/data/project/aranami/app`. Pin its `src` on PYTHONPATH at startup. Keep
   credentials and all runtime files outside the source generation.
-- `run-job.sh NAME` starts one Toolforge report or collection. The launcher
-  pins the selected generation. `run-job.sh --manifest` generates job
-  definitions from `shared.toolforge_jobs`. `run-web.sh` starts the public
-  read-only service. `run-hub.sh` starts the legacy scheduler for recovery.
-- `runtime.run(dry=False)` starts continuous schedules. Repeated starts reuse
-  an active monitor in the same mode. `run_once(date=None, dry=False, tasks=None)`
-  coordinates selected immediate work without changing schedules.
-- Toolforge owns scheduled launches in individual-job mode. The runner
-  leases each job and checks committed collection receipts for its UTC hour.
-  The legacy hub owns its in-process dispatch and observations. Jobs
-  coordinate typed task results and outputs.
-- Use `shared.config` for scopes, destinations and independent cron triggers.
-  Coalesce missed work; allow one active invocation per routine. Idle work waits
-  outside legacy workers. Individual jobs wait within their configured
-  deadline for required committed data. Article statistics launch later and
-  yield to active foreground work.
+- `run-job.sh NAME` pins the selected generation and dispatches a grouped
+  service. `run-job.sh --manifest` generates Toolforge job definitions.
+  `run-web.sh` starts the public read-only service.
+- `runtime.run_once(date=None, dry=False, tasks=None)` runs selected reports
+  without changing schedules. `runtime.run(dry=False)` starts the recovery
+  monitor and reuses an active monitor in the same mode.
+- Toolforge schedules the hourly project snapshot, data fetch and report
+  update. Fetch owns source reads and commits structured inputs. Analysis
+  reads these inputs, computes and retains reports, and delegates saves.
+- Use the current UTC cycle receipt before advancing a phase. Checkpoint
+  successful workloads independently and retry incomplete daily work.
+  Article backfill yields to foreground acquisition and resumes saved progress.
 - Capture required daily inputs before dependent work. Midnight uses immutable
   daily membership; later hours may use temporary observations. Keep actual
   observation times separate from report anchors.

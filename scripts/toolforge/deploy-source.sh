@@ -149,7 +149,7 @@ setup_started=false
 toolforge jobs dump -f "$backup/jobs.yaml"
 if [ -f state/toolforge-jobs/active ]; then
     kubectl get cronjobs -o json |
-        PYTHONPATH="$stage/src" "$environment/bin/python" -B -m runtime.toolforge_job --record-schedules
+        PYTHONPATH="$stage/src" "$environment/bin/python" -B -m runtime.services --record-schedules
 fi
 for service in aranami-web aranami-hub; do
     replicas=$(kubectl get deployment "$service" --ignore-not-found -o 'jsonpath={.spec.replicas}')
@@ -190,4 +190,4 @@ for service in aranami-hub aranami-web; do
 done
 printf '%s\n' 'Validated code activated and existing services replaced. Missing or paused services were not started.' \
     "Backup directory $backup" \
-    "Generate individual job definitions with sh $tool_dir/app/scripts/toolforge/run-job.sh --manifest"
+    "Generate grouped job definitions with sh $tool_dir/app/scripts/toolforge/run-job.sh --manifest"

@@ -33,33 +33,21 @@ Saved results remain available during source failures. Unknown observations
 are not converted to zeroes. Published and cancelled newsletter issues retain
 their saved facts; delayed drafts can continue improving.
 
-## UTC schedule
+## Toolforge schedule
 
-| Work | Trigger | Result |
+| Job | UTC launch | Work |
 |---|---|---|
-| Project data | Every hour :00; daily at 00:00:00 | Shared page lists, replica revision IDs and categories; full daily snapshots for yesterday |
-| Assessment log | Idle after 00:00 | Adjacent-day membership/class/importance changes |
-| Newsletter facts | Idle after 00:00 and due retries | Eligible quarterly and annual draft data |
-| DYK checks | Deferred every hour :00 | Current nominees and completed dates, with unchanged source parses reused |
-| Article evidence | Every hour :00 | Retained recognition evidence |
-| Quality analysis | Every hour :02, idle after reports | Cached article metrics and precomputed chart summaries |
-| Quality authors | Every hour :02, idle after reports | Rating histories, article cutoffs and all-grade authorship |
-| New pages | Idle after 00:00; hourly retries while behind | Created pages and redirect conversions selected by project keywords |
-| Assessment lists / English comparisons | Idle after 00:00 | Quality, review and bilingual project reports |
-| Pageviews | 19:00 normally, :00 retries while behind | Daily and longer-period project/task-force rankings |
-| PexBot reports | Idle after 00:00 | Configured maintenance refreshes, with a 24-hour cooldown |
-| Website | Every hour :00 | Reviews hourly and daily datasets on a new UTC boundary |
+| Web service | Continuous | Serves saved data and generated pages |
+| Project snapshot | Hourly at :00 | Commits project membership, revision IDs and categories, including the durable daily capture at midnight |
+| Data fetch | Hourly at :02 | Waits for the snapshot, reads Wiki Replicas and APIs, then commits structured report inputs |
+| Data analysis and report updates | Hourly at :10 | Waits for the fetch result and uses saved inputs to calculate, publish wiki reports and prepare website data |
+| Article Statistics backfill | On demand | Runs successive batches until the pending cohort has been checked |
+| Data completeness check | On demand or Sundays at 03:40 | Audits saved snapshots, report freshness and article coverage |
 
-The primary collection starts with page lists at every UTC hour, with the full
-daily capture at 00:00:00. Source collection finishes before dependent reports
-run. Reports reuse the committed daily or disposable hourly Parquet data.
-Startup recovery does not shift subsequent hourly boundaries.
-Individual Toolforge jobs stagger launches after their source boundaries.
-[Job schedule](docs/administration.md#register-individual-jobs)
-Pageviews waits for actual
-19:00 readiness and uses the frozen midnight titles and assessments. Continuous
-traffic histories receive only their missing tail; gapped histories are
-refetched. Project snapshots always come from new complete queries.
+Daily assessment, newsletter and PexBot work is due after midnight. The next
+hourly pass retries incomplete work for the same day and skips confirmed
+results. The Pageviews report makes yesterday eligible at 19:00 UTC.
+[Toolforge operations](docs/administration.md#register-grouped-jobs)
 
 ## Documentation
 

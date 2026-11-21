@@ -16,7 +16,7 @@ from wiki_fixtures import OfflineSite
 
 from data.articles import current_assessments
 from data.caching import project_observations as cache
-from runtime.project_observations import (
+from runtime.fetch.project_observations import (
     collect_project_membership,
     project_cycle,
 )
@@ -79,7 +79,7 @@ class HourlyObservationTests(TestCase):
             TemporaryDirectory() as directory,
             chdir(directory),
             patch(
-                "runtime.project_observations.project_capture.capture",
+                "runtime.fetch.project_observations.project_capture.capture",
                 return_value=SimpleNamespace(
                     manifest={
                         "calculated_at": captured.isoformat(),
@@ -122,7 +122,7 @@ class HourlyObservationTests(TestCase):
             TemporaryDirectory() as directory,
             chdir(directory),
             patch(
-                "runtime.project_observations.query_pages_by_wikiproject",
+                "runtime.fetch.project_observations.query_pages_by_wikiproject",
                 return_value=_members(),
             ) as fetch,
         ):
@@ -151,7 +151,7 @@ class HourlyObservationTests(TestCase):
             TemporaryDirectory() as directory,
             chdir(directory),
             patch(
-                "runtime.project_observations.query_pages_by_wikiproject",
+                "runtime.fetch.project_observations.query_pages_by_wikiproject",
                 side_effect=[
                     _members().with_columns(pl.lit("FA").alias("pa_class")),
                     _members(),
@@ -185,7 +185,7 @@ class HourlyObservationTests(TestCase):
             TemporaryDirectory() as directory,
             chdir(directory),
             patch(
-                "runtime.project_observations.query_pages_by_wikiproject",
+                "runtime.fetch.project_observations.query_pages_by_wikiproject",
                 return_value=_members(),
             ),
         ):
@@ -231,7 +231,7 @@ class HourlyObservationTests(TestCase):
             TemporaryDirectory() as directory,
             chdir(directory),
             patch(
-                "runtime.project_observations.query_pages_by_wikiproject",
+                "runtime.fetch.project_observations.query_pages_by_wikiproject",
                 return_value=_members(),
             ) as fetch,
         ):

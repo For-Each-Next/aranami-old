@@ -13,7 +13,12 @@ the window ends. Local source changes and offline verification may continue.
 
 ```text
 .github/workflows/       CI and formal release automation
-src/runtime/            Scheduling, lifecycle and report coordination
+src/runtime/services/   Toolforge entry points, UTC handoff and service health
+src/runtime/fetch/      Project, recognition and website source collection
+src/runtime/reporting/  Report inputs, analysis and publication
+src/runtime/backfills/  Bounded article statistics workers
+src/runtime/observability/  Execution, dataset and schedule status
+src/runtime/scheduling/ Manual commands and the recovery scheduler
 src/tasks/              Source acquisition and reusable calculations
 src/tasks/zhwiki/        Audited Chinese wiki rules and newsletter workflows
 src/data/               Schemas, stores, saved contracts and runtime records
@@ -24,7 +29,8 @@ src/webservice/         Django HTTP views, localization and saved-data readers
 src/webservice/templates/ Native HTML fallback and fragment templates
 src/webservice/public_html/ CSS, browser scripts, artwork and the Vue bundle
 frontend/               Vue page layouts and components
-scripts/toolforge/      Runtime launch, validation, promotion and drain scripts
+scripts/toolforge/      Source validation, promotion and pinned launchers
+scripts/toolforge/services/  Selective service activation and rollout
 scripts/upload_toolforge.py  Source payload preparation and upload
 tests/unit/              Isolated component contracts
 tests/integration/       Cross-component offline workflows
@@ -66,13 +72,13 @@ unpublished alpha work after v0.8.8. Record completed work in the active changel
 section, with UTC timestamps. Formal 1.0.0 publication is a separate decision.
 
 Daily schema/storage changes start in `data.project_data`; acquisition belongs
-to `tasks.project_data`, and source selection to `runtime.project_observations`.
+to `tasks.project_data`, and source selection to `runtime.fetch.project_observations`.
 Keep the primary project capture ordinary at 00:00:00 UTC. Daily consumers,
 including assessment logs and newsletter facts, read the committed Parquet
 snapshot. New jobs should declare workload semantics in `shared.config` and
-their Toolforge allocation in `shared.toolforge_jobs`. Scheduled reports and
-collectors use `runtime.toolforge_job` for leases and input readiness. The
-legacy hub uses the shared idle executor.
+their Toolforge allocation in `shared.toolforge.jobs`. Use `runtime.services` for leases and input readiness. Source workers retain
+typed data before analysis starts. Analysis reuses those inputs and delegates
+wiki saves to the updater. The recovery hub uses the shared idle executor.
 Use explicit Polars schemas and native joins, aggregations and expressions.
 Eager source adapters remain eager; lazy scans
 are appropriate for saved files. Preserve null, observed zero and observed

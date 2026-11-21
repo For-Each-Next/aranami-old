@@ -14,8 +14,8 @@ from unittest.mock import Mock, patch
 from data.reports import ReportResult
 from data.runtime.progress import report_progress
 from data.runtime.status import MAX_STAGES, read_status, status_path
-from runtime.execution import RuntimeContext, routine_run
-from runtime.jobs import ProposedEdit
+from runtime.observability.execution import RuntimeContext, routine_run
+from runtime.reporting import ProposedEdit
 from shared.support.activity import report_activity
 
 

@@ -15,7 +15,7 @@ import mwparserfromhell
 from wiki_fixtures import OfflineSite
 
 from data.consistency import repair_identity, valid_repair_input
-from runtime import consistency_repairs as coordinator
+from runtime.fetch import consistency_repairs as coordinator
 from tasks.zhwiki.homepage_parameters import (
     HomepageAppearance,
     prepare_history_suggestions,

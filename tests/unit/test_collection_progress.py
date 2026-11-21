@@ -15,7 +15,7 @@ from data.runtime.progress import (
     validate_progress,
 )
 from data.runtime.status import read_status
-from runtime.collection_status import collection_run
+from runtime.observability.collection_status import collection_run
 from shared.support.activity import report_activity
 
 
@@ -78,7 +78,7 @@ class TestCollectionProgress(TestCase):
         """Persist at most one source observation per second."""
         with collection_run("website", runtime=self.root) as run:
             with patch(
-                "runtime.collection_status.perf_counter",
+                "runtime.observability.collection_status.perf_counter",
                 side_effect=(10.0, 10.2, 11.2),
             ):
                 _source("First")
@@ -120,7 +120,7 @@ class TestCollectionProgress(TestCase):
         """Expose a new work unit immediately even inside one second."""
         with collection_run("website", runtime=self.root) as run:
             with patch(
-                "runtime.collection_status.perf_counter",
+                "runtime.observability.collection_status.perf_counter",
                 return_value=10,
             ):
                 with progress_work("website-reviews"):
@@ -169,7 +169,7 @@ class TestCollectionProgress(TestCase):
 
     def test_history_is_bounded_and_preserves_start_and_finish(self) -> None:
         """Limit source-stage history without losing lifecycle facts."""
-        with patch("runtime.collection_status.MAX_STAGES", 4):
+        with patch("runtime.observability.collection_status.MAX_STAGES", 4):
             with collection_run("website", runtime=self.root) as run:
                 for work in ("reviews", "consistency", "backlog"):
                     with progress_work("website-" + work):

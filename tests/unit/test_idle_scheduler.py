@@ -11,7 +11,10 @@ from unittest.mock import patch
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
 from apscheduler.executors.base import MaxInstancesReachedError
 
-from runtime.idle_scheduler import EVENT_SCHEDULER_STOPPING, IdleScheduler
+from runtime.scheduling.idle_scheduler import (
+    EVENT_SCHEDULER_STOPPING,
+    IdleScheduler,
+)
 
 
 class TestIdleScheduler(TestCase):

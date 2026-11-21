@@ -9,7 +9,7 @@ from unittest.mock import Mock
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.schedulers.base import STATE_PAUSED
 
-from runtime.hub import stop_jobs
+from runtime.scheduling.hub import stop_jobs
 
 
 class HubShutdownTests(TestCase):
@@ -41,7 +41,10 @@ class HubShutdownTests(TestCase):
         worker = Thread(target=stop_jobs, args=(scheduler, updater))
         try:
             assert entered.wait(2)
-            with self.assertLogs("runtime.hub", level="INFO") as logs:
+            with self.assertLogs(
+                "runtime.scheduling.hub",
+                level="INFO",
+            ) as logs:
                 worker.start()
                 assert stopping.wait(2)
                 assert paused == [STATE_PAUSED]

@@ -13,7 +13,7 @@ from urllib.error import HTTPError, URLError
 
 import polars as pl
 
-from runtime.jobs import pageviews as job
+from runtime.reporting import pageviews as job
 from tasks.zhwiki import pageviews
 
 _DAY = dt.date(2026, 10, 18)

@@ -101,6 +101,15 @@ def store_action(  # ruff: ignore[too-many-arguments]
     key = cache_key("pexbot", site.dbName(), title)
     store = action_store(dry=dry)
     with store.locked(key):
+        if attempt and not dry:
+            previous = store.read(key, locked=True)
+            if (
+                previous is not None
+                and previous.manifest["publication"]["state"] == "delegated"
+                and previous.tables["actions"].equals(result.tables["actions"])
+            ):
+                yield False
+                return
         bundle = store.write(
             key,
             result,

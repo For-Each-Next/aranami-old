@@ -10,7 +10,7 @@ from dataclasses import asdict
 from unittest import TestCase, addModuleCleanup
 from unittest.mock import Mock, patch
 
-from runtime.jobs import ProposedEdit
+from runtime.reporting import ProposedEdit
 from updater.edit_summary import (
     MAX_EDIT_SUMMARY_BYTES,
     EditSummary,

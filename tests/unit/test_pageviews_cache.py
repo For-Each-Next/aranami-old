@@ -19,7 +19,7 @@ from urllib.error import HTTPError
 import polars as pl
 
 from data.caching.pageviews import SCHEMA, PageviewsCache
-from runtime.jobs import JobContext, pageviews as job
+from runtime.reporting import JobContext, pageviews as job
 from shared.support.cache import latest_cache_path
 from tasks.zhwiki import pageviews
 from updater.services.zhwiki import pageviews as rendering

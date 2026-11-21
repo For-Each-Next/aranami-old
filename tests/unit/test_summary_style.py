@@ -6,7 +6,7 @@
 from unittest import TestCase
 
 from data.dyk import DykChanges
-from runtime.jobs import dyks
+from runtime.reporting import dyks
 
 
 class TestDykSummaryStyle(TestCase):

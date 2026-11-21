@@ -18,8 +18,8 @@ from pywikibot.page import Revision
 
 from data.reports import ReportResult, ReportStore, report_key
 from data.runtime import completion
-from runtime import runner
-from runtime.jobs import JobContext, new_pages, pageviews
+from runtime.reporting import JobContext, new_pages, pageviews
+from runtime.scheduling import runner
 from shared.support.regions import managed_region
 from updater.services.zhwiki.pageviews import PageviewReport
 
@@ -186,7 +186,7 @@ class TestDailyCompletion(TestCase):
                 self._checkpoint(routine)
                 with (
                     patch(
-                        "runtime.jobs.context.pywikibot.Site",
+                        "runtime.reporting.context.pywikibot.Site",
                     ) as site,
                     patch.object(job, "read_pages") as read,
                     patch.object(job, "job_run") as lifecycle,
@@ -240,7 +240,7 @@ class TestDailyCompletion(TestCase):
             with (
                 self.subTest(restarted=restarted),
                 patch.object(new_pages, "_utc_now", return_value=restarted),
-                patch("runtime.jobs.context.pywikibot.Site") as site,
+                patch("runtime.reporting.context.pywikibot.Site") as site,
                 patch.object(new_pages, "read_pages") as read,
                 patch.object(new_pages, "job_run") as lifecycle,
                 patch.object(new_pages.data, "prepare_report") as prepare,
@@ -286,7 +286,7 @@ class TestDailyCompletion(TestCase):
                         "_utc_now",
                         return_value=restarted,
                     ),
-                    patch("runtime.jobs.context.pywikibot.Site") as site,
+                    patch("runtime.reporting.context.pywikibot.Site") as site,
                     patch.object(pageviews, "read_pages") as read,
                     patch.object(pageviews, "job_run") as lifecycle,
                     patch.object(pageviews.data, "prepare_report") as prepare,

@@ -11,7 +11,12 @@ from urllib.parse import urlencode
 from data.runtime.dataset_updates import collection_schedules
 from shared.config import COLLECTION_DEFINITIONS, TASK_DEFINITIONS
 from shared.support.files import encode_json
-from shared.toolforge_jobs import JOB_DEFINITIONS, job_name
+from shared.toolforge.jobs import (
+    ARTICLE_STATISTICS,
+    JOB_DEFINITIONS,
+    WORKLOAD_SERVICES,
+    job_name,
+)
 from webservice.job_history import source_description
 from webservice.presentation import (
     catalog,
@@ -212,9 +217,20 @@ def _task_item(
     """
     execution = execution or {}
     started = execution.get("started_at")
+    key = f"routine.{task}"
+    base = f"routine.{task.removeprefix('fetch-')}"
+    if key in catalog():
+        name = interface.text(key)
+    elif task.startswith("fetch-") and base in catalog():
+        name = interface.text(
+            "dataset_updates.fetch_task",
+            task=interface.text(base),
+        )
+    else:
+        name = task
     item = _item(
         {
-            "filename": interface.text(f"routine.{task}"),
+            "filename": name,
             "state": "running" if started else "pending",
             "started_at": started,
             "scheduled_at": scheduled_at,
@@ -366,7 +382,7 @@ def native_executions(status: dict) -> list[dict]:
     return [
         run
         for run in status.get("executions", {}).values()
-        if run["task_id"] in JOB_DEFINITIONS
+        if run["task_id"] in JOB_DEFINITIONS | WORKLOAD_SERVICES
         and run.get("trigger") == "scheduled"
         and (started := timestamp(run["started_at"])) is not None
         and activated is not None
@@ -390,6 +406,7 @@ def _job_items(
     current = []
     previous = []
     expiries = []
+    backfill = status.get("toolforge_samples", {}).get(ARTICLE_STATISTICS, {})
     for run in native_executions(status):
         task = run["task_id"]
         expiry = _active_until(run, {}, now)
@@ -401,8 +418,19 @@ def _job_items(
             continue
         item = _task_item(task, interface, now, run)
         outcome = run["outcome"]
+        owner = (
+            WORKLOAD_SERVICES.get(task, task) if "services" in plan else task
+        )
+        if (
+            task == "quality-authorship"
+            and backfill
+            and backfill["started_at"]
+            <= run["started_at"]
+            <= backfill["observed_at"]
+        ):
+            owner = ARTICLE_STATISTICS
         item.update(
-            job_name=job_name(task),
+            job_name=job_name(owner),
             state=outcome,
             finished=_time(run.get("finished_at")),
             files=[

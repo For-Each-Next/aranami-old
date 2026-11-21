@@ -19,7 +19,7 @@ import polars as pl
 from wiki_fixtures import OfflineSite
 
 from data.reports import ReportBundle, ReportStore, report_key
-from runtime.jobs import JobContext, assessment_log as job
+from runtime.reporting import JobContext, assessment_log as job
 from tasks.zhwiki import assessment_log as source
 from updater.edit_summary import MAX_EDIT_SUMMARY_BYTES, EditSummary
 from updater.services.zhwiki.assessment_log import (
@@ -205,7 +205,7 @@ class _AssessmentLogFixture(TestCase):
         self.enterContext(patch("pathlib.Path.cwd", return_value=self.root))
         self.enterContext(
             patch(
-                "runtime.jobs.context.open_run_log",
+                "runtime.reporting.context.open_run_log",
                 return_value=nullcontext(),
             ),
         )

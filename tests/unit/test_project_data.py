@@ -19,7 +19,7 @@ import polars as pl
 from polars.testing import assert_frame_equal
 
 from data import project_data as snapshots
-from runtime.project_observations import project_cycle
+from runtime.fetch.project_observations import project_cycle
 from shared.sources.quarry import projects
 from shared.support.activity import activity_observer
 from shared.support.assessment_encoding import restore_assessment_schema

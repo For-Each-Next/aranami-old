@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, override
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
-from runtime.jobs import JobContext, ProposedEdit, job_run, pexbot
+from runtime.reporting import JobContext, ProposedEdit, job_run, pexbot
 from tasks.zhwiki import pexbot as pexbot_data
 
 if TYPE_CHECKING:
@@ -45,7 +45,7 @@ def _results(records: list[logging.LogRecord]) -> list[dict[str, object]]:
         if result is None:
             continue
         assert record.funcName == "routine_run"
-        assert record.name == "runtime.execution"
+        assert record.name == "runtime.observability.execution"
         assert result["schema"] == 1
         assert result["duration_seconds"] >= 0
         results.append(result)
@@ -64,7 +64,7 @@ class TestRoutineResults(TestCase):
         )
         for sink in (
             patch(
-                "runtime.jobs.context.open_run_log",
+                "runtime.reporting.context.open_run_log",
                 side_effect=nullcontext,
             ),
         ):
@@ -84,7 +84,7 @@ class TestRoutineResults(TestCase):
                 return_value=page,
             ),
             self.assertLogs(
-                "runtime.execution",
+                "runtime.observability.execution",
                 level="INFO",
             ) as captured,
         ):
@@ -137,7 +137,7 @@ class TestRoutineResults(TestCase):
                 "updater.publisher.pywikibot.Page",
             ) as page,
             self.assertLogs(
-                "runtime.execution",
+                "runtime.observability.execution",
                 level="INFO",
             ) as captured,
             job_run("dyks", dry=False, context=context),
@@ -172,7 +172,7 @@ class TestRoutineResults(TestCase):
                     return_value=Mock(text="old"),
                 ),
                 self.assertLogs(
-                    "runtime.execution",
+                    "runtime.observability.execution",
                     level="INFO",
                 ) as captured,
                 self.assertRaises(RuntimeError)
@@ -202,7 +202,7 @@ class TestRoutineResults(TestCase):
                 return_value=page,
             ),
             self.assertLogs(
-                "runtime.execution",
+                "runtime.observability.execution",
                 level="INFO",
             ) as captured,
             self.assertRaises(RuntimeError),
@@ -239,7 +239,7 @@ class TestRoutineResults(TestCase):
                 ),
                 patch.object(pexbot, "_refresh") as refresh,
                 self.assertLogs(
-                    "runtime.execution",
+                    "runtime.observability.execution",
                     level="INFO",
                 ) as captured,
             ):
@@ -264,7 +264,7 @@ class TestRoutineResults(TestCase):
                 side_effect=RuntimeError("Stream lost."),
             ),
             self.assertLogs(
-                "runtime.execution",
+                "runtime.observability.execution",
                 level="INFO",
             ) as captured,
             self.assertRaises(ExceptionGroup),

@@ -18,7 +18,7 @@ from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine
 from wiki_fixtures import OfflineSite
 
 from data.articles import scope as article_scope
-from runtime.jobs import newsletter_history as collection_job
+from runtime.fetch import newsletter_history as collection_job
 from shared.sources.quarry import Replica, projects
 from shared.sources.revisions import RevisionContent
 from tasks.articles.history import collect_article_history, history_membership
