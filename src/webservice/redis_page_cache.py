@@ -6,6 +6,7 @@ import hmac
 import os
 import struct
 import time
+import zlib
 from typing import TYPE_CHECKING
 
 from redis import Redis
@@ -19,13 +20,34 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 _TTL_SECONDS = 45
-_MAX_BYTES = 512 * 1024
+_MAX_COMPRESSED_BYTES = 512 * 1024
+_MAX_HTML_BYTES = 2 * 1024 * 1024
 _TIMEOUT_SECONDS = 0.15
 _BACKOFF_SECONDS = 20
 _SECRET_BYTES = 32
 _PROOF_BYTES = 32
 _CLOCK = struct.Struct("!d")
-_MAX_VALUE = _PROOF_BYTES + _CLOCK.size + _MAX_BYTES
+_MAX_VALUE = _PROOF_BYTES + _CLOCK.size + _MAX_COMPRESSED_BYTES
+
+
+def _decode_html(value: bytes) -> str | None:
+    """Restore one bounded, complete compressed HTML document.
+
+    Returns:
+        Decoded HTML, or none if the compressed value is invalid.
+    """
+    try:
+        stream = zlib.decompressobj()
+        raw = stream.decompress(value, _MAX_HTML_BYTES + 1)
+        if (
+            stream.eof
+            and not stream.unused_data
+            and len(raw) <= _MAX_HTML_BYTES
+        ):
+            return raw.decode()
+    except zlib.error, UnicodeDecodeError:
+        return None
+    return None
 
 
 class RedisPageCache:
@@ -79,7 +101,7 @@ class RedisPageCache:
             b"slot\0" + self._namespace + b"\0" + repr(key).encode(),
             "sha256",
         )
-        return f"aranami:page:v1:{code.hex()}"
+        return f"aranami:page:v2:{code.hex()}"
 
     def _proof(self, key: str, identity: tuple, body: bytes) -> bytes:
         """Bind the page to its slot and committed input generation.
@@ -119,21 +141,25 @@ class RedisPageCache:
         remaining = min(expires - time.time(), _TTL_SECONDS)
         if remaining <= 0:
             return None
-        return body[_CLOCK.size :].decode(), remaining
+        content = _decode_html(body[_CLOCK.size :])
+        return (content, remaining) if content is not None else None
 
     def put(self, key: tuple, identity: tuple, content: str) -> None:
         """Cache one small prepared variant in its fixed Redis slot."""
         if (
             identity == (None,)
-            or len(content) > _MAX_BYTES
+            or len(content) > _MAX_HTML_BYTES
             or time.monotonic() < self._retry_at
         ):
             return
         raw = content.encode()
-        if not raw or len(raw) > _MAX_BYTES:
+        if not raw or len(raw) > _MAX_HTML_BYTES:
+            return
+        compressed = zlib.compress(raw, level=1)
+        if len(compressed) > _MAX_COMPRESSED_BYTES:
             return
         slot = self._key(key)
-        body = _CLOCK.pack(time.time() + _TTL_SECONDS) + raw
+        body = _CLOCK.pack(time.time() + _TTL_SECONDS) + compressed
         try:
             self._client.set(
                 slot,

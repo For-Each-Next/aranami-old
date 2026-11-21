@@ -193,9 +193,9 @@ openssl rand -hex 32 | toolforge envvars create ARANAMI_REDIS_SECRET
 toolforge jobs restart aranami-web
 ```
 
-The web job shares small prepared Article Statistics pages for up to 45
-seconds. Entries are authenticated against their exact saved input generation
-and source release. The local page cache and shared files serve requests
+The web job shares prepared Article Statistics pages for up to 45 seconds.
+Entries are authenticated against their saved input generation and release,
+with limits of 512 KiB compressed and 2 MiB restored. The local page cache and shared files serve requests
 after expiry, an invalid entry or a Redis failure. Rotate the signing secret
 through Toolforge Envvars to create a fresh namespace. [Toolforge Redis][redis]
 [Toolforge Envvars][envvars]

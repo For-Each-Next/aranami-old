@@ -52,8 +52,19 @@ class TestRedisPageCache(TestCase):
         self.client.getrange.return_value = self.client.set.call_args.args[1]
         assert self.cache.read(_KEY, _IDENTITY) is None
         self.client.set.reset_mock()
-        self.cache.put(_KEY, _IDENTITY, "x" * (512 * 1024 + 1))
+        self.cache.put(_KEY, _IDENTITY, "x" * (2 * 1024 * 1024 + 1))
         self.client.set.assert_not_called()
+
+    def test_share_a_large_prepared_page(self) -> None:
+        """Compress public HTML near the observed deployment size."""
+        content = _HTML * 25_000
+        self.cache.put(_KEY, _IDENTITY, content)
+        cached = self.client.set.call_args.args[1]
+        assert len(cached) < len(content.encode())
+        self.client.getrange.return_value = cached
+        hit = self.cache.read(_KEY, _IDENTITY)
+        assert hit is not None
+        assert hit[0] == content
 
     def test_redis_timeout_keeps_local_cache_available(self) -> None:
         """Use local pages during a shared-cache outage."""

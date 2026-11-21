@@ -5,7 +5,7 @@ v0.8.8 was consolidated into the v0.9.2 release.
 
 ## Until 0.11
 
-### 0.10.0.dev2 (2026-11-21 04:35 UTC)
+### 0.10.0.dev3 (2026-11-21 04:43 UTC)
 
 Overview: Isolated Aranami's public website, data work and wiki reports in
 separate Toolforge jobs with per-job resource limits.
@@ -17,7 +17,7 @@ separate Toolforge jobs with per-job resource limits.
 - Restored legacy wiki scheduling before checking the web rollout and
   documented independent job cutover and rollback.
 - Used shared NFS for committed job results and Redis for authenticated,
-  short-lived Article Statistics pages.
+  compressed Article Statistics pages.
 - Displayed CPU use and allocation in cores and introduced an angular
   wave mark for the header and icons.
 - Sized the web job against its observed memory use and verified
