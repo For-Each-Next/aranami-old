@@ -439,94 +439,38 @@
             this.failure = failure;
         }
     }
-    /** Build dataset rows from queried JSON without parsing repeated HTML. */
+    /** Reconcile the same job cards used on the initial About page. */
     function datasetPatch(updates) {
-        const labels = updates.labels;
-        const element = (name, text = null, attributes = {}, children = []) => {
-            const node = document.createElement(name);
-            if (text !== null) node.textContent = text;
-            for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value);
-            for (const child of children) node.appendChild(child);
-            return node;
-        };
-        const link = (text, url, dataset = false) => {
-            if (!url) return element("span", text);
-            if (!/^(?:\/|https:\/\/)/.test(url) || url.startsWith("//")) throw new StatusError("protocol");
-            return element("a", text, {href: url, ...(dataset ? {"data-dataset-link": ""} : {})});
-        };
-        const instant = value => value?.known ? `${value.label} UTC` : labels.unknown;
-        const list = (model, current) => {
-            if (!Array.isArray(model.items)) throw new StatusError("protocol");
-            if (!model.items.length) {
-                const empty = current
-                    ? (model.native ? labels.no_job_schedule : model.state === "unavailable" ? labels.unavailable : labels.no_planned)
-                    : (model.native ? labels.no_recent_jobs : labels.no_previous);
-                return element("p", empty, {class: "context"});
-            }
-            return element("ul", null, {class: "dataset-update-files"}, model.items.map(item => {
-                const active = item.state === "running";
-                const result = item.outcome ?? (current ? (active ? labels.running : item.scheduled?.known ? labels.scheduled : labels.waiting) : (item.state === "succeeded" ? labels.succeeded : item.state === "failed" ? labels.failed : labels.unknown));
-                const icon = element("span", item.icon ?? (current ? "⌛" : item.state === "succeeded" ? "✅" : item.state === "failed" ? "❌" : "?"), {role: "img", "aria-label": result});
-                const title = element("strong", null, {}, [link(item.filename, current ? null : item.url, true)]);
-                const details = [];
-                const first = element("li");
-                if (!current || item.started?.known) {
-                    first.textContent = `${labels.started} ${instant(item.started)}`;
-                } else if (item.scheduled?.known) {
-                    first.textContent = `${labels.scheduled} ${instant(item.scheduled)}`;
-                } else if (item.cron && !item.outcome) {
-                    first.appendChild(element("code", item.cron));
-                } else {
-                    first.textContent = item.outcome ?? labels.waiting;
-                }
-                if (!item.is_task) {
-                    const baseline = element(current ? "span" : "div", `${current ? "; " : ""}${labels.baseline} `, current ? {} : {class: "dataset-update-note"});
-                    baseline.appendChild(link(item.baseline?.filename || labels.unknown, item.baseline?.url, true));
-                    first.appendChild(baseline);
-                }
-                details.push(first);
-                if (!current) {
-                    const finished = element("li", `${item.outcome ?? labels.finished} ${instant(item.finished)}`);
-                    if (item.shape) finished.appendChild(element("div", item.shape, {class: "dataset-update-note dataset-update-shape"}));
-                    details.push(finished);
-                }
-                if (current && item.elapsed?.running) {
-                    const elapsed = element("span", item.elapsed.label, {"data-clock": "dataset-elapsed", "data-started-at": item.elapsed.started, "data-clock-unknown": labels.unknown, ...(updates.expires ? {"data-clock-expires": updates.expires} : {})});
-                    details.push(element("li", null, {}, [element("span", `${labels.elapsed} `), elapsed, element("span", item.activity ? ` · ${item.activity}` : "")]));
-                } else if (current && item.activity) details.push(element("li", item.activity));
-                if (item.files?.length) {
-                    const files = item.files.map(file => {
-                        const row = element("li", null, {}, [link(file.filename, file.url, true)]);
-                        if (file.shape) row.appendChild(element("div", file.shape, {class: "dataset-update-note dataset-update-shape"}));
-                        return row;
-                    });
-                    details.push(element("li", null, {}, [
-                        element("details", null, {}, [element("summary", labels.files), element("ul", null, {}, files)]),
-                    ]));
-                } else if (!item.is_task) {
-                    details.push(element("li", null, {}, [element("span", labels.used_by), item.reports?.length ? element("ul", null, {}, item.reports.map(report => element("li", null, {}, [link(report.name, report.url)]))) : element("div", labels.no_reports, {class: "dataset-update-note"})]));
-                }
-                return element("li", null, {"data-key": item.key || item.filename}, [element("p", null, {}, [icon, element("span", " "), title]), element("ul", null, {class: "dataset-update-details"}, details)]);
-            }));
-        };
         const patches = [];
-        for (const kind of ["previous", "current"]) {
-            const root = document.getElementById(`dataset-updates-${kind}`);
+        for (const kind of ["current", "previous"]) {
+            const id = "dataset-updates-" + kind;
+            const root = document.getElementById(id);
             const model = updates[kind];
-            if (!root || !model) continue;
+            if (!root || !model || model.html == null) continue;
             if (kind === "previous" && model.key === root.dataset.liveKey) continue;
-            const body = element("div", null, kind === "current" && updates.expires ? {"data-observation-expires": updates.expires, "data-stale-text": labels.unavailable} : {}, [list(model, kind === "current")]);
+            if (!Array.isArray(model.items) || typeof model.html !== "string"
+                || model.html.length > 8 * 1024 * 1024) throw new StatusError("protocol");
+            const body = new DOMParser().parseFromString(model.html, "text/html")
+                ?.getElementById(id + "-body");
+            if (!body) throw new StatusError("response");
             patches.push(() => {
-                const previous = [...root.childNodes].find(node => node.nodeName === "DIV");
+                const previous = [...root.childNodes].find(child => child.nodeName === "DIV");
                 if (previous) reconcile(previous, body);
-                else {
-                    for (const child of [...root.childNodes]) if (child.nodeName !== "H2") child.remove();
-                    root.appendChild(body);
-                }
+                else root.appendChild(body.cloneNode(true));
                 if (model.key) root.setAttribute("data-live-key", model.key);
             });
         }
-        return () => patches.forEach(patch => patch());
+        return () => {
+            const opened = document.querySelector?.(".dataset-job-card dialog[open]")?.id;
+            for (const patch of patches) patch();
+            if (!opened) return;
+            const dialog = document.getElementById(opened);
+            if (dialog && !dialog.open) {
+                const control = document.getElementById(opened + "-title")?.querySelector("a");
+                if (control) dialogOpeners.set(dialog, control);
+                dialog.showModal();
+            }
+        };
     }
     /** Identify the completed rows already preloaded in this page. */
     function previousQuery() {

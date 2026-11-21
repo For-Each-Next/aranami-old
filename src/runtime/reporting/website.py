@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import datetime as dt
 
 from data.newsletter.archive import DEFAULT_PATH, NewsletterDraftArchive
 from data.website import read_report_cache, read_timestamp
@@ -11,9 +11,6 @@ from runtime.fetch.website import DEFAULT_DAYS, DEFAULT_OUTPUT
 from runtime.observability.collection_status import collection_run
 from tasks.website.collect import collect_dashboard
 lazy from webservice.newsletter_charts import prepare_newsletter_charts
-
-if TYPE_CHECKING:
-    import datetime as dt
 
 
 def publish(now: dt.datetime) -> None:
@@ -28,7 +25,7 @@ def publish(now: dt.datetime) -> None:
         save_dashboard_snapshot(DEFAULT_OUTPUT, snapshot)
 
 
-def publish_newsletter(now: dt.datetime) -> None:
+def publish_newsletter() -> None:
     """Generate the draft archive and charts from saved facts.
 
     Raises:
@@ -39,7 +36,7 @@ def publish_newsletter(now: dt.datetime) -> None:
             DEFAULT_OUTPUT.with_name("newsletter.json"),
             "newsletter",
             DEFAULT_DAYS,
-            now,
+            dt.datetime.now(dt.UTC),
         )
         if record is None or record.get("failed") or record["data"] is None:
             message = "The newsletter source observations are unavailable."

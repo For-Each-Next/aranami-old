@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 from status_fixtures import status_snapshot
 
-from webservice.dataset_updates import dataset_updates_context
+from webservice.dataset_updates import dataset_updates_context, with_card_ids
 from webservice.pages import render_about, render_live_status
 from webservice.presentation import Interface
 from webservice.status_view import status_context
@@ -99,7 +99,14 @@ def _render_updates(data: dict, locale: str, *, live: bool = False) -> str:
             Ordinary status with controlled dataset evidence.
         """
         result = status_context(*args, **kwargs)
-        result["server"]["dataset_updates"] = copy.deepcopy(data)
+        updates = copy.deepcopy(data)
+        for section in ("current", "previous"):
+            if section in updates:
+                updates[section]["items"] = with_card_ids(
+                    updates[section]["items"],
+                    section,
+                )
+        result["server"]["dataset_updates"] = updates
         return result
 
     config = {"version": "0.9.15"}
@@ -126,15 +133,20 @@ class DatasetUpdatePresentationTests(TestCase):
                 assert second is not None
                 assert first[0] == second[0]
                 assert "<h2 " in first[0]
+                assert re.search(
+                    r'aria-controls="(dataset-job-[a-f0-9]+)"'
+                    r'.*<dialog id="\1"',
+                    first[0],
+                    re.DOTALL,
+                )
             assert 'id="server-work"' not in full
-            assert "new&lt;unsafe&gt;.parquet</a></strong>" in full
+            assert "new&lt;unsafe&gt;.parquet</a></h3>" in full
             assert "new<unsafe>.parquet" not in full
             assert "Report &lt;unsafe&gt;" in full
-            assert "12 × 3" not in full
             assert "14 × 4" in full
             for icon in ("✅", "❌", "⌛"):
                 assert icon in full
-            assert "<strong>next.parquet</strong>" in full
+            assert "next.parquet</a></h3>" in full
             assert "data-dataset-link" in full
             assert 'data-clock="dataset-elapsed"' in full
             assert "Reading &lt;source&gt;" in full
@@ -143,7 +155,7 @@ class DatasetUpdatePresentationTests(TestCase):
 
     @staticmethod
     def test_plans_do_not_claim_running_or_start_a_clock() -> None:
-        """Keep future filenames unlinked without elapsed activity."""
+        """Offer planned job details without an elapsed clock."""
         data = _updates()
         data["current"]["state"] = "planned"
         item = data["current"]["items"][0]
@@ -152,7 +164,8 @@ class DatasetUpdatePresentationTests(TestCase):
         assert "更新排程</h2>" in output
         assert "正在更新资料" not in output
         assert 'data-clock="dataset-elapsed"' not in output
-        assert "<strong>next.parquet</strong>" in output
+        assert "next.parquet</a></h3>" in output
+        assert 'href="/data/?file=data/raw/next.parquet' not in output
 
     @staticmethod
     def test_empty_evidence_is_explicit() -> None:
@@ -357,10 +370,10 @@ class DatasetUpdateContextTests(TestCase):
         assert recent["state"] == "failed"
         assert recent["files"][0]["state"] == "succeeded"
         rendered = _render_updates(result, "en")
-        assert "<strong>" + self.interface.text("routine.pexbot") in rendered
+        assert self.interface.text("routine.pexbot") + "</a></h3>" in rendered
         assert self.interface.text("routine.quality-authorship") in rendered
-        assert "<code>aranami-" not in rendered
-        assert "<summary>Dataset files</summary>" in rendered
+        assert "<code>aranami-pexbot</code>" in rendered
+        assert "<h4>Dataset files</h4>" in rendered
 
     @staticmethod
     def test_job_table_shows_localized_names_and_cpu_cores() -> None:

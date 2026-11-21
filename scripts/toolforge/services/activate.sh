@@ -40,7 +40,8 @@ finish() {
                 toolforge jobs load --job "$name" "$backup/jobs.yaml"
             done < "$backup/previous-cronjobs"
             if [ -n "$previous" ]; then
-                python3 "$tool_dir/$previous/scripts/toolforge/validate-source.py" +                    select "$tool_dir/$previous" && toolforge jobs restart aranami-web
+                python3 "$tool_dir/$previous/scripts/toolforge/validate-source.py" \
+                    select "$tool_dir/$previous" && toolforge jobs restart aranami-web
                 record_schedules
             fi
             if [ -f "$backup/active" ]; then mv "$backup/active" "$state/active"; fi

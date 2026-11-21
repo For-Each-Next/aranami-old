@@ -1,6 +1,6 @@
 /** Show Aranami service status and attribution. */
 import { jsx, display } from "./rendering.js";
-import { DatasetUpdates, Server } from "./status.jsx";
+import { Server } from "./status.jsx";
 
 export function AboutContents(context) {
     const { t } = context;
@@ -32,7 +32,7 @@ export function About(context) {
             <p class="page-description">{display(introduction)}</p>
             <p>{display(contact)}</p>
             {Server(context)}
-            {DatasetUpdates(context)}
+            {display(context.dataset_updates_html)}
             <section class="section-flat" aria-labelledby="credits">
                 <h2 id="credits">{t.about.credits}</h2>
                 <ul class="about-credits">

@@ -92,8 +92,8 @@ test("saved cells combine exact quantiles without treating unknown measurements 
     assert.equal(combined.pages, 4);
     assert.equal(combined.measured, 3);
     assert.equal(combined.quantiles[2], 10);
-    assert.equal(combined.density[1][1], 1);
-    assert.ok(Math.abs(combined.density[0][1] - .5) < 1e-12);
+    assert.equal(combined.density[1][1], .6);
+    assert.ok(Math.abs(combined.density[0][1] - .3) < 1e-12);
     assert.equal(context.combineCells([]).quantiles[2], null);
 });
 
@@ -660,19 +660,27 @@ test("individual violin tooltips use localized names without percentile codes or
     }
 });
 
-test("violin length scale uses a linear 90% segment and a continuous logarithmic tail", () => {
-    const position = length => context.proseLengthPosition(length, 100000);
-    for (const [length, expected] of [[0, 0], [5000, 180], [7000, 252], [9000, 324], [25000, 900], [50000, 950], [100000, 1000]]) {
-        assert.ok(Math.abs(position(length) - expected) < 1e-10);
-    }
-    const lengths = [0, 1, 5000, 24999, 25000, 25001, 50000, 100000];
-    const positions = lengths.map(position);
-    assert.ok(positions.every(value => Number.isFinite(value) && value >= 0 && value <= 1000));
-    assert.ok(positions.slice(1).every((value, index) => value > positions[index]));
-    assert.ok(position(25001) - position(25000) < .01);
-    assert.equal(context.proseLengthPosition(25000, 25000), 900);
-    assert.equal(context.proseLengthPosition(50000, 25000), 900);
-    assert.equal(position(100001), 1000);
+test("the x-axis is logarithmic across the full displayed range", () => {
+    const position = length => context.proseLengthPosition(length, 99999);
+    assert.equal(position(0), 0);
+    assert.ok(Math.abs(position(99) - 400) < 1e-10);
+    assert.ok(Math.abs(position(999) - 600) < 1e-10);
+    assert.ok(Math.abs(position(9999) - 800) < 1e-10);
+    assert.equal(position(99999), 1000);
+});
+
+test("violin density is cut at observed extrema and integrates to its count", () => {
+    const density = [[0, 1], [50, 3], [100, 4], [200, 2], [300, 1]];
+    const measured = 70;
+    const bounded = context.violinAreaDensity({density, measured, minimum: 40, maximum: 210});
+    assert.equal(bounded[0][0], 40);
+    assert.ok(bounded[0][1] > 0);
+    assert.equal(bounded.at(-1)[0], 210);
+    const area = bounded.slice(1).reduce((sum, [x, y], index) => {
+        const [left, height] = bounded[index];
+        return sum + (y + height) * (Math.log1p(x) - Math.log1p(left)) / 2;
+    }, 0);
+    assert.ok(Math.abs(area - measured) < 1e-10);
 });
 
 test("violin scale maximum uses all observed catalog lengths and ignores empty bins", () => {
@@ -682,17 +690,18 @@ test("violin scale maximum uses all observed catalog lengths and ignores empty b
     assert.equal(context.proseLengthMaximum([{histogram: []}, {histogram: [{value: 0, count: 1}]}]), 25000);
 });
 
-test("violin tail positions stay fixed when other groups and long articles are filtered", () => {
+test("violin positions stay fixed when other groups and long articles are filtered", () => {
     const cell = maximum => ({pages: 3, measured: 3,
         histogram: [{value: 0, count: 1}, {value: 50000, count: 1}, {value: maximum, count: 1}],
         density: [{position: 50000, density: 1}, {position: maximum, density: .25}]});
     const all = [cell(75000), cell(100000)], maximum = context.proseLengthMaximum(all);
     for (const selected of [[all[0]], [all[1]], all]) {
         const statistics = context.combineCells(selected);
-        assert.equal(context.proseLengthPosition(statistics.quantiles[2], maximum), 950);
+        const expected = context.proseLengthPosition(50000, 100000);
+        assert.equal(context.proseLengthPosition(statistics.quantiles[2], maximum), expected);
         const anchor = statistics.density.find(([length]) => length === 50000);
-        assert.equal(context.proseLengthPosition(anchor[0], maximum), 950);
-        assert.equal(anchor[1], 1);
+        assert.equal(context.proseLengthPosition(anchor[0], maximum), expected);
+        assert.equal(anchor[1], selected.length);
     }
 });
 

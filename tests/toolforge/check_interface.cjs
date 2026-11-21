@@ -1049,10 +1049,23 @@ async function checkInterface(assetRoot) {
                         const current = document.querySelector('#dataset-updates-current');
                         return {removed: !document.querySelector('#server-work'), separate: Boolean(previous && current && !previous.closest('#live-server-status') && !current.closest('#live-server-status')),
                             headings: previous?.querySelector('h2')?.id === 'dataset-updates-previous-heading' && current?.querySelector('h2')?.id === 'dataset-updates-current-heading',
-                            noFutureLinks: [...current.querySelectorAll('.dataset-update-files > li > p strong')].every(title => !title.querySelector('a'))};
+                            dialogs: [...document.querySelectorAll('.dataset-job-trigger')].every(link => document.getElementById(link.getAttribute('aria-controls'))?.tagName === 'DIALOG')};
                     })()`);
-                    assert.deepEqual(updates, {removed: true, separate: true, headings: true, noFutureLinks: true}, 'dataset updates must have independent live sections and plain future filenames');
+                    assert.deepEqual(updates, {removed: true, separate: true, headings: true, dialogs: true}, 'dataset update cards must link to their own dialogs');
                     if ([320, 1440].includes(width)) {
+                        const target = await evaluate(`(() => {
+                            const card = document.querySelector('#dataset-updates-current .dataset-job-card');
+                            const link = card.querySelector('.dataset-job-trigger');
+                            card.scrollIntoView({block: 'center'});
+                            const box = card.getBoundingClientRect();
+                            return {x: box.right - 20, y: box.bottom - 20, id: link.getAttribute('aria-controls')};
+                        })()`);
+                        const {x, y, id} = target;
+                        await call('Input.dispatchMouseEvent', {type: 'mousePressed', x, y, button: 'left', clickCount: 1}, sessionId);
+                        await call('Input.dispatchMouseEvent', {type: 'mouseReleased', x, y, button: 'left', clickCount: 1}, sessionId);
+                        assert.equal(await evaluate(`document.getElementById(${JSON.stringify(id)}).open`), true, 'clicking a job card opens run details');
+                        await press('Escape', 27);
+                        assert.equal(await evaluate(`new Promise(resolve => requestAnimationFrame(() => resolve(!document.getElementById(${JSON.stringify(id)}).open && document.activeElement?.getAttribute('aria-controls') === ${JSON.stringify(id)})))`), true, 'dismissing job details restores focus to its card');
                         await evaluate("document.querySelector('#dataset-updates-previous').scrollIntoView({block: 'start'})");
                         const shot = await call('Page.captureScreenshot', {format: 'png', captureBeyondViewport: false}, sessionId);
                         fs.writeFileSync(path.join(outputRoot, `${locale}-dataset-updates-${width}.png`), Buffer.from(shot.data, 'base64'));

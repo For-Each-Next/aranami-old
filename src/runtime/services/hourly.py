@@ -21,6 +21,7 @@ from shared.toolforge.jobs import (
     ARTICLE_STATISTICS,
     DATA_FETCH,
     JOB_DEFINITIONS,
+    PROJECT_HOURLY,
     PROJECT_SNAPSHOT,
     REPORT_WORKLOADS,
     SERVICES,
@@ -33,6 +34,7 @@ from shared.toolforge.state import (
     completed,
     fetch_outcome,
     hour,
+    midnight,
     record_completion,
     record_fetch,
 )
@@ -44,6 +46,7 @@ _LOGGER = logging.getLogger(__name__)
 _POLL_SECONDS = 5
 _WORKLOAD_MINUTES = {
     PROJECT_SNAPSHOT: 8,
+    PROJECT_HOURLY: 8,
     "newsletter-history": 10,
     NEWSLETTER: 12,
     "dyks": 12,
@@ -132,11 +135,7 @@ def _wait(
 def _due_cycle(name: str, cycle: dt.datetime) -> dt.datetime:
     """Return the success key used for hourly and daily work."""
     definition = JOB_DEFINITIONS.get(name)
-    return (
-        cycle.replace(hour=0)
-        if definition and definition.hour == "0"
-        else cycle
-    )
+    return midnight(cycle) if definition and definition.hour == "0" else cycle
 
 
 def _attempt(  # ruff: ignore[too-many-arguments] - Bind the UTC cycle and deadline.
@@ -177,6 +176,41 @@ def _attempt(  # ruff: ignore[too-many-arguments] - Bind the UTC cycle and deadl
     return True
 
 
+def _ensure_snapshot(
+    runtime: Path,
+    cycle: dt.datetime,
+    deadline: dt.datetime,
+) -> None:
+    """Recover today's missed snapshot under the daily lease.
+
+    Raises:
+        RuntimeError: The daily capture is unavailable.
+    """
+    boundary = midnight(cycle)
+    while not completed(runtime, PROJECT_SNAPSHOT, boundary):
+        with collection_lease(
+            runtime,
+            f"{PROJECT_SNAPSHOT}-service",
+        ) as acquired:
+            if acquired and _attempt(
+                runtime,
+                "fetch",
+                PROJECT_SNAPSHOT,
+                cycle,
+                deadline,
+                checkpoint=boundary,
+            ):
+                return
+        if (
+            acquired
+            or not enabled(runtime)
+            or dt.datetime.now(dt.UTC) >= deadline
+        ):
+            message = f"The project snapshot is missing for {boundary.date()}."
+            raise RuntimeError(message)
+        sleep(_POLL_SECONDS)
+
+
 def _fetch(runtime: Path, cycle: dt.datetime, deadline: dt.datetime) -> None:
     """Collect sources and signal the result to report update.
 
@@ -186,12 +220,10 @@ def _fetch(runtime: Path, cycle: dt.datetime, deadline: dt.datetime) -> None:
     record_fetch(runtime, cycle, "running")
     outcome = "failed"
     try:
-        snapshot_deadline = cycle + dt.timedelta(minutes=12)
-        _wait(
-            runtime,
-            lambda: completed(runtime, PROJECT_SNAPSHOT, cycle),
-            min(deadline, snapshot_deadline),
-        )
+        _ensure_snapshot(runtime, cycle, deadline)
+        if not _attempt(runtime, "fetch", PROJECT_HOURLY, cycle, deadline):
+            message = f"Project observations failed for {cycle.isoformat()}."
+            raise RuntimeError(message)
         failures = []
         for name in _FETCH_ORDER:
             if name in REPORT_WORKLOADS and completed(
@@ -229,9 +261,9 @@ def _reports(runtime: Path, cycle: dt.datetime, deadline: dt.datetime) -> None:
         runtime,
         lambda: (
             fetch_outcome(runtime, cycle) in {"succeeded", "failed"}
-            and completed(runtime, PROJECT_SNAPSHOT, cycle)
+            and completed(runtime, f"fetch-{PROJECT_HOURLY}", cycle)
         ),
-        min(deadline, cycle + dt.timedelta(minutes=38)),
+        deadline,
     )
     failures = []
     for name in REPORT_WORKLOADS:
@@ -284,21 +316,29 @@ def run_service(name: str) -> None:
     ):
         started = dt.datetime.now(dt.UTC)
         cycle = hour(started)
+        checkpoint = midnight(cycle) if name == PROJECT_SNAPSHOT else cycle
         allocation = SERVICES[name]
         deadline = min(
             started + dt.timedelta(minutes=allocation.minutes, seconds=-20),
             cycle + dt.timedelta(minutes=58),
         )
-        if (
-            not acquired
-            or not enabled(runtime)
-            or completed(runtime, name, cycle)
-        ):
+        finished = completed(runtime, name, checkpoint) and (
+            name != DATA_FETCH
+            or completed(runtime, f"fetch-{PROJECT_HOURLY}", cycle)
+        )
+        if not acquired or not enabled(runtime) or finished:
             return
         with observe_job(runtime, name, started):
             recover_interrupted_runs(before=started)
             if name == PROJECT_SNAPSHOT:
-                if not _attempt(runtime, "fetch", name, cycle, deadline):
+                if not _attempt(
+                    runtime,
+                    "fetch",
+                    name,
+                    cycle,
+                    deadline,
+                    checkpoint=checkpoint,
+                ):
                     message = (
                         f"The project snapshot failed for {cycle.isoformat()}."
                     )

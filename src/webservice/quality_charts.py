@@ -42,8 +42,7 @@ _PROFILE = assessment_profile("zhwiki", "电子游戏")
 _IMPORTANCE = ("Top", "High", "Mid", "Low", "Unknown")
 _MAX_ARTICLES = 30_000
 _MAX_YEARS = 200
-_LINEAR_LIMIT = 25_000
-_LINEAR_SHARE = 0.9
+_DEFAULT_MAX_LENGTH = 25_000
 _SVG = "http://www.w3.org/2000/svg"
 _XLINK = "http://www.w3.org/1999/xlink"
 _STATISTICS = ("minimum", "p25", "p50", "p75", "maximum", "mean")
@@ -78,37 +77,21 @@ def _number(value: float) -> str:
 
 
 def _scale(value: np.ndarray, maximum: float) -> np.ndarray:
-    """Map a shared linear body and logarithmic tail to one unit axis.
+    """Map lengths to the shared logarithmic axis.
 
     Returns:
-        Vectorized positions without taking logarithms of zero.
+        Vectorized unit coordinates, with zero retained at zero.
     """
-    values = np.asarray(value)
-    tail = math.log(max(maximum / _LINEAR_LIMIT, 1.000001))
-    return np.where(
-        values <= _LINEAR_LIMIT,
-        values / _LINEAR_LIMIT * _LINEAR_SHARE,
-        _LINEAR_SHARE
-        + (1 - _LINEAR_SHARE)
-        * np.log(np.maximum(values, _LINEAR_LIMIT) / _LINEAR_LIMIT)
-        / tail,
-    )
+    return np.log1p(np.maximum(value, 0)) / math.log1p(maximum)
 
 
 def _inverse_scale(value: np.ndarray, maximum: float) -> np.ndarray:
-    """Restore character counts for Matplotlib's function scale.
+    """Invert the logarithmic axis for Matplotlib.
 
     Returns:
-        Original sample coordinates for the shared axis transform.
+        Original character coordinates.
     """
-    values = np.asarray(value)
-    tail = math.log(max(maximum / _LINEAR_LIMIT, 1.000001))
-    return np.where(
-        values <= _LINEAR_SHARE,
-        values / _LINEAR_SHARE * _LINEAR_LIMIT,
-        _LINEAR_LIMIT
-        * np.exp((values - _LINEAR_SHARE) / (1 - _LINEAR_SHARE) * tail),
-    )
+    return np.expm1(np.asarray(value) * math.log1p(maximum))
 
 
 def _link(group: str, value: str, label: str, year: int | None = None) -> dict:
@@ -257,15 +240,37 @@ def _pie(rows: tuple, dimension: str, caption: str) -> str:
     )
 
 
+def _violin_density(values: tuple) -> tuple:
+    """Estimate count-weighted density inside the observed support.
+
+    Returns:
+        Original lengths paired with heights per unit log length.
+    """
+    if not values or values[0] == values[-1]:
+        return ()
+    samples = np.log1p(values)
+    grid = np.linspace(samples[0], samples[-1], 129)
+    bandwidth = max(0.02, 1.06 * samples.std() * len(values) ** -0.2)
+    density = np.exp(-0.5 * ((grid[:, None] - samples) / bandwidth) ** 2).mean(
+        axis=1,
+    )
+    density *= len(values) / np.trapezoid(density, grid)
+    positions = np.expm1(grid)
+    positions[0], positions[-1] = values[0], values[-1]
+    return tuple(zip(positions, density, strict=True))
+
+
 @lru_cache(maxsize=64)
-def _violin(  # ruff: ignore[too-many-locals]
+def _violin(  # ruff: ignore[too-many-arguments,too-many-locals] - Explicit chart geometry and metadata.
     values: tuple,
     maximum: float,
     option: tuple,
     labels: tuple,
     pages: int,
+    *,
+    density: tuple,
 ) -> str:
-    """Render exact saved samples through Axes.violinplot.
+    """Render the density and markers on a shared axis.
 
     Returns:
         A horizontal violin with individually titled native markers.
@@ -282,7 +287,7 @@ def _violin(  # ruff: ignore[too-many-locals]
             lambda x: _inverse_scale(x, maximum),
         ),
     )
-    axes.set_xlim(0, max(maximum, _LINEAR_LIMIT))
+    axes.set_xlim(0, max(maximum, _DEFAULT_MAX_LENGTH))
     axes.set_ylim(-0.65, 0.65)
     axes.axhline(0, color="#dce6e7", linewidth=0.7)
     annotations = {
@@ -295,22 +300,19 @@ def _violin(  # ruff: ignore[too-many-locals]
     }
     summary_values = dict.fromkeys(_STATISTICS, "—")
     if values:
-        artists = axes.violinplot(
-            values,
-            positions=[0],
-            orientation="horizontal",
-            widths=1.0,
-            showextrema=False,
-            points=129,
-            bw_method="scott",
-        )
-        for index, body in enumerate(artists["bodies"]):
-            body.set_facecolor(color)
-            body.set_edgecolor("#52797e")
-            body.set_alpha(0.75)
-            body.set_linewidth(0.7)
-            body.set_gid(f"density-{index}")
-            annotations[f"density-{index}"] = {
+        if density:
+            positions, heights = np.asarray(density).T
+            body = axes.fill_between(
+                positions,
+                -heights,
+                heights,
+                facecolor=color,
+                edgecolor="#52797e",
+                alpha=0.75,
+                linewidth=0.7,
+            )
+            body.set_gid("density")
+            annotations["density"] = {
                 "attributes": {"class": "analysis-violin-density"},
             }
         sample = np.asarray(values)
@@ -486,6 +488,43 @@ def _year_bounds(articles: list[dict], data: dict) -> tuple[int, int]:
     return first, last
 
 
+def _length_profiles(articles: list, options: dict) -> dict:
+    """Put count-weighted shapes on the same vertical display scale.
+
+    Returns:
+        Measured values and scaled density for every assessment group.
+    """
+    observed = {
+        (dimension, code): tuple(
+            sorted(
+                float(row["prose_characters"])
+                for row in articles
+                if (row[dimension] or "Unknown") == code
+                and row.get("prose_characters") is not None
+            ),
+        )
+        for dimension, choices in options.items()
+        for code, _, _ in choices
+    }
+    densities = {
+        key: _violin_density(values) for key, values in observed.items()
+    }
+    peak = max(
+        (height for points in densities.values() for _, height in points),
+        default=1,
+    )
+    return {
+        key: (
+            values,
+            tuple(
+                (length, 0.5 * height / peak)
+                for length, height in densities[key]
+            ),
+        )
+        for key, values in observed.items()
+    }
+
+
 def render_charts(data: dict, interface: Interface) -> dict:
     """Render all quality charts from one selected saved catalog.
 
@@ -513,7 +552,7 @@ def render_charts(data: dict, interface: Interface) -> dict:
         message = "Chart lengths must be finite nonnegative measurements."
         raise ValueError(message)
     maximum = max(
-        _LINEAR_LIMIT,
+        _DEFAULT_MAX_LENGTH,
         float(data.get("length_scale_maximum") or max(lengths, default=0)),
     )
     first, last = _year_bounds(articles, data)
@@ -542,6 +581,7 @@ def render_charts(data: dict, interface: Interface) -> dict:
         interface.text(f"quality_analysis.violin_{kind}")
         for kind in _STATISTICS
     )
+    profiles = _length_profiles(articles, options)
     result = {"lengths": {}}
     with (
         _LOCK,
@@ -563,16 +603,8 @@ def render_charts(data: dict, interface: Interface) -> dict:
             for code, label, color in choices:
                 if not counts[code]:
                     continue
-                values = tuple(
-                    sorted(
-                        float(row["prose_characters"])
-                        for row in articles
-                        if (row[dimension] or "Unknown") == code
-                        and row.get("prose_characters") is not None
-                    ),
-                )
                 result["lengths"][f"{dimension}:{code}"] = _violin(
-                    values,
+                    profiles[dimension, code][0],
                     maximum,
                     (dimension, code, label, color),
                     (
@@ -580,6 +612,7 @@ def render_charts(data: dict, interface: Interface) -> dict:
                         interface.text("quality_analysis.violin_summary"),
                     ),
                     counts[code],
+                    density=profiles[dimension, code][1],
                 )
         counts = Counter(
             (int(str(row["listed_date"])[:4]), row["grade"])

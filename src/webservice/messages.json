@@ -72,6 +72,18 @@
     "zh-hans": "每天 {time} UTC",
     "zh-hant": "每天 {time} UTC"
   },
+  "server.job_weekly": {
+    "en": "{day}s at {time} UTC",
+    "zh-hans": "每周{day} {time} UTC",
+    "zh-hant": "每週{day} {time} UTC"
+  },
+  "server.weekday.0": {"en": "Sunday", "zh-hans": "日", "zh-hant": "日"},
+  "server.weekday.1": {"en": "Monday", "zh-hans": "一", "zh-hant": "一"},
+  "server.weekday.2": {"en": "Tuesday", "zh-hans": "二", "zh-hant": "二"},
+  "server.weekday.3": {"en": "Wednesday", "zh-hans": "三", "zh-hant": "三"},
+  "server.weekday.4": {"en": "Thursday", "zh-hans": "四", "zh-hant": "四"},
+  "server.weekday.5": {"en": "Friday", "zh-hans": "五", "zh-hant": "五"},
+  "server.weekday.6": {"en": "Saturday", "zh-hans": "六", "zh-hant": "六"},
   "server.job_scheduled": {
     "en": "Scheduled ({cron})",
     "zh-hans": "定时运行（{cron}）",
@@ -909,6 +921,8 @@
     "zh-hans": "{task}的源数据",
     "zh-hant": "{task}的來源資料"
   },
+  "dataset_updates.result": {"en": "Status", "zh-hans": "状态", "zh-hant": "狀態"},
+  "dataset_updates.workloads": {"en": "Workloads", "zh-hans": "包含任务", "zh-hant": "包含任務"},
   "dataset_updates.scheduled": {
     "en": "Scheduled:",
     "zh-hans": "计划开始：",
@@ -4400,6 +4414,11 @@
     "zh-hans": "尚无已保存的正文测量结果。",
     "zh-hant": "尚無已儲存的正文測量結果。"
   },
+  "quality_analysis.violin_scale": {
+    "en": "Length uses a logarithmic scale. Violin area is proportional to the number of measured articles and lists.",
+    "zh-hans": "正文字数使用对数刻度。小提琴图的面积与有字数记录的条目及列表数量成正比。",
+    "zh-hant": "正文字數使用對數刻度。小提琴圖的面積與有字數紀錄的條目及列表數量成正比。"
+  },
   "quality_analysis.search": {
     "en": "Article title",
     "zh-hans": "条目名",
@@ -4479,6 +4498,11 @@
     "en": "Website source data",
     "zh-hans": "网页资料采集",
     "zh-hant": "網頁資料擷取"
+  },
+  "routine.project-hourly": {
+    "en": "Hourly project data",
+    "zh-hans": "每小时专题数据",
+    "zh-hant": "每小時專題資料"
   },
   "routine.fetch-newsletter-daily": {
     "en": "Newsletter source data",

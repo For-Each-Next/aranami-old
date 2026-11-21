@@ -17,10 +17,11 @@ from shared.toolforge.jobs import (
     WORKLOAD_SERVICES,
     job_name,
 )
-from webservice.job_history import source_description
+from webservice.job_history import history_context, source_description
 from webservice.presentation import (
     catalog,
     grouped_number,
+    job_schedule,
     timestamp,
     title_url,
     utc_time,
@@ -455,7 +456,33 @@ def _job_items(
         ),
     )
     previous.sort(key=itemgetter(0), reverse=True)
-    return current, [item for _, item in previous[:24]], expiries
+    recent = [item for _, item in previous[:24]]
+    _attach_history(interface, status, now, current + recent)
+    return current, recent, expiries
+
+
+def _attach_history(
+    interface: Interface,
+    status: dict,
+    now: dt.datetime,
+    items: list[dict],
+) -> None:
+    """Reuse report history for the current and recent job dialogs."""
+    run_ids = {item["key"].removeprefix("task:") for item in items}
+    history = history_context(
+        interface,
+        {
+            "executions": {
+                key: run
+                for key, run in status.get("executions", {}).items()
+                if key in run_ids
+            },
+        },
+        now,
+    )
+    details = {row["run_id"]: row for row in history["events"]}
+    for item in items:
+        item["history"] = details.get(item["key"].removeprefix("task:"))
 
 
 def _installed_items(
@@ -469,7 +496,8 @@ def _installed_items(
     Returns:
         A job row per installed definition, ordered by next launch time.
     """
-    schedules = plan["collections"] | plan["routines"]
+    workloads = plan["collections"] | plan["routines"]
+    schedules = plan.get("services", workloads)
     items = []
     for task, schedule in sorted(
         schedules.items(),
@@ -481,6 +509,14 @@ def _installed_items(
             job_name=schedule["job_name"],
             state=schedule["state"],
             cron=schedule["cron"],
+            schedule_label=job_schedule(interface, schedule),
+            workloads=[
+                interface.text(f"routine.{name}")
+                for name, configured in workloads.items()
+                if name != task
+                and configured["job_name"] == schedule["job_name"]
+                and f"routine.{name}" in catalog()
+            ],
             files=[
                 _item(row, interface, now, {})
                 for row in planned
@@ -492,6 +528,28 @@ def _installed_items(
             item["outcome"] = interface.text("dataset_updates.paused")
         items.append(item)
     return items
+
+
+def with_card_ids(items: list[dict], section: str) -> list[dict]:
+    """Bind each rendered card to a stable, valid dialog identifier.
+
+    Returns:
+        Card presentation rows with matching opener and dialog IDs.
+    """
+    return [
+        {
+            **item,
+            "popup_id": "dataset-job-"
+            + sha256(
+                (
+                    item["key"]
+                    if item.get("history")
+                    else f"{section}:{item['key']}"
+                ).encode(),
+            ).hexdigest()[:24],
+        }
+        for item in items
+    ]
 
 
 def dataset_updates_context(
@@ -512,6 +570,8 @@ def dataset_updates_context(
     native = bool(status.get("toolforge_schedules"))
     if native:
         current, previous, expiries = _job_items(interface, status, now)
+        current = with_card_ids(current, "current")
+        previous = with_card_ids(previous, "previous")
         return {
             "previous": {
                 "items": previous,
@@ -553,7 +613,8 @@ def dataset_updates_context(
         _active_until(execution, scheduler, now)
         for execution in active_runs.values()
     ]
-    previous = _recent_items(interface, status, now)
+    current = with_card_ids(current, "current")
+    previous = with_card_ids(_recent_items(interface, status, now), "previous")
     return {
         "previous": {
             "items": previous,

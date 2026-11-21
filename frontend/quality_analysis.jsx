@@ -450,6 +450,7 @@ function QualityOverview(context) {
                     )}
                     <section id="analysis-distribution" aria-labelledby="analysis-distribution-heading">
                         <h3 id="analysis-distribution-heading">{t.quality_analysis.grades}</h3>
+                        <p class="context">{t.quality_analysis.violin_scale}</p>
                         <div class="analysis-pies">
                             {DistributionPanel(
                                 context,

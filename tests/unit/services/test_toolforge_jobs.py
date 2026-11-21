@@ -10,13 +10,15 @@ from unittest import TestCase, mock
 
 from data.collection_leases import collection_lease
 from data.runtime.status import read_status
-from runtime.services import hourly
+from runtime.reporting import website
+from runtime.services import hourly, workloads
 from shared.config import TASK_DEFINITIONS
 from shared.toolforge.jobs import (
     ARTICLE_STATISTICS,
     DATA_FETCH,
     JOB_DEFINITIONS,
     MAINTENANCE,
+    PROJECT_HOURLY,
     PROJECT_SNAPSHOT,
     REPORT_UPDATE,
     SERVICES,
@@ -32,6 +34,7 @@ from shared.toolforge.state import (
     completed,
     fetch_outcome,
     hour,
+    midnight,
     record_completion,
     record_fetch,
 )
@@ -50,7 +53,7 @@ class TestJobDefinitions(TestCase):
             *map(job_name, SERVICES),
         }
         assert definitions[0]["continuous"] is True
-        assert definitions[1]["schedule"] == "0 * * * *"
+        assert definitions[1]["schedule"] == "0 0 * * *"
         assert JOB_DEFINITIONS.keys() <= WORKLOAD_SERVICES.keys()
         extended = job_definitions(
             root,
@@ -120,12 +123,28 @@ class TestHandoff(TestCase):
         hourly.run_service(REPORT_UPDATE)
         phases = [call.args[:2] for call in self.worker.call_args_list]
         assert phases[0] == ("fetch", PROJECT_SNAPSHOT)
+        assert phases[1] == ("fetch", PROJECT_HOURLY)
         assert all(("fetch", task) in phases for task in TASK_DEFINITIONS)
         assert phases.index(("fetch", "dyks")) < phases.index((
             "analyze",
             "dyks",
         ))
         assert completed(self.runtime, REPORT_UPDATE, self.cycle)
+
+    def test_hourly_fetch_recovers_a_missing_daily_snapshot(self) -> None:
+        """Recover the day's capture after a missed launch."""
+        self.enable()
+        hourly.dt.datetime.now.return_value = self.now.replace(hour=6)
+        cycle = hour(hourly.dt.datetime.now(dt.UTC))
+        record_completion(self.runtime, DATA_FETCH, cycle)
+        hourly.run_service(DATA_FETCH)
+        assert completed(self.runtime, PROJECT_SNAPSHOT, midnight(cycle))
+        assert completed(self.runtime, f"fetch-{PROJECT_HOURLY}", cycle)
+        phases = [call.args[:2] for call in self.worker.call_args_list]
+        assert phases[:2] == [
+            ("fetch", PROJECT_SNAPSHOT),
+            ("fetch", PROJECT_HOURLY),
+        ]
 
     def test_daily_failure_retries_and_preserves_success(self) -> None:
         """Retry failed daily output while preserving successes."""
@@ -169,6 +188,29 @@ class TestHandoff(TestCase):
         ):
             hourly.run_service(REPORT_UPDATE)
         self.worker.assert_not_called()
+
+    def test_newsletter_reads_data_committed_after_hour_start(self) -> None:
+        """Read the source record using the publication clock."""
+        observed = self.cycle + dt.timedelta(minutes=8)
+        record = {"observed_at": observed.isoformat(), "data": {}}
+        clock = mock.Mock(wraps=dt)
+        clock.datetime.now.return_value = self.now
+        with (
+            mock.patch.object(website, "dt", clock),
+            mock.patch.object(
+                website,
+                "read_report_cache",
+                return_value=record,
+            ) as read,
+            mock.patch.object(website, "NewsletterDraftArchive") as archive,
+            mock.patch.object(website, "prepare_newsletter_charts"),
+        ):
+            workloads.run_workload("analyze", "newsletter-daily", self.cycle)
+        assert read.call_args.args[-1] == self.now
+        archive.return_value.save.assert_called_once_with(
+            {},
+            generated_at=observed,
+        )
 
     def test_installed_schedules_show_grouped_owners(self) -> None:
         """Represent installed CronJobs in the public plan."""

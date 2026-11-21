@@ -138,7 +138,6 @@ export function combineCells(cells) {
         for (const item of cell.histogram) histogram.set(item.value, (histogram.get(item.value) || 0) + item.count);
         for (const item of cell.density) points.set(item.position, (points.get(item.position) || 0) + item.density);
     }
-    const peakDensity = Math.max(0, ...points.values()) || 1;
     const observed = [...histogram].filter(([, count]) => count > 0).map(([value]) => value);
     const observedCount = observed.reduce((sum, value) => sum + histogram.get(value), 0);
     return {
@@ -148,7 +147,7 @@ export function combineCells(cells) {
         maximum: observed.length ? Math.max(...observed) : null,
         quantiles: [.025, .16, .5, .84, .975].map(p => histogramQuantile(histogram, p)),
         quartiles: [.25, .75].map(p => histogramQuantile(histogram, p)),
-        density: [...points].sort((a, b) => a[0] - b[0]).map(([x, y]) => [x, y / peakDensity]),
+        density: [...points].sort((a, b) => a[0] - b[0]),
     };
 }
 
@@ -163,11 +162,9 @@ export function proseLengthMaximum(cells) {
     return maximum;
 }
 
-/** Reserve 90% for 0–25,000 characters, then logarithmically reach the shared maximum. */
+/** Map observed lengths to the shared logarithmic axis, including zero. */
 export function proseLengthPosition(characters, maximum) {
-    if (characters <= 25000) return Math.max(0, characters / 25000 * 900);
-    if (maximum <= 25000) return 900;
-    return Math.min(1000, 900 + 100 * Math.log(characters / 25000) / Math.log(maximum / 25000));
+    return 1000 * (Math.log1p(Math.max(0, Math.min(characters, maximum))) / Math.log1p(Math.max(1, maximum)));
 }
 
 /** Round prose measurements to two significant digits with integer labels. */
@@ -277,37 +274,65 @@ function pieFigure(entries, group, total, caption) {
     return svg;
 }
 
-/** Interpolate the density with a mirrored outline bounded by its samples. */
-export function violinDensityPath(density, maximum) {
-    const points = density.map(([value, fraction]) => [10 + proseLengthPosition(value, maximum), 18 * fraction])
-        .filter(([x], index, all) => index === 0 || x > all[index - 1][0]);
+/** Interpolate the saved density at an exact observed endpoint. */
+function densityAt(points, position) {
+    const index = points.findIndex(([value]) => value >= position);
+    if (index < 0) return points.at(-1)[1];
+    if (index === 0) return points[0][1];
+    const [left, low] = points[index - 1], [right, high] = points[index];
+    const fraction = (Math.log1p(position) - Math.log1p(left))
+        / (Math.log1p(right) - Math.log1p(left));
+    return low + fraction * (high - low);
+}
+
+/** Truncate density to measured bounds and give its log-space area its count. */
+export function violinAreaDensity({density, minimum, maximum, measured}) {
+    if (!density.length || !measured || minimum == null || maximum <= minimum) return [];
+    const support = [
+        [minimum, densityAt(density, minimum)],
+        ...density.filter(([length]) => length > minimum && length < maximum),
+        [maximum, densityAt(density, maximum)],
+    ];
+    const integral = support.slice(1).reduce((area, [value, height], index) => {
+        const [previous, previousHeight] = support[index];
+        return area + (height + previousHeight) * (Math.log1p(value) - Math.log1p(previous)) / 2;
+    }, 0);
+    return integral > 0 ? support.map(([value, height]) => [value, height * measured / integral]) : [];
+}
+
+/** Use one pixel-per-density scale across both breakdowns. */
+function violinScale(summaries) {
+    let peak = 0;
+    for (const {density} of summaries) {
+        for (const [, height] of density) peak = Math.max(peak, height);
+    }
+    return peak ? 18 / peak : 0;
+}
+
+/** Draw symmetric curves with flat end caps and exact trapezoidal areas. */
+export function violinDensityPath(density, maximum, scale = 18) {
+    const points = density.map(([value, height]) => [10 + proseLengthPosition(value, maximum), scale * height]);
     if (points.length < 2) return "";
-    const intervals = points.slice(1).map(([x], index) => x - points[index][0]);
-    const slopes = intervals.map((interval, index) => (points[index + 1][1] - points[index][1]) / interval);
-    const tangents = points.map((_, index) => {
-        if (index === 0) return slopes[0];
-        if (index === points.length - 1) return slopes.at(-1);
-        const before = slopes[index - 1], after = slopes[index];
-        if (before * after <= 0) return 0;
-        const left = intervals[index - 1], right = intervals[index];
-        const leftWeight = left + 2 * right, rightWeight = 2 * left + right;
-        return (leftWeight + rightWeight) / (leftWeight / before + rightWeight / after);
-    });
-    const segments = intervals.map((interval, index) => {
-        const [x0, y0] = points[index], [x1, y1] = points[index + 1];
-        const width = interval / 3;
-        const bound = y => Math.max(Math.min(y0, y1), Math.min(Math.max(y0, y1), y));
-        return [points[index], [x0 + width, bound(y0 + width * tangents[index])],
-            [x1 - width, bound(y1 - width * tangents[index + 1])], points[index + 1]];
-    });
-    const coordinate = ([x, height], side) => `${x.toFixed(2)} ${(22 + side * height).toFixed(2)}`;
-    const upper = segments.map(segment => "C " + segment.slice(1).map(point => coordinate(point, -1)).join(" "));
-    const lower = segments.toReversed().map(segment => "C " + segment.slice(0, 3).reverse().map(point => coordinate(point, 1)).join(" "));
-    return [`M ${coordinate(points[0], -1)}`, ...upper, `L ${coordinate(points.at(-1), 1)}`, ...lower, "Z"].join(" ");
+    const coordinate = ([x, height], side) => `${x.toFixed(3)} ${(22 + side * height).toFixed(3)}`;
+    function edge(points, side) {
+        return points.slice(1).map(([x, height], index) => {
+            const [previous, previousHeight] = points[index];
+            const span = (x - previous) / 3;
+            const controls = [[previous + span, previousHeight], [x - span, height], [x, height]];
+            return "C " + controls.map(point => coordinate(point, side)).join(" ");
+        });
+    }
+    return [
+        "M " + coordinate(points[0], -1),
+        ...edge(points, -1),
+        "L " + coordinate(points.at(-1), 1),
+        ...edge(points.toReversed(), 1),
+        "Z",
+    ].join(" ");
 }
 
 /** Draw the saved density with exact extrema, quartiles, median and mean. */
-function violinFigure(summary, group, option, labels, maximum) {
+function violinFigure(summary, group, option, labels, maximum, scale) {
     const caption = option.label + " · " + violinSummary(summary, labels.violin_summary);
     const svg = svgNode("svg", {
         viewBox: "0 0 1020 44", preserveAspectRatio: "none", role: "group",
@@ -317,7 +342,7 @@ function violinFigure(summary, group, option, labels, maximum) {
     const plot = svgNode("g");
     const x = value => 10 + proseLengthPosition(value, maximum);
     plot.append(svgNode("line", {x1: 10, x2: 1010, y1: 22, y2: 22, class: "analysis-violin-track"}));
-    const outline = violinDensityPath(summary.density, maximum);
+    const outline = violinDensityPath(summary.density, maximum, scale);
     if (outline) {
         plot.append(svgNode("path", {
             d: outline,
@@ -404,11 +429,29 @@ function annualFigure(years, grades, caption) {
     return svg;
 }
 
+/** Read exact saved marks and compute the display density. */
+function savedViolin(saved) {
+    const summary = {
+        pages: saved.pages, measured: saved.measured,
+        minimum: saved.extrema.find(mark => mark.kind === "minimum")?.value ?? null,
+        maximum: saved.extrema.find(mark => mark.kind === "maximum")?.value ?? null,
+        mean: saved.mean ?? null, quantiles: [null, null, saved.median_characters ?? null],
+        quartiles: [25, 75].map(percentile =>
+            saved.quartiles.find(mark => mark.percentile === percentile)?.value ?? null),
+        density: (saved.density || []).map(({position, density}) => [position, density]),
+    };
+    return {...summary, density: violinAreaDensity(summary)};
+}
+
 /** Draw the default figures directly from the prepared overview. */
 export function initializeQualityFigures(form) {
     if (!form?.qualityOverview) return;
     const {analysis, labels} = form.qualityOverview;
     delete form.qualityOverview;
+    const summaries = new Map([...analysis.grades, ...analysis.importance_totals]
+        .filter(row => row.length)
+        .map(row => [row.length, savedViolin(row.length)]));
+    const scale = violinScale(summaries.values());
     for (const [kind, group, rows] of [
         ["grades", "grade", analysis.grades],
         ["importance", "importance", analysis.importance_totals],
@@ -426,17 +469,9 @@ export function initializeQualityFigures(form) {
             const value = cell.dataset.qualityLength.slice(group.length + 1);
             const saved = lengths.get(value);
             if (!saved) continue;
-            const summary = {
-                pages: saved.pages, measured: saved.measured,
-                minimum: saved.extrema.find(mark => mark.kind === "minimum")?.value ?? null,
-                maximum: saved.extrema.find(mark => mark.kind === "maximum")?.value ?? null,
-                mean: saved.mean ?? null, quantiles: [null, null, saved.median_characters ?? null],
-                quartiles: [25, 75].map(percentile =>
-                    saved.quartiles.find(mark => mark.percentile === percentile)?.value ?? null),
-                density: (saved.density || []).map(({position, density}) => [position, density]),
-            };
+            const summary = summaries.get(saved);
             const option = {value, label: saved.label, color: saved.color};
-            cell.replaceChildren(violinFigure(summary, group, option, labels, analysis.length_scale_maximum));
+            cell.replaceChildren(violinFigure(summary, group, option, labels, analysis.length_scale_maximum, scale));
         }
     }
     const host = document.querySelector('[data-quality-chart="years"]');
@@ -730,8 +765,7 @@ export function initializeQualityMatrix() {
         };
     });
 
-    function renderDistribution(host, group, options, selected, total, lengths) {
-        if (!host) return;
+    function distributionEntries(group, options, selected, lengths) {
         const groups = new Map();
         for (const cell of selected) {
             const code = cell[group];
@@ -749,8 +783,13 @@ export function initializeQualityMatrix() {
                 quartiles: [null, null], quantiles: [null, null, null], density: [],
                 ...lengths[option.value],
             } : combineCells(cells);
-            entries.push({option, summary});
+            entries.push({option, summary: {...summary, density: violinAreaDensity(summary)}});
         }
+        return entries;
+    }
+
+    function renderDistribution(host, group, entries, total, scale) {
+        if (!host) return;
         const body = host.closest("figure").querySelector("tbody");
         const tableRows = entries.map(({option, summary}) => {
             const row = node("tr"), heading = node("th");
@@ -764,7 +803,7 @@ export function initializeQualityMatrix() {
             countCell.append(count);
             const length = node("td", undefined, "analysis-mini-cell");
             length.dataset.qualityLength = key(group, option.value);
-            length.append(violinFigure(summary, group, option, data.labels, maximum));
+            length.append(violinFigure(summary, group, option, data.labels, maximum, scale));
             row.append(heading, countCell, length);
             return row;
         });
@@ -815,8 +854,11 @@ export function initializeQualityMatrix() {
         const selected = summary?.cells ?? data.cells.filter(cell =>
             matchesQualitySelection(selection, cell.grade, cell.importance, cell.year));
         const total = selected.reduce((sum, cell) => sum + cell.pages, 0);
-        renderDistribution(gradeHost, "grade", distributionGrades, selected, total, summary?.lengths.grade);
-        renderDistribution(importanceHost, "importance", data.importance, selected, total, summary?.lengths.importance);
+        const gradeEntries = distributionEntries("grade", distributionGrades, selected, summary?.lengths.grade);
+        const importanceEntries = distributionEntries("importance", data.importance, selected, summary?.lengths.importance);
+        const scale = violinScale([...gradeEntries, ...importanceEntries].map(entry => entry.summary));
+        renderDistribution(gradeHost, "grade", gradeEntries, total, scale);
+        renderDistribution(importanceHost, "importance", importanceEntries, total, scale);
         renderYears(selected, grades.filter(grade => selection.grades.has(grade.value)), selection.firstYear, selection.lastYear);
         const undated = summary?.undated ?? data.cells.reduce((count, cell) =>
             count + (cell.year === null && selection.chosen.has(key(cell.grade, cell.importance)) ? cell.pages : 0), 0);

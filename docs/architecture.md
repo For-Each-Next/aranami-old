@@ -98,10 +98,10 @@ returns String. Decode independent encodings before joining tables.
 
 ## Toolforge services
 
-The continuous web service reads the last committed public outputs. An hourly
-project snapshot job owns shared membership and categories, including the
-immutable completed-day captures at midnight UTC. The data-fetch job waits for
-its UTC-hour receipt. It collects source observations and report destination
+The continuous web service reads the last committed public outputs. A daily
+project snapshot job commits immutable completed-day observations at midnight
+UTC. The hourly fetch job retries a missing capture before committing hourly
+membership and categories. It collects source observations and report destination
 baselines, validates them, and selects typed Parquet inputs with structured
 metadata. The report job checks the matching fetch status and processes each
 ready input. It compares memberships and assessment changes, publishes wiki

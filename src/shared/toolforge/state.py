@@ -22,6 +22,11 @@ def hour(instant: dt.datetime) -> dt.datetime:
     return instant.replace(minute=0, second=0, microsecond=0)
 
 
+def midnight(instant: dt.datetime) -> dt.datetime:
+    """Return the start of the selected UTC day."""
+    return hour(instant).replace(hour=0)
+
+
 def completed(runtime: Path, name: str, cycle: dt.datetime) -> bool:
     """Check for a successful workload receipt.
 

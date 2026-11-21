@@ -1,0 +1,49 @@
+{% from "includes/popup_dialog.html" import popup with context %}
+{% macro instant(stamp) -%}
+{% if stamp and stamp.known %}{% with time=stamp %}{% include "includes/time.html" %}{% endwith %} UTC{% else %}{{ t.data.unknown }}{% endif %}
+{%- endmacro %}
+{% macro dataset_link(record) -%}
+{% if record.url %}<a href="{{ record.url }}" data-dataset-link>{{ record.filename }}</a>{% else %}{{ record.filename }}{% endif %}
+{%- endmacro %}
+{% set current = section == 'current' %}
+<div id="dataset-updates-{{ section }}-body"{% if current and updates.expires %} data-observation-expires="{{ updates.expires }}" data-stale-text="{{ t.dataset_updates.unavailable }}"{% endif %}>
+{% if model.get('items') %}
+<div class="routine-rows dataset-update-files">
+{% for item in model['items'] %}
+{% set result = item.outcome or (t.dataset_updates.running if item.state == 'running' else t.dataset_updates.scheduled if item.scheduled and item.scheduled.known else t.dataset_updates.succeeded if item.state == 'succeeded' else t.dataset_updates.failed if item.state == 'failed' else t.dataset_updates.waiting) %}
+<article class="ui-card routine-row dataset-job-card" data-key="{{ item.key }}" aria-labelledby="{{ item.popup_id }}-title">
+<span class="ui-card__icon" aria-hidden="true">{{ item.icon or ('✅' if item.state == 'succeeded' else '❌' if item.state == 'failed' else '⌛') }}</span>
+<div class="ui-card__text">
+<div class="ui-card__text__title"><h3 id="{{ item.popup_id }}-title"><a class="status-link dataset-job-trigger" href="#{{ item.popup_id }}" aria-controls="{{ item.popup_id }}" aria-haspopup="dialog">{{ item.filename }}</a></h3></div>
+<div class="ui-card__text__description"><p class="routine-status">{{ result }}</p></div>
+<div class="ui-card__text__supporting-text"><dl class="routine-meta">
+{% if item.started and item.started.known %}<div><dt>{{ t.dataset_updates.started }}</dt><dd>{{ instant(item.started) }}</dd></div>{% endif %}
+{% if item.finished and item.finished.known %}<div><dt>{{ t.dataset_updates.finished }}</dt><dd>{{ instant(item.finished) }}</dd></div>{% endif %}
+{% if item.scheduled and item.scheduled.known %}<div><dt>{{ t.reports.next_execution }}</dt><dd>{{ instant(item.scheduled) }}</dd></div>{% endif %}
+{% if item.elapsed and item.elapsed.running %}<div><dt>{{ t.dataset_updates.elapsed }}</dt><dd><span data-clock="dataset-elapsed" data-started-at="{{ item.elapsed.started }}"{% if updates.expires %} data-clock-expires="{{ updates.expires }}"{% endif %} data-clock-unknown="{{ t.data.unknown }}">{{ item.elapsed.label }}</span></dd></div>{% endif %}
+</dl></div>
+</div>
+{% call popup(item.popup_id, item.filename, '#dataset-updates-' ~ section ~ '-heading') %}
+<dl class="routine-meta dataset-update-details">
+<div><dt>{{ t.dataset_updates.result }}</dt><dd>{{ result }}</dd></div>
+{% if item.job_name %}<div><dt>{{ t.server.job }}</dt><dd><code>{{ item.job_name }}</code></dd></div>{% endif %}
+{% if item.schedule_label %}<div><dt>{{ t.dataset_updates.schedule }}</dt><dd>{{ item.schedule_label }}</dd></div>{% endif %}
+{% if item.scheduled and item.scheduled.known %}<div><dt>{{ t.reports.next_execution }}</dt><dd>{{ instant(item.scheduled) }}</dd></div>{% endif %}
+{% if item.started and item.started.known %}<div><dt>{{ t.dataset_updates.started }}</dt><dd>{{ instant(item.started) }}</dd></div>{% endif %}
+{% if item.finished and item.finished.known %}<div><dt>{{ t.dataset_updates.finished }}</dt><dd>{{ instant(item.finished) }}</dd></div>{% endif %}
+{% if item.history and item.history.duration %}<div><dt>{{ t.dataset_updates.elapsed }}</dt><dd>{{ item.history.duration }}</dd></div>{% endif %}
+{% if item.baseline %}<div><dt>{{ t.dataset_updates.baseline }}</dt><dd>{{ dataset_link(item.baseline) }}</dd></div>{% endif %}
+</dl>
+{% if item.workloads %}<h4>{{ t.dataset_updates.workloads }}</h4><ul>{% for name in item.workloads %}<li>{{ name }}</li>{% endfor %}</ul>{% endif %}
+{% if item.activity %}<p>{{ item.activity }}</p>{% endif %}
+{% if item.history and item.history.failure %}<p>{{ item.history.failure }}</p>{% endif %}
+{% if item.history and item.history.stages %}<ul class="job-stages">{% for stage in item.history.stages %}<li>{{ instant(stage.time) }} {{ stage.label }}</li>{% endfor %}</ul>{% endif %}
+{% if item.files %}<h4>{{ t.dataset_updates.files }}</h4><ul>{% for file in item.files %}<li>{{ dataset_link(file) }}{% if file.shape %}<div class="dataset-update-note dataset-update-shape">{{ file.shape }}</div>{% endif %}</li>{% endfor %}</ul>{% endif %}
+{% if item.url %}<p>{{ dataset_link(item) }}{% if item.shape %} · {{ item.shape }}{% endif %}</p>{% endif %}
+{% if item.reports %}<h4>{{ t.dataset_updates.used_by }}</h4><ul>{% for report in item.reports %}<li>{% if report.url %}<a href="{{ report.url }}">{{ report.name }}</a>{% else %}{{ report.name }}{% endif %}</li>{% endfor %}</ul>{% endif %}
+{% endcall %}
+</article>
+{% endfor %}
+</div>
+{% else %}<p class="context">{{ (t.dataset_updates.no_job_schedule if model.native else t.dataset_updates.unavailable if model.state == 'unavailable' else t.dataset_updates.no_planned) if current else t.dataset_updates.no_recent_jobs if model.native else t.dataset_updates.no_previous }}</p>{% endif %}
+</div>

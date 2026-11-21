@@ -264,3 +264,35 @@ class TestProjectCollection(TestCase):
             call.args[2] == instant.date() and "observed_at" not in call.kwargs
             for call in capture.call_args_list
         )
+
+    @staticmethod
+    def test_delayed_snapshot_preserves_current_membership() -> None:
+        """Keep newer hourly observations during midnight recovery."""
+        instant = dt.datetime(2026, 11, 21, 7, tzinfo=dt.UTC)
+        with (
+            patch.object(collection_job, "configure_pywikibot"),
+            patch.object(
+                collection_job,
+                "PROJECT_DATA_SCOPES",
+                (("zh", "Games"),),
+            ),
+            patch.object(collection_job.pywikibot, "Site") as site,
+            patch.object(collection_job.project_capture, "capture") as capture,
+            patch.object(collection_job, "link_rollover_membership") as link,
+            patch.object(
+                collection_job,
+                "collect_project_membership",
+            ) as hourly,
+        ):
+            collection_job.run(now=instant, work="snapshot")
+        capture.assert_called_once_with(
+            site.return_value,
+            "Games",
+            instant.date(),
+        )
+        link.assert_called_once_with(
+            site.return_value,
+            "Games",
+            instant.date(),
+        )
+        hourly.assert_not_called()

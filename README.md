@@ -38,8 +38,8 @@ their saved facts; delayed drafts can continue improving.
 | Job | UTC launch | Work |
 |---|---|---|
 | Web service | Continuous | Serves saved data and generated pages |
-| Project snapshot | Hourly at :00 | Commits project membership, revision IDs and categories, including the durable daily capture at midnight |
-| Data fetch | Hourly at :02 | Waits for the snapshot, reads Wiki Replicas and APIs, then commits structured report inputs |
+| Project snapshot | Daily at 00:00 | Commits the durable completed-day project snapshot |
+| Data fetch | Hourly at :02 | Recovers today's snapshot if needed, reads hourly observations and commits structured inputs |
 | Data analysis and report updates | Hourly at :10 | Waits for the fetch result and uses saved inputs to calculate, publish wiki reports and prepare website data |
 | Article Statistics backfill | On demand | Runs successive batches until the pending cohort has been checked |
 | Data completeness check | On demand or Sundays at 03:40 | Audits saved snapshots, report freshness and article coverage |

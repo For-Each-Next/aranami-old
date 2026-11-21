@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import os
 from importlib import import_module
 from pathlib import Path
@@ -15,6 +16,7 @@ from data.observations import (
     page_input_keys,
     project_snapshot_references,
 )
+from data.runtime.logs import open_run_log
 from data.runtime.report_inputs import load_inputs, save_inputs
 from runtime.backfills import quality_analysis
 from runtime.fetch import newsletter_history, project_data, website as sources
@@ -30,6 +32,7 @@ from shared.identity import configure_pywikibot
 from shared.toolforge.jobs import (
     ARTICLE_WORKLOADS,
     FETCH_WORKLOADS,
+    PROJECT_HOURLY,
     PROJECT_SNAPSHOT,
     REPORT_WORKLOADS,
     WEBSITE_FETCH,
@@ -38,9 +41,11 @@ from shared.toolforge.jobs import (
 
 NEWSLETTER = "newsletter-daily"
 ARTICLE_OUTPUT = "article-statistics-output"
+_LOGGER = logging.getLogger(__name__)
 _WORKLOADS = {
     "fetch": {
         PROJECT_SNAPSHOT,
+        PROJECT_HOURLY,
         NEWSLETTER,
         *FETCH_WORKLOADS,
         *TASK_DEFINITIONS,
@@ -107,7 +112,9 @@ def collect_article_inputs(name: str) -> None:
 def _fetch(name: str, cycle: dt.datetime) -> None:
     """Invoke a dataset collector using the selected source boundary."""
     if name == PROJECT_SNAPSHOT:
-        project_data.run(now=cycle)
+        project_data.run(now=cycle, work="snapshot")
+    elif name == PROJECT_HOURLY:
+        project_data.run(now=cycle, work="hourly")
     elif name == "newsletter-history":
         newsletter_history.run(now=cycle)
     elif name in {WEBSITE_FETCH, NEWSLETTER}:
@@ -123,7 +130,7 @@ def _analyze(name: str, cycle: dt.datetime) -> None:
     if name in TASK_DEFINITIONS:
         _publish_report(Path.cwd(), name, cycle)
     elif name == NEWSLETTER:
-        output.publish_newsletter(cycle)
+        output.publish_newsletter()
     elif name == "website":
         output.publish(cycle)
     else:
@@ -141,11 +148,16 @@ def run_workload(phase: str, name: str, cycle: dt.datetime) -> None:
     if name not in _WORKLOADS.get(phase, ()):
         message = f"Unknown {phase} workload {name!r}."
         raise ValueError(message)
-    with collection_lease(Path.cwd(), job_name(name)) as acquired:
+    with (
+        open_run_log(),
+        collection_lease(Path.cwd(), job_name(name)) as acquired,
+    ):
         if not acquired:
             message = f"{name} already owns a live invocation."
             raise RuntimeError(message)
-        if phase == "fetch":
-            _fetch(name, cycle)
-        else:
-            _analyze(name, cycle)
+        callback = _fetch if phase == "fetch" else _analyze
+        try:
+            callback(name, cycle)
+        except Exception:
+            _LOGGER.exception("Workload %s failed in %s.", name, phase)
+            raise

@@ -52,13 +52,13 @@ class MatplotlibChartTests(TestCase):
 
     @staticmethod
     def test_real_matplotlib_artists_receive_exact_saved_samples() -> None:
-        """Use violinplot, pie and bar rather than manual geometry."""
+        """Fill the observed interval and weight by measured count."""
         with (
             patch.object(
                 Axes,
-                "violinplot",
+                "fill_between",
                 autospec=True,
-                side_effect=Axes.violinplot,
+                side_effect=Axes.fill_between,
             ) as violin,
             patch.object(
                 Axes,
@@ -78,8 +78,16 @@ class MatplotlibChartTests(TestCase):
                 Interface("en"),
             )
         assert violin.call_count == 2
-        assert violin.call_args_list[0].args[1] == (0, 10, 100, 100_000)
-        assert violin.call_args_list[0].kwargs["bw_method"] == "scott"
+        for call in violin.call_args_list:
+            positions = call.args[1]
+            assert positions[0] == 0
+            assert positions[-1] == 100_000
+        positions, heights = np.asarray(
+            charts._violin_density((10, 100, 100_000)),
+        ).T
+        assert positions[0] == 10
+        assert positions[-1] == 100_000
+        assert np.isclose(np.trapezoid(heights, np.log1p(positions)), 3)
         assert pie.call_count == 2
         bar.assert_called_once()
         svg = ET.fromstring(result["lengths"]["grade:FA"])

@@ -13,7 +13,7 @@ publication. Keep wiki extraction rules and schemas in their owning packages.
 - `runtime.run_once(date=None, dry=False, tasks=None)` runs selected reports
   without changing schedules. `runtime.run(dry=False)` starts the recovery
   monitor and reuses an active monitor in the same mode.
-- Toolforge schedules the hourly project snapshot, data fetch and report
+- Toolforge schedules the daily snapshot and the hourly data fetch and report
   update. Fetch owns source reads and commits structured inputs. Analysis
   reads these inputs, computes and retains reports, and delegates saves.
 - Use the current UTC cycle receipt before advancing a phase. Checkpoint
@@ -34,4 +34,4 @@ publication. Keep wiki extraction rules and schemas in their owning packages.
   production datasets, completion evidence or live status.
 
 [Architecture](../../docs/architecture.md) defines the complete dependency and
-storage contracts. [Jobs](jobs/AGENTS.md) covers a report pass.
+storage contracts. [Reporting](reporting/AGENTS.md) covers a report pass.

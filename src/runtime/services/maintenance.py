@@ -20,7 +20,7 @@ from shared.toolforge.jobs import (
     PROJECT_SNAPSHOT,
     REPORT_UPDATE,
 )
-from shared.toolforge.state import STATE_DIRECTORY, completed, hour
+from shared.toolforge.state import STATE_DIRECTORY, completed, hour, midnight
 
 _DAYS = 7
 
@@ -66,9 +66,16 @@ def audit(runtime: Path, now: dt.datetime) -> dict:
         "observed_at": now.isoformat(),
         "previous_hour": previous.isoformat(),
         "services": {
-            name: completed(runtime, name, hour(now))
-            or completed(runtime, name, previous)
-            for name in (PROJECT_SNAPSHOT, DATA_FETCH, REPORT_UPDATE)
+            PROJECT_SNAPSHOT: completed(
+                runtime,
+                PROJECT_SNAPSHOT,
+                midnight(now),
+            ),
+            **{
+                name: completed(runtime, name, hour(now))
+                or completed(runtime, name, previous)
+                for name in (DATA_FETCH, REPORT_UPDATE)
+            },
         },
         "snapshot_gaps": missing,
         "website_updated_at": website.get("updated_at"),

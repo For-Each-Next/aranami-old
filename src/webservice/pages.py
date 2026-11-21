@@ -379,6 +379,15 @@ def _render_browser(name: str, context: Record, fallback: str) -> str:
     Returns:
         The Vue bootstrap document and its localized context.
     """
+    if name == "about.html":
+        context = {
+            **context,
+            "dataset_updates_html": Markup(  # ruff: ignore[unsafe-markup-use] - Escaped authored template.
+                _templates()
+                .get_template("includes/dataset_updates.html")
+                .render(context),
+            ),
+        }
     if name == "attribution.html":
         context = {
             **context,
@@ -1900,6 +1909,15 @@ def render_live_update(
         )
     }
     updates["labels"]["unknown"] = page.interface.text("data.unknown")
+    cards = _templates().get_template("includes/dataset_update_cards.html")
+    for section in ("current", "previous"):
+        model = updates[section]
+        model["html"] = cards.render({
+            **context,
+            "section": section,
+            "model": model,
+            "updates": updates,
+        })
     return {"html": _render("live.html", context), "updates": updates}
 
 

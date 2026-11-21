@@ -429,6 +429,37 @@ def timestamp(value: object) -> dt.datetime | None:
     return result.astimezone(dt.UTC) if result.tzinfo is not None else None
 
 
+def job_schedule(interface: Interface, schedule: Mapping) -> str:
+    """Translate the Toolforge cron forms used by Aranami.
+
+    Returns:
+        An hourly, daily, weekly, or on-demand description.
+    """
+    cron = schedule.get("cron")
+    if cron is None:
+        return interface.text("server.job_temporary")
+    fields = cron.split()
+    if (
+        len(fields) == 5  # ruff: ignore[magic-value-comparison] - Standard cron fields.
+        and fields[2:4] == ["*", "*"]
+        and fields[0].isdigit()
+    ):
+        minute, hour, _, _, day = fields
+        if hour == "*" and day == "*":
+            return interface.text("server.job_hourly", minute=minute.zfill(2))
+        if hour.isdigit():
+            clock = f"{hour.zfill(2)}:{minute.zfill(2)}"
+            if day == "*":
+                return interface.text("server.job_daily", time=clock)
+            if day in "0123456" and day:
+                return interface.text(
+                    "server.job_weekly",
+                    day=interface.text(f"server.weekday.{day}"),
+                    time=clock,
+                )
+    return interface.text("server.job_scheduled", cron=cron)
+
+
 def utc_time(
     value: object,
     *,

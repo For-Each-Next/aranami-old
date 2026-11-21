@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
 JOB_DEFINITIONS = COLLECTION_DEFINITIONS | TASK_DEFINITIONS
 PROJECT_SNAPSHOT = "project-data"
+PROJECT_HOURLY = "project-hourly"
 DATA_FETCH = "data-fetch"
 REPORT_UPDATE = "report-update"
 ARTICLE_STATISTICS = "article-statistics"
@@ -43,6 +44,7 @@ REPORT_WORKLOADS = (
 ARTICLE_WORKLOADS = ("quality-analysis", "quality-authorship")
 WORKLOAD_SERVICES = {
     PROJECT_SNAPSHOT: PROJECT_SNAPSHOT,
+    PROJECT_HOURLY: DATA_FETCH,
     **dict.fromkeys(FETCH_WORKLOADS, DATA_FETCH),
     **dict.fromkeys(ARTICLE_WORKLOADS, DATA_FETCH),
     **dict.fromkeys(
@@ -76,18 +78,20 @@ class JobAllocation:
         minutes: Maximum wall time, including waits and retries.
         memory: Container memory limit in MiB.
         cpu: Container CPU limit in millicores.
+        hour: Cron hour, or a wildcard for hourly runs.
     """
 
     minute: int
     minutes: int
     memory: int
     cpu: int
+    hour: str = "*"
 
 
 WEB_MEMORY = 2048
 WEB_CPU = 1000
 SERVICES = {
-    PROJECT_SNAPSHOT: JobAllocation(0, 8, 1280, 500),
+    PROJECT_SNAPSHOT: JobAllocation(0, 8, 1280, 500, hour="0"),
     DATA_FETCH: JobAllocation(2, 33, 1280, 1000),
     REPORT_UPDATE: JobAllocation(10, 48, 1536, 1000),
 }
@@ -175,7 +179,7 @@ def job_definitions(
         *[
             {
                 **launcher(name),
-                "schedule": f"{allocation.minute} * * * *",
+                "schedule": f"{allocation.minute} {allocation.hour} * * *",
                 "timeout": allocation.minutes * 60,
                 "retry": 1,
                 "mem": f"{allocation.memory}Mi",
@@ -360,6 +364,7 @@ def installed_schedules(runtime: Path, now: dt.datetime) -> dict[str, object]:
         services = schedules(SERVICES | {MAINTENANCE: None})
         if DATA_FETCH in services:
             collections[WEBSITE_FETCH] = services[DATA_FETCH]
+            collections[PROJECT_HOURLY] = services[DATA_FETCH]
     else:
         services = {}
     return {

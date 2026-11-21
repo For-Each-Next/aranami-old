@@ -5,20 +5,25 @@ v0.8.8 was consolidated into the v0.9.2 release.
 
 ## Until 0.11
 
-### 0.10.0.dev5 (2026-11-21 06:08 UTC)
+### 0.10.0.dev7 (2026-11-21 07:13 UTC)
 
 Overview: Separated source acquisition from analysis and publication while
 consolidating Aranami's Toolforge services.
 
-- Kept the continuous web and hourly project snapshot jobs, and consolidated
-  the other recurring work into hourly fetch and report-update jobs.
+- Scheduled the daily project snapshot at midnight and recover missing captures
+  in the hourly fetch while preserving newer hourly membership.
 - Added structured inputs and an hourly status handoff, with independent
   checkpoints and retries for incomplete daily reports.
+- Retained diagnostics from grouped workload processes and let report work
+  wait for a delayed fetch within the current cycle.
+- Generated daily newsletter files from observations committed during the
+  active cycle.
 - Added a temporary Article Statistics backfill and an on-demand completeness
   check with optional weekly scheduling.
 - Reorganized runtime and deployment code by responsibility and removed the
   individual-job dispatcher.
-- Displayed installed jobs, resource use and recorded work in About.
+- Used cards and execution details in About and localized weekly schedules.
+- Drew count-weighted logarithmic violins bounded by measured lengths.
 - Kept authenticated Redis page caching and compact authorship generations.
 
 ## Until 0.10

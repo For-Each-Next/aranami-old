@@ -387,6 +387,7 @@
     "src/webservice/templates/includes/consistency_evidence.html",
     "src/webservice/templates/includes/consistency_finding.html",
     "src/webservice/templates/includes/consistency_userscript.html",
+    "src/webservice/templates/includes/dataset_update_cards.html",
     "src/webservice/templates/includes/dataset_updates.html",
     "src/webservice/templates/includes/discussion_card.html",
     "src/webservice/templates/includes/execution_duration.html",

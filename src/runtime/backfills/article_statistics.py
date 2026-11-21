@@ -20,7 +20,7 @@ from runtime.services.workloads import collect_article_inputs
 from shared.support.files import atomic_json
 from shared.toolforge.jobs import (
     ARTICLE_STATISTICS,
-    PROJECT_SNAPSHOT,
+    PROJECT_HOURLY,
     job_name,
 )
 from shared.toolforge.state import (
@@ -93,7 +93,7 @@ def run() -> None:
                 cycle = hour(now)
                 if (
                     now.minute in {0, 59}
-                    or not completed(runtime, PROJECT_SNAPSHOT, cycle)
+                    or not completed(runtime, f"fetch-{PROJECT_HOURLY}", cycle)
                     or fetch_outcome(runtime, cycle)
                     not in {"succeeded", "failed"}
                 ):

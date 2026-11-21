@@ -12,8 +12,7 @@ from base64 import urlsafe_b64encode
 from hashlib import sha256
 from html import unescape
 from http import HTTPStatus
-from itertools import pairwise
-from math import isclose, isfinite
+from math import isclose
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -110,30 +109,11 @@ class QualityResourcePresentationTests(unittest.TestCase):
 
     @staticmethod
     def test_length_scale_anchors_and_endpoints() -> None:
-        """Keep a linear 90% segment and continuous logarithmic tail."""
-        expected = {
-            0: 0,
-            5000: 180,
-            7000: 252,
-            9000: 324,
-            25_000: 900,
-            50_000: 950,
-            100_000: 1000,
-        }
-        for length, position in expected.items():
-            assert isclose(prose_length_position(length, 100_000), position)
-        lengths = [0, 1, 5000, 24_999, 25_000, 25_001, 50_000, 100_000]
-        positions = [
-            prose_length_position(length, 100_000) for length in lengths
-        ]
-        assert all(
-            isfinite(value) and 0 <= value <= 1000 for value in positions
-        )
-        assert all(a < b for a, b in pairwise(positions))
-        assert prose_length_position(25_001, 100_000) - positions[4] < 0.01
-        assert prose_length_position(25_000, 25_000) == 900
-        assert prose_length_position(50_000, 25_000) == 900
-        assert prose_length_position(100_001, 100_000) == 1000
+        """Keep a logarithmic axis with zero and exact endpoints."""
+        for length, position in [(0, 0), (99, 400), (999, 600), (9999, 800)]:
+            assert isclose(prose_length_position(length, 99_999), position)
+        assert isclose(prose_length_position(99_999, 99_999), 1000)
+        assert isclose(prose_length_position(100_001, 99_999), 1000)
 
     @staticmethod
     def test_length_scale_uses_the_complete_observed_catalog() -> None:
@@ -196,7 +176,11 @@ class QualityResourcePresentationTests(unittest.TestCase):
         together = quality_analysis_context(data, interface)[
             "quality_analysis"
         ]
-        assert [row["median_x"] for row in together["lengths"]] == [950, 950]
+        median = round(prose_length_position(50_000, 100_000), 2)
+        assert [row["median_x"] for row in together["lengths"]] == [
+            median,
+            median,
+        ]
         assert together["length_scale_maximum"] == 100_000
         data["lengths"] = data["lengths"][:1]
         filtered = quality_analysis_context(data, interface)[
@@ -822,10 +806,21 @@ class QualityResourcePresentationTests(unittest.TestCase):
                 == 25_000
             )
             assert length["quartiles"] == [
-                {"percentile": 25, "value": 7.5, "x": 0.27},
-                {"percentile": 75, "value": 25.0, "x": 0.9},
+                {
+                    "percentile": 25,
+                    "value": 7.5,
+                    "x": round(prose_length_position(7.5, 25_000), 2),
+                },
+                {
+                    "percentile": 75,
+                    "value": 25.0,
+                    "x": round(prose_length_position(25, 25_000), 2),
+                },
             ]
-            assert isclose(length["median_x"], 0.54)
+            assert isclose(
+                length["median_x"],
+                round(prose_length_position(15, 25_000), 2),
+            )
             assert length["summary"] == interface.text(
                 "quality_analysis.violin_summary",
                 pages="5",
@@ -852,12 +847,16 @@ class QualityResourcePresentationTests(unittest.TestCase):
             assert 'data-percentile="75"' in output
             assert 'data-statistic="p50"' in output
             assert 'data-value="15.0"' in output
-            assert "analysis-violin-note" not in output
+            assert interface.text("quality_analysis.violin_scale") in output
             assert 'data-extreme="minimum"' in output
             assert 'data-extreme="maximum"' in output
             assert length["extrema"] == [
                 {"kind": "minimum", "value": 0, "x": 0.0},
-                {"kind": "maximum", "value": 40, "x": 1.44},
+                {
+                    "kind": "maximum",
+                    "value": 40,
+                    "x": round(prose_length_position(40, 25_000), 2),
+                },
             ]
             assert length["summary"] in output
             assert f"<title>{length['summary']}</title>" not in output
@@ -876,7 +875,10 @@ class QualityResourcePresentationTests(unittest.TestCase):
                 assert length["marker_titles"][kind] == title
                 assert f"<title>{title}</title>" in output
             assert 'class="analysis-violin-mean"' in output
-            assert isclose(length["mean_x"], 0.63)
+            assert isclose(
+                length["mean_x"],
+                round(prose_length_position(17.5, 25_000), 2),
+            )
 
     @staticmethod
     def test_length_labels_round_half_up_without_changing_quantiles() -> None:

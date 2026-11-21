@@ -269,7 +269,7 @@ function browser(logs = false, resources = false, options = {}) {
         observed_at: stamp(now), html: html(next), ...overrides,
     });
     return {
-        ...state, requests, warnings, sockets, settle, envelope,
+        ...state, requests, warnings, sockets, settle, envelope, html,
         async respond(next = fixture(now, false, logs, resources, options.footerOnly, options.datasetUpdates), response = {}) {
             requests.at(-1).resolve({
                 ok: true, status: 200, headers: { get: (key) => key === "Content-Type" ? "application/json; charset=utf-8" : null },
@@ -1249,13 +1249,17 @@ test("expired dataset evidence stops elapsed clocks and cannot retain a running 
 test("compact queried rows retain preloaded files and update running work over time", async () => {
     const page = browser(true, true, {datasetUpdates: true});
     page.previousUpdates.setAttribute("data-live-key", "c".repeat(64));
-    const labels = Object.fromEntries(["started", "finished", "baseline", "used_by", "succeeded", "failed", "running", "scheduled", "waiting", "elapsed", "new_shape", "no_previous", "no_planned", "unavailable", "unknown"].map(key => [key, key]));
-    const row = {key: "worker", filename: "Article authorship", is_task: true, state: "running", started: {known: true, label: "12:00:00"}, elapsed: {running: true, started: stamp(0), label: "0:00.00"}, activity: "Reading history"};
-    await page.respond(fixture(0, false, true, true, false, true), {json: async () => page.envelope(fixture(0, false, true, true), {updates: {labels, current: {items: [row]}, expires: stamp(120000)}})});
+    const withCard = (offset, activity) => {
+        const rendered = fixture(offset, false, true, true, false, true);
+        rendered.datasetBody.setAttribute("id", "dataset-updates-current-body");
+        rendered.datasetBody.appendChild(new Element("ARTICLE", {class: "ui-card"}, activity));
+        return {current: {items: [{key: "worker"}], html: page.html(rendered)}};
+    };
+    await page.respond(fixture(0, false, true, true, false, true), {json: async () => page.envelope(fixture(0, false, true, true), {updates: withCard(0, "Reading history")})});
     assert.equal(page.previousUpdates.textContent, "Previous files");
     assert.match(page.currentUpdates.textContent, /Reading history/);
     page.jump(20000);
-    await page.respond(fixture(20000, false, true, true), {json: async () => page.envelope(fixture(20000, false, true, true), {updates: {labels, current: {items: [{...row, activity: "Attributing revision"}]}, expires: stamp(140000)}})});
+    await page.respond(fixture(20000, false, true, true), {json: async () => page.envelope(fixture(20000, false, true, true), {updates: withCard(20000, "Attributing revision")})});
     assert.match(page.currentUpdates.textContent, /Attributing revision/);
     assert.doesNotMatch(page.currentUpdates.textContent, /Reading history/);
     assert.equal(page.previousUpdates.textContent, "Previous files");

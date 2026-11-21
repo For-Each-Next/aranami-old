@@ -67,34 +67,24 @@ other non-prose sections; list grades include readable template values.
 Legacy word counts remain readable internally but are never displayed as these
 new character units.
 
-Miniature horizontal violin charts occupy the third column of the quality
-and importance distribution tables, beside each count and percentage. Horizontal
-position is linear through 25,000 characters at 90% of the axis. The final
-10% uses a logarithmic scale up to the complete catalog's observed maximum.
-All groups and filter states share that maximum; density sampling limits do
-not change it. With no lengths above 25,000, the final 10% stays unused.
-Zero sits at the left endpoint; tooltips retain the actual character counts.
-The mirrored upper and lower contours show density in the original character
-units. Two dots mark P25 and P75; vertical bars mark the observed minimum,
-median P50 and maximum. A red diagonal cross marks the arithmetic mean of
-measured lengths, weighted by their observed counts and excluding unknown
-measurements. Each marker has a localized tooltip naming its statistic and
-character count. The whole chart has no hover tooltip; its accessible label
-retains the counts and
-length summary. Percentiles
-use linear interpolation over known length observations. Displayed lengths
-use two significant digits, rounded to integers with thousands separators;
-article counts and plotted positions retain their exact values. Missing
-lengths do not become zero. Initial and filtered charts use the same calculation.
-NA and Bottom importance groups are omitted, and A/AL groups hide when their
-current count is zero. Central
-68% and 95% intervals are linear empirical 16th–84th and 2.5th–97.5th
-percentiles. They describe the measured current cohort rather than minimum
-assessment requirements. Measured zero differs from an unknown measurement.
-The script-free Matplotlib figure uses `Axes.violinplot` with Scott bandwidth
-and 129 evaluation positions between the observed minimum and maximum. Constant samples remain a vertical mark; unknown
-measurements add no density. These values are saved before HTTP rendering.
-Page size uses known current SQL byte length even while prose is pending.
+Miniature horizontal violin charts sit beside the quality and importance
+counts. The horizontal scale is `log(1 + characters)`, with the same catalog
+maximum across groups and filters. Density is evaluated on that scale and
+clipped at each group's observed minimum and maximum. A shared vertical
+scale makes the area proportional to its number of measured articles and
+lists. A group with one distinct length is marked at that length.
+
+Dots mark P25 and P75. Vertical lines mark the minimum, median and maximum.
+The red cross marks the arithmetic mean. Tooltips show the underlying
+character counts, and the accessible label gives the length summary.
+Percentiles interpolate linearly between observed lengths. Missing lengths
+remain unknown. The browser uses saved density samples and histograms, and
+Matplotlib applies the same axis and area rules to the native figures.
+
+NA and Bottom importance groups are omitted. A/AL groups hide when their
+current count is zero. Central 68% and 95% intervals use empirical
+16th–84th and 2.5th–97.5th percentiles. Page size uses known SQL byte
+length while prose is pending.
 
 Main contributors must have a saved attributable byte share strictly greater
 than 33%. The article table, main-contributor filter and author directory use

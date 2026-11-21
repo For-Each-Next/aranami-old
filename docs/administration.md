@@ -139,11 +139,11 @@ toolforge jobs load --job aranami-web state/aranami-jobs.yaml
 | Job | UTC launch | Deadline | Memory |
 |---|---|---:|---:|
 | `aranami-web` | Continuous | — | 2 GiB |
-| `aranami-project-data` | Hourly at :00 | 8 minutes | 1,280 MiB |
+| `aranami-project-data` | Daily at 00:00 | 8 minutes | 1,280 MiB |
 | `aranami-data-fetch` | Hourly at :02 | 33 minutes | 1,280 MiB |
 | `aranami-report-update` | Hourly at :10 | 48 minutes | 1,536 MiB |
 
-Fetch starts when the same hour's project snapshot succeeds. The report job
+Fetch checks today's daily snapshot and immediately retries it when missing. It then collects its hourly project observations. The report job
 waits for the fetch status and then checks the inputs for each output. Failed
 or unavailable inputs leave their reports due. Other ready reports can finish.
 Both scheduled worker groups get one Toolforge retry. They retain a checkpoint

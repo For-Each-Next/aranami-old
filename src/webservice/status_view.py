@@ -25,6 +25,7 @@ from webservice.presentation import (
     duration,
     failure_description,
     grouped_number,
+    job_schedule,
     readable_size,
     relative_time,
     timestamp,
@@ -625,25 +626,6 @@ def _runtime_cells(
     }
 
 
-def _occurrence(interface: Interface, schedule: Record) -> str:
-    """Localize the schedule using its next UTC occurrence.
-
-    Returns:
-        Hourly or daily timing, or the recorded cron expression.
-    """
-    instant = timestamp(schedule.get("next_run_at"))
-    cron = schedule["cron"]
-    if cron is None:
-        return interface.text("server.job_temporary")
-    if cron.split()[-1] != "*":
-        return interface.text("server.job_scheduled", cron=cron)
-    if instant is None:
-        return interface.text("server.job_scheduled", cron=cron)
-    if cron.split()[1] == "*":
-        return interface.text("server.job_hourly", minute=f"{instant:%M}")
-    return interface.text("server.job_daily", time=f"{instant:%H:%M}")
-
-
 def _job_usage(
     interface: Interface,
     resources: Record,
@@ -745,7 +727,7 @@ def _scheduled_job_row(
         outcome = "paused"
     return {
         "key": schedule["job_name"],
-        "type": _occurrence(interface, schedule),
+        "type": job_schedule(interface, schedule),
         "status": _job_state(interface, now, outcome, started),
         "expires": expiry,
         "usage": _job_usage(interface, resources, schedule),
