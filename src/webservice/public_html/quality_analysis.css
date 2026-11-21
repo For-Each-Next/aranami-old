@@ -46,13 +46,14 @@
 }
 .analysis-filters { display: grid; grid-template-columns: minmax(0, 1fr); gap: .5rem; margin-block: 1rem; }
 .analysis-filters[hidden], .analysis-directory [hidden] { display: none; }
-.article-query {
+details.article-query {
     margin-block: .75rem;
     border: 1px solid var(--border-color-base, #a2a9b1);
     border-radius: .25rem;
 }
-.article-query > summary { cursor: pointer; font-weight: 600; padding: .55rem .75rem; }
-.article-query-workspace { display: grid; gap: .6rem; padding: 0 .75rem .75rem; }
+details.article-query > summary { cursor: pointer; font-weight: 600; padding: .55rem .75rem; }
+.article-query-workspace { display: grid; gap: .6rem; }
+details.article-query .article-query-workspace { padding: 0 .75rem .75rem; }
 .article-query-actions, .article-query-term, .article-query-value-row, .article-query-toggle {
     display: flex; align-items: center; flex-wrap: wrap; gap: .4rem .65rem;
 }
@@ -60,6 +61,7 @@
     color: var(--color-progressive, #36c);
     border-color: var(--border-color-progressive, #36c);
 }
+.article-query-functions code { font-size: .875em; }
 .article-query-block {
     display: grid; gap: .55rem; min-width: 0; padding: .55rem;
     border: 1px solid var(--border-color-subtle, #c8ccd1);
@@ -80,11 +82,12 @@
 .article-query-checks { padding-inline-start: 1.45rem; overflow-wrap: anywhere; }
 .article-query-checks:empty, .article-query-feedback:empty, .article-query-observed:empty { display: none; }
 .article-query-checks, .article-query-feedback, .article-query-observed { margin-block: 0; }
+.analysis-directory > .article-query-observed { margin-block: .5rem; }
 .article-query [data-query-status="missing"] { color: var(--color-destructive, #b32424); }
 .article-query [data-query-missing] { outline: 1px solid var(--border-color-destructive, #b32424); }
 .article-query-counterpart { display: block; font-size: .85em; }
 @media (max-width: 32rem) {
-    .article-query-workspace, .article-query-block { padding-inline: .35rem; }
+    .article-query-block { padding-inline: .35rem; }
     .article-query-term > *, .article-query-value-row > label { flex: 1 1 100%; }
 }
 .analysis-filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; }

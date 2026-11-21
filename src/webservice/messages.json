@@ -4402,6 +4402,11 @@
     "zh-hans": "添加条件",
     "zh-hant": "新增條件"
   },
+  "article_query.functions": {
+    "en": "Query functions",
+    "zh-hans": "查询函数",
+    "zh-hant": "查詢函式"
+  },
   "article_query.add_value": {
     "en": "Add value",
     "zh-hans": "添加值",
@@ -4965,9 +4970,9 @@
     "zh-hant": "評審"
   },
   "quality_analysis.page_number": {
-    "en": "Page {page}",
-    "zh-hans": "第{page}页",
-    "zh-hant": "第{page}頁"
+    "en": "Page {page} / {total}",
+    "zh-hans": "第 {page} / {total}页",
+    "zh-hant": "第 {page} / {total}頁"
   },
   "quality_analysis.go_to_page": {
     "en": "Go to page",

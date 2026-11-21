@@ -5,7 +5,7 @@ v0.8.8 was consolidated into the v0.9.2 release.
 
 ## Until 0.11
 
-### 0.10.0.dev21 (2026-11-21 14:20 UTC)
+### 0.10.0.dev22 (2026-11-21 15:19 UTC)
 
 Overview: Separated source acquisition from analysis and publication while
 consolidating Toolforge services, standardizing saved tables, and expanding
@@ -13,6 +13,8 @@ the Article List and Parquet previews.
 
 - Added Boolean article queries, English counterparts and advisory title checks.
 - Scheduled a dedicated replica-backed query index and uncached title checks.
+- Opened advanced queries from the filter row with selectable functions.
+- Displayed the current and total page numbers on paginated lists.
 - Moved the Article List and its resources to `/article-list/`.
 - Added field explanations and ordered the four overview coverage cards.
 - Added article and editor edit histories, separate contributor controls with

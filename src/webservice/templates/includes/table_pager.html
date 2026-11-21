@@ -1,3 +1,8 @@
+{% macro page_number(page=1, total=1, field=false) -%}
+{% set parts = t.quality_analysis.page_number.split('{page}') -%}
+{% set tail = parts[1].split('{total}') -%}
+<label class="quality-page-number">{{ parts[0] }}<input class="cdx-text-input__input" type="number" inputmode="numeric"{% if field %} name="page"{% endif %} min="1" max="{{ total }}" value="{{ page }}"{% if field %} required{% endif %} aria-label="{{ t.quality_analysis.go_to_page }}"{% if field %} aria-description="{{ t.data.page.format(page=page, total=total) }}"{% endif %}>{{ tail[0] }}<span data-quality-page-total>{{ total }}</span>{{ tail[1] }}</label>
+{%- endmacro %}
 {% macro pager(paging, action, size_fields, title, css='', dataset=false) -%}
 <nav class="ui-table-pager {{ css }}" aria-label="{{ title }}">
   <form class="page-size ui-table-pager__start" action="{{ action }}" method="get">
@@ -15,8 +20,7 @@
       <form action="{{ action }}" method="get">
         {% for name, value in size_fields.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
         <input type="hidden" name="size" value="{{ paging.size }}">
-        {% set parts = t.quality_analysis.page_number.split('{page}') %}
-        <label class="quality-page-number">{{ parts[0] }}<input class="cdx-text-input__input" type="number" inputmode="numeric" name="page" min="1" max="{{ paging.page_count }}" value="{{ paging.page }}" required aria-label="{{ t.quality_analysis.go_to_page }}" aria-description="{{ t.data.page.format(page=paging.page, total=paging.page_count) }}">{{ parts[1] }}</label>
+        {{ page_number(paging.page, paging.page_count, field=true) }}
         <button type="submit" hidden>{{ t.backlog.go }}</button>
       </form>
     {% endif %}

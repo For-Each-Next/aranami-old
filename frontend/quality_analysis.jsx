@@ -1,18 +1,9 @@
 /** Render saved assessments, charts and contributor directories. */
 import { jsx, iconHref, attribute, display, format, hasContent, OptionalLink } from "./rendering.js";
 import { Fragment } from "@vue/runtime-dom";
-import { popup, table_labels } from "./shared.jsx";
+import { PageNumber, popup, table_labels } from "./shared.jsx";
 
 const pageSizes = [10, 20, 50, 100];
-
-function PageNumber({ t }) {
-    const [prefix, suffix] = t.quality_analysis.page_number.split("{page}");
-    return (
-        <label class="quality-page-number">
-            {prefix}<input class="cdx-text-input__input" type="number" inputmode="numeric" min="1" max="1" value="1" aria-label={t.quality_analysis.go_to_page} />{suffix}
-        </label>
-    );
-}
 
 export function DistributionPanel(context, rows, dimension, caption) {
     const { quality_analysis, t } = context;
@@ -534,7 +525,7 @@ function QualityOverview(context) {
     );
 }
 
-function DirectoryFilters({ t }) {
+function DirectoryFilters({ t, quality_analysis }) {
     const labels = t.quality_analysis;
     return (
         <div class="analysis-filters" data-analysis-controls="" hidden>
@@ -563,6 +554,12 @@ function DirectoryFilters({ t }) {
                 <button type="button" class="cdx-button cdx-button--action-destructive" data-analysis-reset="">
                     {labels.reset}
                 </button>
+                {quality_analysis?.directory_url && t.article_query ? (
+                    <button type="button" class="cdx-button cdx-button--action-progressive"
+                        data-article-query-open="" aria-haspopup="dialog" aria-controls="article-query-dialog" hidden>
+                        {t.article_query.heading}
+                    </button>
+                ) : null}
             </div>
         </div>
     );
@@ -949,10 +946,13 @@ function ArticleDirectory(context) {
                         data-empty={attribute(t.quality_analysis.no_matches)}
                     >
                         {DirectoryFilters(context)}
-                        {quality_analysis.directory_url && t.article_query ? (
-                            <details class="article-query" data-article-query={JSON.stringify(t.article_query)} hidden>
-                                <summary>{t.article_query.heading}</summary>
-                            </details>
+                        {quality_analysis.directory_url && t.article_query ? popup(
+                            context,
+                            <div data-article-query={JSON.stringify(t.article_query)}></div>,
+                            "article-query-dialog",
+                            t.article_query.heading,
+                            "#analysis-articles",
+                            "article-query",
                         ) : null}
                         <p role="status" aria-live="polite" data-analysis-result-count={""}></p>
                         <div class="ui-table">

@@ -240,6 +240,8 @@ export function updateQualityPageInput(pager, page, pages) {
     if (!input) return;
     input.max = String(pages);
     input.value = input.dataset.currentPage = String(page);
+    const total = pager.querySelector("[data-quality-page-total]");
+    if (total) total.textContent = String(pages);
 }
 
 /** Add accessible sorting and pagination to each server-rendered directory. */
@@ -311,7 +313,8 @@ export function initializeQualityAuthorship(root = document) {
             actions.push(button);
             navigation.append(button);
             if (key === "prev" && host.dataset.pageNumber) {
-                const [prefix, suffix] = host.dataset.pageNumber.split("{page}");
+                const [prefix, tail = ""] = host.dataset.pageNumber.split("{page}");
+                const [separator, suffix] = tail.split("{total}");
                 const current = document.createElement("label");
                 current.className = "quality-page-number";
                 const input = document.createElement("input");
@@ -320,7 +323,12 @@ export function initializeQualityAuthorship(root = document) {
                 input.inputMode = "numeric";
                 input.min = "1";
                 input.setAttribute("aria-label", host.dataset.goToPage);
-                current.append(prefix, input, suffix);
+                current.append(prefix, input, separator);
+                if (suffix !== undefined) {
+                    const total = document.createElement("span");
+                    total.setAttribute("data-quality-page-total", "");
+                    current.append(total, suffix);
+                }
                 navigation.append(current);
             }
         }

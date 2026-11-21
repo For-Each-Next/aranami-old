@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "includes/popup_dialog.html" import popup with context %}
+{% from "includes/table_pager.html" import page_number with context %}
 {% from "includes/quality_authorship_tables.html" import table_labels, quality_article_header, quality_article_cells, article_details_dialog, article_authorship_dialog, author_statistics, author_profile, detail_info, prose_measurement, size_measurement, article_count, measurement_unit with context %}
 {% block assets %}<link rel="stylesheet" href="{{ asset_url('quality_analysis.css') }}"><script type="module" src="{{ asset_url('quality_analysis.js') }}"></script>{% endblock %}
 {% block contents_links %}<ul><li><a href="#analysis-overview">{{ t.quality_analysis.overview }}</a></li><li><a href="#analysis-articles">{{ t.quality_analysis.articles }}</a></li><li><a href="#quality-authors">{{ t.quality_analysis.by_author }}</a></li></ul>{% endblock %}
@@ -12,10 +13,6 @@
   </span>
 </label>
 {% endmacro %}
-{% macro page_number() -%}
-{% set parts = t.quality_analysis.page_number.split('{page}') -%}
-<label class="quality-page-number">{{ parts[0] }}<input class="cdx-text-input__input" type="number" inputmode="numeric" min="1" max="1" value="1" aria-label="{{ t.quality_analysis.go_to_page }}">{{ parts[1] }}</label>
-{%- endmacro %}
 {% macro listing_authors_control() %}
 <div class="analysis-authorship-basis">
   {{ checkbox(t.quality_analysis.use_listing_authors, {'form': 'analysis-authorship-basis', 'name': 'listing_authors', 'value': '1'}, quality_analysis.listing_authors) }}
@@ -141,12 +138,15 @@
   </div>
   <div class="analysis-filter-row">
     <button type="button" class="cdx-button cdx-button--action-destructive" data-analysis-reset>{{ t.quality_analysis.reset }}</button>
+    {% if quality_analysis.directory_url %}
+    <button type="button" class="cdx-button cdx-button--action-progressive" data-article-query-open aria-haspopup="dialog" aria-controls="article-query-dialog" hidden>{{ t.article_query.heading }}</button>
+    {% endif %}
   </div>
 </div>
 {% if quality_analysis.directory_url %}
-<details class="article-query" data-article-query='{{ t.article_query | tojson }}' hidden>
-  <summary>{{ t.article_query.heading }}</summary>
-</details>
+{% call popup("article-query-dialog", t.article_query.heading, "#analysis-articles", "article-query") %}
+<div data-article-query='{{ t.article_query | tojson }}'></div>
+{% endcall %}
 {% endif %}
 <p role="status" aria-live="polite" data-analysis-result-count></p>
 <div class="ui-table"><div class="ui-table__table-wrapper table-scroll" tabindex="0" role="region" aria-label="{{ t.quality_analysis.articles }}"><table class="ui-table__table quality-data-table quality-article-directory">{{ quality_article_header(t.quality_analysis.articles) }}<tbody>

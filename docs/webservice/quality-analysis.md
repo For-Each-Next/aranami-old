@@ -186,8 +186,9 @@ locale, class preset and attribution basis.
 
 ## Advanced query
 
-Open **Advanced query** in the Article List to combine conditions with
-blocks or with `~`, `&`, and `|` in that precedence order. Select
+Select **Advanced query** next to **Reset filters** in the Article List.
+Choose a function in the dialog to add it to the block or code editor.
+Combine conditions with `~`, `&`, and `|` in that precedence order. Select
 **Pre-check** to inspect named references and **Run** to apply the expression
 with the current grade matrix and directory filters. Braces match any value
 in a set.

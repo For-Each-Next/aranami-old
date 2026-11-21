@@ -79,8 +79,8 @@ export function serializeArticleQuery(node) {
     return "(" + children.join(node.op === "and" ? " & " : " | ") + ")";
 }
 
-function condition() {
-    return {op: "term", name: "cat", value: "", options: {}};
+function condition(name = "cat") {
+    return {op: "term", name, value: name === "has_wiki" ? "en" : "", options: {}};
 }
 
 function leaves(node) {
@@ -97,9 +97,19 @@ function statusText(result, labels) {
 export function initializeArticleQuery(host, changed) {
     const panel = host.querySelector("[data-article-query]");
     if (!panel) return null;
+    const dialog = panel.closest("dialog");
+    const trigger = host.querySelector("[data-article-query-open]");
     const labels = JSON.parse(panel.dataset.articleQuery);
     const workspace = element("div", undefined, "article-query-workspace");
     const modes = element("div", undefined, "article-query-actions");
+    const functions = element("div", undefined, "article-query-actions article-query-functions");
+    functions.setAttribute("role", "group");
+    functions.setAttribute("aria-label", labels.functions || labels.add);
+    for (const name of predicates) {
+        const shortcut = button(labels[name], () => insertFunction(name));
+        shortcut.append(" ", element("code", name + "()"));
+        functions.append(shortcut);
+    }
     const blocks = element("div", undefined, "article-query-blocks");
     const code = element("textarea", undefined, "cdx-text-area__textarea article-query-code");
     code.rows = 4;
@@ -137,9 +147,23 @@ export function initializeArticleQuery(host, changed) {
     const run = button(labels.run, () => void apply(), true);
     actions.append(fix.wrapper, redirects.wrapper, preview, run,
         button(labels.clear, () => clear()));
-    workspace.append(modes, blocks, code, actions, feedback, highlighted, checks, observed);
+    workspace.append(modes, functions, blocks, code, actions, feedback, highlighted, checks);
     panel.append(workspace);
-    panel.hidden = false;
+    if (dialog && trigger) {
+        dialog.after(observed);
+        trigger.addEventListener("click", () => {
+            if (!dialog.open) dialog.showModal();
+        });
+        dialog.querySelector(".ui-dialog__header__close-button")?.addEventListener("click", event => {
+            event.preventDefault();
+            dialog.close();
+        });
+        dialog.addEventListener("close", () => trigger.focus());
+        trigger.hidden = false;
+    } else {
+        workspace.append(observed);
+        panel.hidden = false;
+    }
 
     function switchMode(value) {
         mode = value;
@@ -168,6 +192,27 @@ export function initializeArticleQuery(host, changed) {
         code.value = serializeArticleQuery(tree);
         discardChecks();
         if (render) renderBlocks();
+    }
+
+    /** Add a function at the end of the active draft. */
+    function insertFunction(name) {
+        const term = condition(name);
+        if (mode === "code") {
+            const original = code.value.trim();
+            const clause = serializeArticleQuery(term);
+            code.value = original ? "(" + original + ") & " + clause : clause;
+            discardChecks();
+            code.focus();
+            if (term.value) void inspect(false);
+            else code.setSelectionRange(code.value.length - 2, code.value.length - 2);
+            return;
+        }
+        if (!tree) tree = term;
+        else if (tree.op === "and") tree.children.push(term);
+        else tree = {op: "and", children: [tree, term]};
+        edited(true);
+        const added = [...blocks.querySelectorAll('[data-query-op="term"]')].at(-1);
+        (added?.querySelector('[data-query-values="value"] input') || added?.querySelector("select"))?.focus();
     }
 
     function groupSelector(node, replace) {
@@ -412,6 +457,7 @@ export function initializeArticleQuery(host, changed) {
             ...(result.generation ? {query_generation: result.generation} : {}),
         } : null;
         if (!applied) observed.textContent = "";
+        if (dialog?.open) dialog.close();
         changed();
     }
 

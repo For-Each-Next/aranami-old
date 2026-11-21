@@ -20,6 +20,19 @@ const numbers = fs.readFileSync(path.join(root, "number_format.js"), "utf8").rep
 const source = [numbers, shared, matrix, characters, analysis].join("\n");
 vm.runInNewContext(source, context);
 const compare = context.compareAnalysisRows;
+test("page jumps retain the current number and update the visible total", () => {
+    const input = {dataset: {}};
+    const total = {textContent: "1"};
+    const pager = {querySelector: selector => selector === "[data-quality-page-total]" ? total : input};
+    context.updateQualityPageInput(pager, 1, 5);
+    assert.equal(input.value, "1");
+    assert.equal(input.max, "5");
+    assert.equal(total.textContent, "5");
+    context.updateQualityPageInput(pager, 2, 3);
+    assert.equal(input.value, "2");
+    assert.equal(input.dataset.currentPage, "2");
+    assert.equal(total.textContent, "3");
+});
 const row = (column, value) => ({
     cells: Array.from({ length: 8 }, (_, index) => ({ dataset: index === column ? { sort: value } : {} })),
 });

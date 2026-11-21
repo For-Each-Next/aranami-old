@@ -3,6 +3,21 @@ import { jsx, iconHref, attribute, display, format, hasContent, OptionalLink } f
 import { Fragment } from "@vue/runtime-dom";
 import { AssessmentChips } from "./articles.jsx";
 
+/** Keep a typed page jump alongside the current page count. */
+export function PageNumber({ t, page = 1, total = 1, field = false }) {
+    const [prefix, tail = ""] = t.quality_analysis.page_number.split("{page}");
+    const [separator, suffix] = tail.split("{total}");
+    return (
+        <label class="quality-page-number">
+            {prefix}<input class="cdx-text-input__input" type="number" inputmode="numeric"
+                name={field ? "page" : undefined} min="1" max={total} value={page}
+                required={field || undefined} aria-label={t.quality_analysis.go_to_page}
+                aria-description={field ? format(t.data.page, { page, total }) : undefined} />
+            {separator}{suffix === undefined ? null : <span data-quality-page-total="">{total}</span>}{suffix}
+        </label>
+    );
+}
+
 /** Present bounded server pages with the same controls as local tables. */
 export function TablePager({ paging, action, fields, title, css, dataset, t }) {
     const navigation = [
@@ -11,7 +26,6 @@ export function TablePager({ paging, action, fields, title, css, dataset, t }) {
         ["next", t.backlog.next],
         ["last", t.reports.last],
     ];
-    const [pagePrefix, pageSuffix] = t.quality_analysis.page_number.split("{page}");
     return (
         <nav class={`ui-table-pager ${css}`} aria-label={title}>
             <form class="page-size ui-table-pager__start" action={action} method="get">
@@ -45,11 +59,7 @@ export function TablePager({ paging, action, fields, title, css, dataset, t }) {
                                     <input key={name} name={name} value={attribute(value)} type="hidden" />
                                 ))}
                                 <input type="hidden" name="size" value={paging.size} />
-                                <label class="quality-page-number">
-                                    {pagePrefix}<input class="cdx-text-input__input" type="number" name="page" inputmode="numeric"
-                                        min="1" max={paging.page_count} value={paging.page} required aria-label={t.quality_analysis.go_to_page}
-                                        aria-description={format(t.data.page, { page: paging.page, total: paging.page_count })} />{pageSuffix}
-                                </label>
+                                <PageNumber t={t} page={paging.page} total={paging.page_count} field />
                                 <button type="submit" hidden>{t.backlog.go}</button>
                             </form>
                         ) : null}

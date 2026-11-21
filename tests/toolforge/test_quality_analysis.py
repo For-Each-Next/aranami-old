@@ -555,6 +555,9 @@ class QualityAnalysisHTTPTests(unittest.TestCase):
                 response = client.get("/article-list/?lang=en")
                 assert response.status_code == HTTPStatus.OK
                 assert 'data-grade="Bplus"' in response.text
+                assert "data-article-query-open" in response.text
+                assert '<dialog id="article-query-dialog"' in response.text
+                assert "data-quality-page-total>1<" in response.text
                 assert before == {
                     path: path.stat().st_mtime_ns
                     for path in root.rglob("*")
