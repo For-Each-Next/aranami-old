@@ -1,10 +1,4 @@
-"""Refresh dashboard data and serve its saved snapshot locally.
-
-The runtime hub checks reports on startup and hourly by default. Each
-report refreshes after its own interval, initially twenty-four hours.
-HTTP requests only read saved data and
-updater health; they never initiate collection or edit Wikipedia.
-"""
+"""Collect dashboard snapshots under an exclusive output lease."""
 
 from __future__ import annotations
 
@@ -17,8 +11,6 @@ import stat
 import threading
 import time
 from contextlib import ExitStack
-from http import HTTPStatus
-from http.server import HTTPServer
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -31,7 +23,6 @@ from runtime.observability.collection_status import (
     collection_run,
 )
 from shared.support.dataset_activity import dataset_activity
-from webservice.http import ReadOnlyRequestHandler
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -44,7 +35,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def _utc_now() -> str:
-    """Return a UTC timestamp for health responses and logs."""
+    """Return a UTC timestamp for refresh observations."""
     return dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
 
 
@@ -79,15 +70,11 @@ class DashboardUpdater:
         self._stop = threading.Event()
         self._state_lock = threading.Lock()
         self._refresh_lock = threading.Lock()
-        self._state: dict[str, str | int | bool | None] = {
+        self._state: dict[str, str | bool | None] = {
             "last_attempt": None,
             "last_success": None,
             "last_error": None,
             "refreshing": False,
-            "drain_protocol": 1,
-            "drain_id": f"{os.getpid()}-{time.monotonic_ns()}",
-            "pid": os.getpid(),
-            "drained": False,
         }
         self._lock_fd: int | None = None
         self._started = False
@@ -98,7 +85,7 @@ class DashboardUpdater:
         return self._stop.is_set()
 
     def start(self) -> None:
-        """Own the output for refreshes dispatched by the runtime hub.
+        """Claim the output for this collector.
 
         Raises:
             RuntimeError: Already started or unable to own the output.
@@ -154,16 +141,7 @@ class DashboardUpdater:
                 self._lock_fd = None
             self._logs.close()
 
-    def confirm_drained(self) -> None:
-        """Acknowledge that the hub finished all scheduled work.
-
-        The hub calls this only after scheduler shutdown has returned.
-        The local health reader then permits deployment to stop the pod.
-        """
-        with self._state_lock:
-            self._state["drained"] = True
-
-    def health(self) -> dict[str, str | int | bool | None]:
+    def health(self) -> dict[str, str | bool | None]:
         """Return the latest attempt and saved-refresh state.
 
         Returns:
@@ -225,8 +203,7 @@ class DashboardUpdater:
         """Attempt one collection while skipping overlapping refreshes.
 
         Collection failures retain the previous snapshot and record the
-        error type. The hub may call this after any report; collection
-        itself selects only independently due website sections.
+        error type. Each website section follows its own schedule.
 
         Args:
             wait: Queue behind active work for a calendar refresh.
@@ -403,52 +380,6 @@ class DashboardUpdater:
             message = "A collector must return a snapshot dictionary."
             raise TypeError(message)
         return snapshot
-
-
-class DashboardHTTPServer(HTTPServer):
-    """Serve the updater's two local read-only endpoints."""
-
-    def __init__(
-        self,
-        address: tuple[str, int],
-        updater: DashboardUpdater,
-    ) -> None:
-        """Bind the endpoint server to the requested local address.
-
-        Args:
-            address: Host and port, with zero choosing a test port.
-            updater: State and saved snapshot exposed by this server.
-        """
-        self.updater = updater
-        super().__init__(address, DashboardRequestHandler)
-
-
-class DashboardRequestHandler(ReadOnlyRequestHandler):
-    """Serve saved JSON without triggering collection from requests."""
-
-    server: DashboardHTTPServer
-
-    def read(self) -> None:
-        """Read health or saved JSON without external requests."""
-        if self.path == "/healthz":
-            state = self.server.updater.health()
-            status = (
-                HTTPStatus.OK
-                if state["healthy"]
-                else HTTPStatus.SERVICE_UNAVAILABLE
-            )
-            self.respond(status, json.dumps(state).encode())
-        elif self.path == "/dashboard.json":
-            content = self.server.updater.snapshot_bytes()
-            if content is None:
-                self.respond(
-                    HTTPStatus.SERVICE_UNAVAILABLE,
-                    b'{"error":"Snapshot unavailable"}',
-                )
-            else:
-                self.respond(HTTPStatus.OK, content)
-        else:
-            self.respond(HTTPStatus.NOT_FOUND, b'{"error":"Not found"}')
 
 
 def collect_dashboard_pass(

@@ -151,8 +151,8 @@ omit the Aranami attribution suffix.
 
 Collection retains one bounded exact header and repair plan per checked talk
 revision. Runtime delegates span-based projection to updater before saving the
-website snapshot. At startup, the hub reprojects matching saved plans while
-holding the output lease, so formatting upgrades need no new wiki requests.
+website snapshot. The saved plans can be reprojected under the output lease
+using the recorded source text.
 The web layer only reads that result. Missing or ambiguous
 destinations, targets outside section 0 and legacy notices whose metadata cannot
 be preserved do not receive an automatic action. Parameter snippets remain

@@ -68,12 +68,12 @@ def _validator() -> ModuleType:
     return module
 
 
-def _generation_without_drain(
+def _generation_without_runtime_launcher(
     root: Path,
     payload: dict[str, bytes],
     version: str,
 ) -> dict[str, object]:
-    """Write a complete hashed generation using the older helper layout.
+    """Write a hashed generation omitting a required runtime launcher.
 
     Args:
         root: Canonical isolated source directory.
@@ -86,7 +86,7 @@ def _generation_without_drain(
     files = {
         name: content
         for name, content in payload.items()
-        if name not in {"deployment.json", "scripts/toolforge/drain-hub.py"}
+        if name not in {"deployment.json", "scripts/toolforge/runtime-env.sh"}
     }
     previous = tomllib.loads(files["pyproject.toml"].decode())["project"][
         "version"
@@ -174,7 +174,7 @@ class TestSourcePayload(TestCase):
     def test_validator_rejects_unsupported_bootstrap_layout(
         self,
     ) -> None:
-        """Reject generations lacking the supported drain protocol."""
+        """Reject generations lacking the supported bootstrap files."""
         validator = _validator()
         for version in ("0.7.10", "0.7.10.post1", "0.7.10.post12"):
             with (
@@ -182,21 +182,21 @@ class TestSourcePayload(TestCase):
                 TemporaryDirectory() as directory,
             ):
                 root = Path(directory).resolve()
-                _generation_without_drain(
+                _generation_without_runtime_launcher(
                     root,
                     self.payload,
                     version,
                 )
-                assert not (root / "scripts/toolforge/drain-hub.py").exists()
+                assert not (root / "scripts/toolforge/runtime-env.sh").exists()
                 with self.assertRaisesRegex(ValueError, "reviewed payload"):
                     validator.verify(root)
 
-    def test_validator_requires_drain_in_current_source_payload(self) -> None:
+    def test_validator_requires_the_runtime_launcher(self) -> None:
         """Reject omitted helpers despite a consistent hash manifest."""
         current = json.loads(self.payload["deployment.json"])["version"]
         with TemporaryDirectory() as directory:
             root = Path(directory).resolve()
-            _generation_without_drain(root, self.payload, current)
+            _generation_without_runtime_launcher(root, self.payload, current)
             with self.assertRaisesRegex(ValueError, "reviewed payload"):
                 _validator().verify(root)
 
@@ -323,14 +323,6 @@ class TestSourcePayload(TestCase):
             if name.startswith("src/")
         } == _PACKAGES
         assert (
-            'exec "$runtime_python" -m runtime "$@"'
-            in self.payload["scripts/toolforge/run-hub.sh"].decode()
-        )
-        assert (
-            "umask 077\n"
-            in self.payload["scripts/toolforge/run-hub.sh"].decode()
-        )
-        assert (
             'exec "$runtime_python" -m runtime.services "$@"'
             in self.payload["scripts/toolforge/run-job.sh"].decode()
         )
@@ -371,7 +363,7 @@ class TestSourcePayload(TestCase):
             '--runtime "$tool_dir"'
             in self.payload["scripts/toolforge/run-web.sh"].decode()
         )
-        for name in ("run-hub.sh", "run-job.sh", "run-web.sh"):
+        for name in ("run-job.sh", "run-web.sh"):
             assert (
                 '. "$tool_dir/app/scripts/toolforge/runtime-env.sh"'
                 in self.payload[f"scripts/toolforge/{name}"].decode()
@@ -825,11 +817,11 @@ assert report_membership.__name__ == "data.runtime.report_membership"
 assert regions.__name__ == "shared.support.regions"
 for name in TASK_DEFINITIONS:
     importlib.import_module(f"runtime.reporting.{name}")
-import runtime.__main__
 import runtime.scheduling.monitor as monitor
 import runtime.fetch.dashboard
 import webservice.server
-import runtime.scheduling.hub
+import runtime.scheduling.runner
+import runtime.services.__main__
 import webservice.pages
 for name in (
     "data.runtime.logs",

@@ -29,7 +29,7 @@ def dashboard_updater(
     log_dir: Path = Path("logs"),
     refresh_intervals: dict[str, float] | None = None,
 ) -> DashboardUpdater:
-    """Build a dashboard writer for the hub or a scheduled collector.
+    """Build a dashboard writer for an independent collection pass.
 
     Args:
         output: Saved dashboard destination.

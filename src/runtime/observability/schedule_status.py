@@ -8,7 +8,6 @@ from threading import RLock
 from apscheduler.schedulers.base import STATE_PAUSED, STATE_STOPPED
 from apscheduler.triggers.interval import IntervalTrigger
 
-from data.runtime.server_samples import save_sample
 from data.runtime.status import get_boot_id, save_status, utc_now
 from runtime.scheduling.idle_scheduler import IdleScheduler
 from shared.config import (
@@ -148,18 +147,3 @@ def _write_schedule(
         },
         dry=dry,
     )
-
-
-def write_resource_status(*, dry: bool = False) -> None:
-    """Save current resources without serializing execution history.
-
-    Args:
-        dry: Keep preview samples outside production state.
-    """
-    with _LOCK:
-        save_sample(
-            sample_runtime(),
-            boot_id=get_boot_id(),
-            observed_at=dt.datetime.now(dt.UTC),
-            dry=dry,
-        )

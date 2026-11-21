@@ -19,7 +19,7 @@ class TestServerStatus(TestCase):
 
     @staticmethod
     def test_environment_describes_the_running_generation() -> None:
-        """Keep software observations bounded and tied to hub source."""
+        """Tie bounded software observations to the running source."""
         with (
             patch.object(
                 server_status.platform,

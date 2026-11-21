@@ -1,8 +1,7 @@
 """Serve saved website data and live status on Toolforge with Django.
 
 Run ``python -m webservice.server`` as the published web job. Requests
-read fixed assets and validated runtime snapshots; they never
-start the hub, initialize source clients, or publish wiki changes.
+read fixed assets and validated runtime snapshots.
 """
 
 from __future__ import annotations
@@ -51,7 +50,10 @@ from data.runtime.log_store import (
     read_activity,
 )
 from data.runtime.logs import open_run_log
-from data.runtime.server_samples import read_live_status as read_status
+from data.runtime.server_samples import (
+    JOB_SAMPLES_DIRECTORY,
+    read_live_status as read_status,
+)
 from data.runtime.status import (
     WEB_STATUS_NAME,
     StatusReadCache,
@@ -64,6 +66,7 @@ from shared.deployment import project_version, resource_root
 from shared.newsletter import Issue
 from shared.support.files import file_identity
 from shared.support.resources import sample_runtime
+from shared.toolforge.state import ACTIVE_PATH, GROUPED_PATH, SCHEDULES_PATH
 from webservice import browser
 from webservice.asgi import DjangoWebsite, LiveSocket, SocketDisconnectError
 from webservice.asset_cache import AssetCache
@@ -743,7 +746,7 @@ class _PublicViews:
         )
 
     def _status(self) -> dict:
-        """Read current observations using the shared hub generation.
+        """Read current observations using the saved status generation.
 
         Returns:
             A read-only view with current heartbeats and freshness.
@@ -1922,8 +1925,11 @@ class _PublicViews:
                 "state/observability",
                 "state/observability/status.json",
                 f"state/observability/{WEB_STATUS_NAME}",
-                "state/observability/server-sample.json",
                 "state/observability/dataset-updates.json",
+                ACTIVE_PATH,
+                GROUPED_PATH,
+                SCHEDULES_PATH,
+                JOB_SAMPLES_DIRECTORY,
             )
         )
 

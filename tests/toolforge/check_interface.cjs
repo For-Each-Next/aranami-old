@@ -1050,6 +1050,9 @@ async function checkInterface(assetRoot) {
                 if (surface === "about") {
                     const credits = await evaluate(`(() => { const list = document.querySelector('.about-credits'); return {tag: list.tagName, items: list.querySelectorAll(':scope > li').length, cards: list.querySelectorAll('.ui-card').length}; })()`);
                     assert.deepEqual(credits, {tag: 'UL', items: 6, cards: 0}, 'the credits overview is an ordinary six-item list');
+                    const jobs = await evaluate(`[...document.querySelectorAll('#server-runtime .server-jobs tbody tr')].map(row => row.dataset.key)`);
+                    assert.deepEqual(jobs, ['aranami-web'], 'the job table renders while saved schedules are unavailable');
+                    assert.equal(await evaluate(`document.querySelector('#server-runtime .server-metrics') !== null`), false, 'the retired table never renders');
                     if ([320, 1440].includes(width)) {
                         await checkHeadingCopy('#server-status-heading', 'server-status-heading');
                         await checkHeadingCopy('main .page-heading h1', '');

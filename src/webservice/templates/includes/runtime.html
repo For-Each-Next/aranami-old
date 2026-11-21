@@ -1,6 +1,5 @@
 <div id="server-runtime" class="ui-table">
 <div class="ui-table__table-wrapper table-scroll" tabindex="0" role="region" aria-labelledby="server-status-heading">
-{% if server.jobs %}
 <table class="ui-table__table server-jobs" data-no-pagination>
 <caption class="visually-hidden">{{ t.server.heading }}</caption>
 <thead><tr>
@@ -22,18 +21,4 @@
 </tr>
 {% endfor %}
 </tbody></table>
-{% else %}
-<table class="ui-table__table server-metrics" data-no-pagination>
-<caption class="visually-hidden">{{ t.server.heading }}</caption><colgroup><col><col><col></colgroup>
-<thead><tr><td></td><th scope="col">{{ t.server.hub }}</th><th scope="col">{{ t.server.web }}</th></tr></thead>
-<tbody>
-{% for row in server.rows %}
-<tr data-server-metric="{{ row.key }}"><th scope="row">{{ row.label }}</th>
-{% for cell in row.cells %}
-<td>{% if cell.value %}<span{% if row.key == 'state' and loop.first %} id="server-state"{% endif %}{% if cell.expires %} data-observation-expires="{{ cell.expires }}"{% endif %}{% if cell.stale %} data-stale-text="{{ cell.stale }}"{% endif %}>{{ cell.value }}</span>{% endif %}{% if cell.time %}<span{% if cell.time_label %} class="server-start"{% endif %}>{% if cell.time_label %}{{ server.opening }}{{ cell.time_label }}{% endif %}{% with time=cell.time %}{% include "includes/time.html" %}{% endwith %}{% if cell.time.known and cell.time_relative.label %}{{ server.separator if cell.time_label else ' ' }}{% with relative=cell.time_relative %}{% include "includes/relative.html" %}{% endwith %}{% endif %}{% if cell.time_label %}{{ server.closing }}{% endif %}</span>{% endif %}</td>
-{% endfor %}
-</tr>
-{% endfor %}
-</tbody></table>
-{% endif %}
 </div></div>

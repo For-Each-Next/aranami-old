@@ -5,7 +5,7 @@ v0.8.8 was consolidated into the v0.9.2 release.
 
 ## Until 0.11
 
-### 0.10.0.dev12 (2026-11-21 11:04 UTC)
+### 0.10.0.dev13 (2026-11-21 11:24 UTC)
 
 Overview: Separated source acquisition from analysis and publication while
 consolidating Toolforge services, standardizing saved tables, and refining
@@ -28,8 +28,9 @@ Article Statistics and Parquet previews.
   percentile ticks, mean crosses, and label alignment.
 - Matched browser violin shapes to Matplotlib's default density settings.
 - Used solid fills in native and browser length-distribution charts.
-- Displayed Toolforge job names, types, status durations, RAM, and CPU in the
-  server status table.
+- Displayed Toolforge job names, types, status durations, RAM, and CPU. Kept
+  the job table when only the web service had observations.
+- Retired the Hub launcher, drain tooling, and live telemetry.
 - Shortened Toolforge schedule labels by omitting the time zone.
 - Ordered jobs by run frequency and showed the midnight snapshot's retry plan.
 - Refreshed the running-job elapsed display every 110 ms in the browser.

@@ -28,7 +28,6 @@ from dataclasses import dataclass
 from importlib import import_module
 from queue import Empty, SimpleQueue
 from threading import Event, Lock, Thread
-from time import monotonic
 from typing import TYPE_CHECKING
 
 from apscheduler.events import EVENT_ALL, EVENT_SCHEDULER_SHUTDOWN
@@ -37,10 +36,7 @@ from apscheduler.triggers.cron import CronTrigger
 from data.runtime.events import event_extra
 from data.runtime.logs import open_run_log
 from runtime.observability.interrupted_runs import recover_interrupted_runs
-from runtime.observability.schedule_status import (
-    write_resource_status,
-    write_schedule_status,
-)
+from runtime.observability.schedule_status import write_schedule_status
 from runtime.reporting.dispatch import dispatch_scheduled_report
 from runtime.scheduling.idle_scheduler import (
     EVENT_SCHEDULER_STOPPING,
@@ -81,9 +77,8 @@ def _heartbeat(  # ruff: ignore[too-many-arguments]
         dry: Preview monitors never alter production schedule snapshots.
         started_at: Actual session start, retained across heartbeats.
     """
-    next_resources = next_schedule = 0.0
     while not stopped.is_set():
-        signaled = changed.wait(1)
+        changed.wait(30)
         changed.clear()
         if stopped.is_set():
             return
@@ -94,13 +89,7 @@ def _heartbeat(  # ruff: ignore[too-many-arguments]
                 break
             if scheduler.running and scheduler.get_job(name) is not None:
                 scheduler.modify_job(name, next_run_time=instant)
-        now = monotonic()
-        if now >= next_resources:
-            write_resource_status(dry=dry)
-            next_resources = now + 1
-        if signaled or now >= next_schedule:
-            write_schedule_status(scheduler, dry=dry, started_at=started_at)
-            next_schedule = now + 30
+        write_schedule_status(scheduler, dry=dry, started_at=started_at)
 
 
 @dataclass(frozen=True, slots=True)
@@ -207,12 +196,10 @@ def start(  # ruff: ignore[complex-structure] - Check ownership before creating 
             start, then follow its UTC schedule. False waits for the
             next cron times. This option has no effect on an active
             monitor.
-        dispatch: Optional hub callback invoked with the routine name
-            and dry mode. Omit to run reports without website
-            collection. An active monitor retains its original callback.
-        start_paused: Allow the hub to register collection jobs before
-            any startup work is submitted. Resume the returned scheduler
-            after registration. Existing monitors keep their state.
+        dispatch: Optional callback invoked with the routine name and
+            dry mode. An active monitor retains its original callback.
+        start_paused: Let callers configure the scheduler before
+            resuming it. Existing monitors keep their state.
 
     Returns:
         Running background scheduler, which the caller can inspect,

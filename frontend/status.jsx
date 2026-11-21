@@ -73,11 +73,6 @@ export function JobHistoryDialogs(context) {
     ));
 }
 
-export function Relative(context) {
-    const { relative } = context;
-    return hasContent(relative?.label) ? display(relative?.label) : null;
-}
-
 export function ReportDetails(context) {
     const { routine, t } = context;
     return popup(
@@ -424,53 +419,14 @@ function JobTable({ jobs, t }) {
     );
 }
 
-/** Present the job metrics, with the legacy service view for earlier data. */
-export function Runtime(context) {
+/** Present the job metrics within the live status region. */
+function Runtime(context) {
     const { server, t } = context;
     return (
         <div id="server-runtime" class="ui-table">
             <div class="ui-table__table-wrapper table-scroll" tabindex="0"
                 role="region" aria-labelledby="server-status-heading">
-                {server?.jobs?.length ? <JobTable jobs={server.jobs} t={t} /> : (
-                <table class="ui-table__table server-metrics" data-no-pagination="">
-                    <caption class="visually-hidden">{t.server.heading}</caption>
-                    <colgroup><col /><col /><col /></colgroup>
-                    <thead>
-                        <tr>
-                            <td></td>
-                            <th scope="col">{t.server.hub}</th>
-                            <th scope="col">{t.server.web}</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {(server?.rows ?? []).map(row => (
-                            <tr key={row.key} data-server-metric={row.key}>
-                                <th scope="row">{row.label}</th>
-                                {row.cells.map((cell, index) => (
-                                    <td key={index}>
-                                        {cell.value && (
-                                            <span id={row.key === "state" && index === 0 ? "server-state" : undefined}
-                                                data-observation-expires={cell.expires ?? undefined}
-                                                data-stale-text={cell.stale ?? undefined}>
-                                                {cell.value}
-                                            </span>
-                                        )}
-                                        {cell.time && (
-                                            <span class={cell.time_label ? "server-start" : undefined}>
-                                                {cell.time_label && <>{server.opening}{cell.time_label}</>}
-                                                {Time({...context, time: cell.time})}
-                                                {cell.time.known && cell.time_relative?.label &&
-                                                    <>{cell.time_label ? server.separator : " "}{Relative({...context, relative: cell.time_relative})}</>}
-                                                {cell.time_label && server.closing}
-                                            </span>
-                                        )}
-                                    </td>
-                                ))}
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-                )}
+                <JobTable jobs={server.jobs} t={t} />
             </div>
         </div>
     );

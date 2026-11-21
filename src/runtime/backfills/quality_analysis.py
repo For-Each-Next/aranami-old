@@ -28,11 +28,7 @@ lazy from polars.exceptions import PolarsError
 from data.runtime.status import get_boot_id, read_status
 from runtime.observability.collection_status import collection_run
 from runtime.observability.dataset_updates import resumed_dataset_updates
-from shared.config import (
-    COLLECTION_DEFINITIONS,
-    TASK_DEFINITIONS,
-    idle_priority,
-)
+from shared.config import TASK_DEFINITIONS, idle_priority
 lazy from data.articles.current_quality import (
     refresh_saved_quality as _refresh_saved_quality,
 )
@@ -62,7 +58,6 @@ if TYPE_CHECKING:
     from types import FrameType
 
     import polars as pl
-    from apscheduler.schedulers.background import BackgroundScheduler
     from pywikibot.site import BaseSite
 
 _TASK_ID = "quality-analysis"
@@ -457,55 +452,6 @@ def _collect_historical_authorship(
             max_seconds=max(0, deadline - monotonic()),
             should_yield=paused,
         )
-
-
-def schedule_quality_analysis(
-    scheduler: BackgroundScheduler,
-    *,
-    run_immediately: bool,
-) -> None:
-    """Register hourly idle collectors without starting source reads.
-
-    Args:
-        scheduler: Hub-owned scheduler with the shared idle executor.
-        run_immediately: Queue startup recovery before the next hour.
-    """
-    definition = COLLECTION_DEFINITIONS[_TASK_ID]
-    scheduler.add_job(
-        refresh_quality_analysis,
-        trigger="cron",
-        hour=definition.hour,
-        minute=definition.minute,
-        second=0,
-        timezone=dt.UTC,
-        id=_TASK_ID,
-        max_instances=1,
-        coalesce=True,
-        misfire_grace_time=None,
-        **(
-            {"next_run_time": dt.datetime.now(dt.UTC)}
-            if run_immediately
-            else {}
-        ),
-    )
-    authorship = COLLECTION_DEFINITIONS[_AUTHOR_TASK_ID]
-    scheduler.add_job(
-        refresh_quality_authorship,
-        trigger="cron",
-        hour=authorship.hour,
-        minute=authorship.minute,
-        second=0,
-        timezone=dt.UTC,
-        id=_AUTHOR_TASK_ID,
-        max_instances=1,
-        coalesce=True,
-        misfire_grace_time=None,
-        **(
-            {"next_run_time": dt.datetime.now(dt.UTC)}
-            if run_immediately
-            else {}
-        ),
-    )
 
 
 def main(argv: Sequence[str] | None = None) -> None:

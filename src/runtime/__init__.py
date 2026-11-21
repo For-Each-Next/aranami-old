@@ -1,7 +1,7 @@
 """Manage report workflows and centrally prepared website data.
 
-Run ``python -m runtime`` for the hub coordinating wiki publication and
-website refreshes with shared source reads and independent outcomes.
+Toolforge runs the grouped collection and report jobs via
+``python -m runtime.services``.
 Call :func:`run` to start the scheduled WikiProject Video games
 monitor, with an immediate check of all reports on a fresh start in live
 or preview mode. Pass ``run_immediately=False`` to wait for scheduled

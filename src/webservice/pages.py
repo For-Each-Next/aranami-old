@@ -22,11 +22,7 @@ from markupsafe import Markup, escape
 from data.parquet_preview import PAGE_SIZE, PAGE_SIZES
 from shared.assessment_profiles import assessment_profile
 from shared.config import routine_configuration
-from shared.deployment import (
-    project_build_time,
-    project_version,
-    resource_root,
-)
+from shared.deployment import project_version, resource_root
 from shared.newsletter import Issue
 from webservice import browser
 from webservice.consistency import (
@@ -1333,7 +1329,6 @@ class _Page:
             status,
             config.get("version") or self.text("ops.unavailable"),
             now,
-            built_at=project_build_time(),
             history_limit=0,
         )
         context.update(

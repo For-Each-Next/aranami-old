@@ -71,7 +71,7 @@ json.dumps(routine_configuration(), allow_nan=False)
 assert tomllib.loads((root / "pyproject.toml").read_text())["project"]["version"] == project_version()
 for name in TASK_DEFINITIONS:
     importlib.import_module(f"runtime.reporting.{name}")
-import runtime.scheduling.hub
+import runtime.scheduling.runner
 import webservice.server
 import runtime.fetch.dashboard
 import runtime.services.__main__

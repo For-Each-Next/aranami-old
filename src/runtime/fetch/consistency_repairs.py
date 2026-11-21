@@ -208,7 +208,7 @@ def _saved_repair_snapshot(path: Path) -> dict | None:
 
 
 def refresh_saved_repairs(path: Path) -> bool:
-    """Reproject matching saved plans before startup source work begins.
+    """Reproject matching saved plans from retained source observations.
 
     Call only while holding the dashboard output lease. This reads the
     complete saved sidecar so compact dashboard capacity cannot reduce
@@ -219,8 +219,7 @@ def refresh_saved_repairs(path: Path) -> bool:
 
     Returns:
         Whether matching saved plans were reprojected. Missing, invalid
-        or stale observations remain unchanged. Failures are logged and
-        do not prevent the hub from starting.
+        or stale observations remain unavailable. Failures are logged.
     """
     try:
         snapshot = _saved_repair_snapshot(path)

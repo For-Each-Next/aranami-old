@@ -1,6 +1,6 @@
 """Retain independent service, execution, data, and publication facts.
 
-Readers combine the hub snapshot and independently written Web status.
+Readers combine shared job observations and independent Web status.
 These facts never control publication or data retention. Readers create
 no files, and missing or damaged observations remain unavailable.
 """
@@ -1043,7 +1043,7 @@ def record_dataset(
 
 
 def _merge_web_status(path: Path, value: dict, availability: str) -> str:
-    """Overlay independent Web status, preserving the legacy fallback.
+    """Merge the independent Web observation into the shared status.
 
     Returns:
         Availability of the combined observations.

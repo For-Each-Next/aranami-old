@@ -24,7 +24,7 @@ _RUN = "b" * 32
 
 
 class AnalysisWorkerTests(TestCase):
-    """Keep native allocation pools and source bodies out of the hub."""
+    """Keep native allocation pools in the bounded worker process."""
 
     def test_saved_report_errors_do_not_prevent_startup_or_worker_progress(
         self,
@@ -451,7 +451,7 @@ class AnalysisAdmissionTests(TestCase):
 
     @staticmethod
     def test_clock_foreground_and_owner_lifecycle() -> None:
-        """Admit only the selected running hub during an idle minute."""
+        """Admit the selected recovery monitor during an idle minute."""
         clock = Mock(UTC=dt.UTC)
         clock.datetime.now.return_value = dt.datetime(
             2026,
@@ -518,32 +518,6 @@ class AnalysisAdmissionTests(TestCase):
             assert not worker._should_yield(Path(), None, stop)
             stop.set()
             assert worker._should_yield(Path(), None, stop)
-
-    @staticmethod
-    def test_hourly_job_is_idle_and_single_instance() -> None:
-        """Preserve hourly boundaries during startup recovery."""
-        scheduler = Mock()
-        worker.schedule_quality_analysis(scheduler, run_immediately=True)
-        jobs = scheduler.add_job.call_args_list
-        assert [job.args[0] for job in jobs] == [
-            worker.refresh_quality_analysis,
-            worker.refresh_quality_authorship,
-        ]
-        for job in jobs:
-            options = job.kwargs
-            assert COLLECTION_DEFINITIONS[options["id"]].idle
-            assert options["trigger"] == "cron"
-            assert options["hour"] == "*"
-            assert options["minute"] == 2
-            assert options["second"] == 0
-            assert options["max_instances"] == 1
-            assert options["coalesce"]
-            assert options["next_run_time"].tzinfo is dt.UTC
-        worker.schedule_quality_analysis(scheduler, run_immediately=False)
-        assert all(
-            "next_run_time" not in job.kwargs
-            for job in scheduler.add_job.call_args_list[-2:]
-        )
 
     @staticmethod
     def test_hourly_phase_is_outside_the_protected_admission_minute() -> None:

@@ -70,18 +70,14 @@ place, preserving surrounding report cards, focus and browser history. Native
 GET links remain available without JavaScript. Live status refreshes report
 cards separately, preserving the selected history page. Publication results
 retain their table headers and horizontal scrolling on narrow screens.
-Recorded source and acquisition notes belong in the status dialogs. About-page
-version information uses one source version and its recorded UTC build time;
-process restarts do not change that timestamp. Older builds without metadata
-omit the update time.
+Recorded source and acquisition notes belong in the status dialogs. The footer
+shows the deployed source version and uptime from the Web heartbeat.
 
-Server status lists active website refresh and data-maintenance collections
-owned by the current scheduler process. It shows the named work, actual source
-being read, measured counters when available, and start time. Completed runs,
-previous process owners and unrelated wiki reports do not appear as current
-background work. Missing status remains unknown; expired scheduler heartbeats
-replace activity with an explicit stale notice, even if the web process remains
-reachable. The existing read-only live protocol refreshes this row.
+Server status lists `aranami-web` and jobs from the recorded Toolforge schedule.
+Rows show the job name, schedule or type, observed state, RAM and CPU. When the
+schedule is missing, `aranami-web` has its own row. Missing or expired readings
+show unknown usage. Previous and upcoming dataset updates have their own
+sections. The read-only live protocol refreshes the job table and update cards.
 
 Completed daily cards show the confirmed report date; hourly cards show the
 latest successful check hour, including checks that needed no wiki edit.
@@ -248,16 +244,14 @@ pages, while their successful old revision observations remain durable.
 
 ## Localization and live status
 
-About-page resources are sampled and streamed once per second. A small current
-sample remains separate from execution history; readers accept only fresh
-samples from the exact running hub boot. The socket watcher shares file checks
-across subscribers, with one-second HTTP fallback on server-status panels.
+Toolforge workers save resource samples separately from execution history.
+The socket watcher shares schedule, sample and heartbeat checks across
+subscribers, with one-second HTTP fallback on server-status panels.
 
-The Memory value shows the hub container's working set against its allocation:
-`memory.current - inactive_file` from cgroup v2, clamped to zero. This excludes
-inactive filesystem cache while retaining active file pages, anonymous memory
-and kernel allocations. Missing counters display as unknown. The calculation
-does not reclaim caches or change the container's memory limit.
+The RAM value shows each container's working set against its allocation. The
+cgroup v2 measurement is `memory.current - inactive_file`, clamped to zero.
+It includes active file pages, anonymous memory and kernel allocations.
+Missing counters display as unknown.
 CPU shows measured cores used over the container's allocated cores. A
 measurement of 100% in the saved CPU counter represents one used core.
 
@@ -300,7 +294,7 @@ dialogs. A heartbeat proves connectivity; it does not refresh saved evidence.
 
 One `webservice.live.LiveFeed` per application watches saved status and shares
 rendered views by locale. Live updates and HTTP requests reuse the latest
-validated hub status generation and derive freshness for each read. Large
+validated status generation and derive freshness for each read. Large
 pages and API responses share four concurrent HTTP slots through delivery.
 Each live connection retains at most the newest pending update, so a slow
 reader cannot accumulate history or delay others. The watcher stops when the

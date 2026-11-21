@@ -1,1 +1,1 @@
-"""Coordinate manual execution and the recovery hub."""
+"""Coordinate manual report execution and the recovery monitor."""

@@ -102,8 +102,8 @@ Public records contain relative filenames; HTTP reads with no collector observer
 do not create activity records. Consecutive template-alias stages are condensed
 only for display, preserving the underlying source evidence.
 
-The report and dashboard share validated site-wide top lists for one hour in
-the hub. Missing or failed lists can be retried. Preview passes have a separate
+Source passes reuse validated site-wide top lists for one hour. Missing or
+failed lists can be retried. Preview passes have a separate
 cache. Continuous Pageviews may be supplemented; incomplete or gapped history needs a
 full request. Coverage sentinels alone do not establish observations. The cache
 is an optimization alongside the durable detailed dataset, not its replacement.

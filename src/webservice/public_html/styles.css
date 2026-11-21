@@ -1414,36 +1414,10 @@ ul.consistency-cards {
     margin-block-start: 2rem;
 }
 
-.server-metrics {
-    table-layout: fixed;
-    inline-size: 100%;
-}
-
-.server-metrics col:first-child {
-    width: 8rem;
-}
-
-.server-metrics th {
-    font-weight: 700;
-}
-
-.server-metrics td {
-    font-variant-numeric: tabular-nums;
-    overflow-wrap: anywhere;
-}
-
-.server-metrics .server-start { display: block; }
-
 .server-jobs :is(th, td) { white-space: nowrap; }
 .server-jobs :is(th, td):nth-last-child(-n + 2) {
     text-align: end;
     font-variant-numeric: tabular-nums;
-}
-
-@media (max-width: 30rem) {
-    .server-metrics col:first-child { width: 5.5rem; }
-    .server-metrics th, .server-metrics td { padding-inline: .55rem; }
-    .server-metrics time { font-size: .875em; }
 }
 
 .log-download a {

@@ -54,8 +54,6 @@
     "zh-hans": "状态",
     "zh-hant": "狀態"
   },
-  "server.hub": {"en": "Hub", "zh-hans": "调度服务（Hub）", "zh-hant": "排程服務（Hub）"},
-  "server.web": {"en": "Web", "zh-hans": "网页服务（Web）", "zh-hant": "網頁服務（Web）"},
   "server.web_service": {"en": "Web service", "zh-hans": "网页服务", "zh-hant": "網頁服務"},
   "server.job": {"en": "Job name", "zh-hans": "作业名称", "zh-hant": "作業名稱"},
   "server.job_type": {"en": "Job type", "zh-hans": "作业类型", "zh-hant": "作業類型"},
@@ -117,11 +115,6 @@
   "server.job_interrupted": {"en": "Interrupted", "zh-hans": "已中断", "zh-hant": "已中斷"},
   "server.job_paused": {"en": "Paused", "zh-hans": "已暂停", "zh-hant": "已暫停"},
   "server.job_unknown": {"en": "Unknown", "zh-hans": "状态未知", "zh-hant": "狀態未知"},
-  "server.heartbeat": {
-    "en": "Last observed",
-    "zh-hans": "最近观测",
-    "zh-hant": "最近觀測"
-  },
   "server.memory": {
     "en": "RAM",
     "zh-hans": "内存",
@@ -141,21 +134,6 @@
     "en": "{count} cores",
     "zh-hans": "{count} 核心",
     "zh-hant": "{count} 核心"
-  },
-  "server.started": {
-    "en": "started at ",
-    "zh-hans": "启动时间",
-    "zh-hant": "啟動時間"
-  },
-  "server.stopping": {
-    "en": "stop requested at ",
-    "zh-hans": "停止时间",
-    "zh-hant": "停止時間"
-  },
-  "server.stopped": {
-    "en": "Stopped",
-    "zh-hans": "已停止",
-    "zh-hant": "已停止"
   },
   "nav.contents": {
     "en": "Contents",
@@ -2370,11 +2348,6 @@
     "zh-hans": "专题重要度评级：{grade}",
     "zh-hant": "專題重要度評級：{grade}"
   },
-  "server.version": {
-    "en": "Version",
-    "zh-hans": "版本",
-    "zh-hant": "版本"
-  },
   "newsletter.generated_source": {
     "en": " (automatically generated wikitext)",
     "zh-hans": "（自动生成的维基代码）",
@@ -3670,11 +3643,6 @@
     "en": "top-page traffic for {date}",
     "zh-hans": "{date}热门页面流量",
     "zh-hant": "{date}熱門頁面流量"
-  },
-  "server.updated": {
-    "en": "updated ",
-    "zh-hans": "更新于",
-    "zh-hant": "更新於"
   },
   "credits.content_intro": {
     "en": "These icons identify main-page highlights, popularity ranks, and content reviews. Highlight icons represent saved featured, good, or did-you-know appearances independently of current assessments. The highlight, candidate, and community peer-review SVGs are unchanged Commons files; the project peer-review SVG is a vector redraw of its Commons PNG source. Each image retains its own license.",

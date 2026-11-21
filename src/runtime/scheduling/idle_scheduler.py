@@ -1,10 +1,9 @@
 """Defer eligible tasks until ordinary scheduled work is idle.
 
-Use ``IdleScheduler`` for the shared hub scheduler. Its default executor
-counts submitted collection and report work, keeps idle tasks outside
-worker threads, and admits independent reports after ordinary work
-finishes. New ordinary work can start while idle tasks are running;
-publication already in progress is never interrupted.
+The recovery monitor uses ``IdleScheduler``. Its executor counts active
+work, queues idle tasks outside worker threads, and admits independent
+reports after ordinary work finishes. New ordinary work can start while
+idle tasks are running.
 """
 
 from __future__ import annotations

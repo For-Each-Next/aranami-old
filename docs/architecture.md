@@ -154,13 +154,10 @@ wiki retains all project category links and complete configured assessment-list
 categories, including matching pages outside project membership. Null category
 placeholders distinguish known uncategorized pages from uncovered IDs.
 
-In the legacy hub, collectors reuse the hourly Parquet, then
-`newsletter-daily` prepares daily facts,
-and only then do independent deferred report consumers run concurrently.
-Website refreshes run independently of on-wiki reports. Article statistics wait
-behind ordinary work and regular reports and never run during hub startup. Waiting phases occupy no executor
-threads. New hourly collection can start while an earlier publication finishes.
-Adapters supplement only page IDs or custom categories absent from central
+The hourly fetch prepares shared sources before the report job processes its
+dependent outputs. Independent web and wiki outputs use separate checkpoints.
+Article statistics yield to foreground acquisition. Adapters supplement only
+page IDs or custom categories absent from central
 coverage, using read-only replica queries. Daily consumers retain their exact
 immutable membership boundary while source revision checks use current-hour
 observations. Preview caches remain isolated. Startup recovery never shifts the
@@ -175,8 +172,8 @@ revision IDs and parse changed revisions only. These shortcuts retain current
 membership, category/template aliases, date-window and destination checks;
 unchanged talk revisions cannot justify skipping an entire report pass.
 
-In the legacy hub, APScheduler coalesces missed triggers and permits one active invocation per
-routine. Startup recovers due work unless
+In the manual recovery monitor, APScheduler coalesces missed triggers and
+permits one active invocation per routine. Startup recovers due work unless
 `run_immediately=False`; shutdown stops dispatch and drains active work before
 closing resources. `runtime.run_once` performs selected work without changing
 schedules. A historical report anchor never changes actual observation time or
@@ -354,8 +351,9 @@ browser behavior, including the common page and attribution layout.
 | `dry-run/` | Isolated observations, datasets and proposed edits |
 
 `data.runtime.status` owns the sole saved-status interface. Web writes its
-heartbeat through an independent store, merged with the hub snapshot on read. Service lifecycle
-and heartbeat describe the scheduler and web process; execution records describe
+heartbeat through an independent store, merged with the shared status on read.
+Service lifecycle and heartbeats describe the web process and any recovery
+monitor. Execution records describe
 individual reports and collections; dataset records describe accepted generations
 and coverage; publication records describe destination attempts and confirmed
 saves. A successful task may make zero edits, and a failed collection may still
@@ -382,10 +380,9 @@ never silently replaced by a writer. Preview status and leases stay under
 `read_status` distinguishes missing, corrupt and unreadable observations and
 recomputes freshness at read time without writing. A service heartbeat expires
 after 90 seconds. Dataset freshness follows its declared midnight, 19:00 UTC
-Pageviews, or interval policy; absent measured coverage stays unknown. Server
-status selects background collections by current scheduler boot identity and
-heartbeat, showing named work, actual source reads and measured counters.
-Unknown or expired owners never establish idle activity. HTTP handlers read
+Pageviews, or interval policy. Missing measured coverage stays unknown. Server
+status joins recorded Toolforge schedules with saved job executions and current
+resource samples. The web row uses its own heartbeat. HTTP handlers read
 this envelope only. Service-owned heartbeat tasks perform writes
 outside requests. [Saved data](data/storage.md#observability) defines the storage
 contract. Runtime data stays under `/data/project/aranami`, outside immutable

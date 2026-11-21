@@ -1,27 +1,21 @@
-"""Verify hub-dispatched refreshes and read-only HTTP endpoints."""
+"""Verify independent dashboard refreshes and saved snapshots."""
 
 # Keep the repository unittest runner and exception assertions.
 # ruff: file-ignore[pytest-unittest-raises-assertion]
 
 from __future__ import annotations
 
-import http.client
 import json
 import tempfile
 import threading
 import time
 import unittest
-from http import HTTPStatus
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 from data.runtime.status import read_status
-from runtime.fetch.dashboard import (
-    DashboardHTTPServer,
-    DashboardUpdater,
-    collect_dashboard_pass,
-)
+from runtime.fetch.dashboard import DashboardUpdater, collect_dashboard_pass
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -87,7 +81,7 @@ class _ObservedRefreshLock:
 
 
 class DashboardUpdaterTests(unittest.TestCase):
-    """Exercise lifecycle, recovery, exclusive ownership, and HTTP."""
+    """Exercise lifecycle, recovery, and exclusive ownership."""
 
     def setUp(self) -> None:
         """Give each test isolated output and logging directories."""
@@ -152,7 +146,7 @@ class DashboardUpdaterTests(unittest.TestCase):
     def test_start_claims_output_without_collecting(
         self,
     ) -> None:
-        """Leave collection to the hub after acquiring ownership."""
+        """Acquire ownership before the caller requests a collection."""
         calls = []
 
         def collect() -> dict[str, object]:
@@ -519,80 +513,6 @@ class DashboardUpdaterTests(unittest.TestCase):
         assert updater.health()["last_error"] == "RuntimeError"
         updater.stop()
         assert json.loads(self.output.read_text()) == previous
-
-    def test_http_readiness_saved_data_and_method_rules(self) -> None:
-        """Serve saved JSON without collecting during HTTP requests."""
-        calls: list[int] = []
-
-        def collect() -> dict[str, object]:
-            """Record the only expected refresh.
-
-            Returns:
-                The known successful test snapshot.
-            """
-            calls.append(1)
-            return {"saved": True}
-
-        updater = self.updater(collect)
-        server = DashboardHTTPServer(("127.0.0.1", 0), updater)
-        thread = threading.Thread(target=server.serve_forever)
-        thread.start()
-        self.addCleanup(thread.join)
-        self.addCleanup(server.server_close)
-        self.addCleanup(server.shutdown)
-
-        def request(
-            method: str,
-            path: str,
-        ) -> tuple[int, dict[str, str], bytes]:
-            """Read one response and close its connection.
-
-            Returns:
-                Response status, headers, and raw body.
-            """
-            connection = http.client.HTTPConnection(
-                "127.0.0.1",
-                server.server_port,
-                timeout=2,
-            )
-            try:
-                connection.request(method, path)
-                response = connection.getresponse()
-                return (
-                    response.status,
-                    dict(response.getheaders()),
-                    response.read(),
-                )
-            finally:
-                connection.close()
-
-        status, _headers, body = request("GET", "/healthz")
-        assert status == HTTPStatus.SERVICE_UNAVAILABLE
-        assert not json.loads(body)["healthy"]
-        assert (
-            request("GET", "/dashboard.json")[0]
-            == HTTPStatus.SERVICE_UNAVAILABLE
-        )
-        assert request("GET", "/unknown")[0] == HTTPStatus.NOT_FOUND
-        for method in ("POST", "PUT", "DELETE", "PATCH", "OPTIONS"):
-            with self.subTest(method=method):
-                status, headers, _body = request(method, "/dashboard.json")
-                assert status == HTTPStatus.METHOD_NOT_ALLOWED
-                assert headers["Allow"] == "GET, HEAD"
-        assert calls == []
-        updater.start()
-        assert calls == []
-        assert updater.refresh()
-        assert request("GET", "/healthz")[0] == HTTPStatus.OK
-        status, headers, body = request("GET", "/dashboard.json")
-        assert status == HTTPStatus.OK
-        assert headers["Content-Type"] == "application/json; charset=utf-8"
-        assert json.loads(body) == {"saved": True}
-        status, headers, body = request("HEAD", "/dashboard.json")
-        assert status == HTTPStatus.OK
-        assert int(headers["Content-Length"]) > 0
-        assert body == b""
-        assert calls == [1]
 
     def test_unreadable_snapshots(self) -> None:
         """Reject invalid JSON and unsafe snapshot files."""

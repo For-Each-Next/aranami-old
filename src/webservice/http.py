@@ -1,84 +1,9 @@
 """Share read-only HTTP responses across runtime endpoints."""
 
 import gzip
-import json
 from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler
 
 _COMPRESS_MIN_BYTES = 1024
-
-
-class ReadOnlyRequestHandler(BaseHTTPRequestHandler):
-    """Share method handling, response headers, and compression."""
-
-    def setup(self) -> None:
-        """Limit how long stalled requests occupy a worker."""
-        self.request.settimeout(15)
-        super().setup()
-
-    def log_message(self, _format: str, *_args: object) -> None:
-        """Omit request strings from operational logs."""
-
-    def do_GET(self) -> None:
-        """Read a fixed endpoint without mutating runtime state."""
-        self.read()
-
-    def do_HEAD(self) -> None:
-        """Return the same headers as GET without a response body."""
-        self.read()
-
-    def read(self) -> None:
-        """Reject routes until a concrete reader supplies endpoints."""
-        self.send_error(HTTPStatus.NOT_FOUND)
-
-    def send_error(
-        self,
-        code: int,
-        message: str | None = None,
-        explain: str | None = None,
-    ) -> None:
-        """Return JSON errors with 405 for unsupported methods."""
-        del message, explain
-        status = (
-            HTTPStatus.METHOD_NOT_ALLOWED
-            if code == HTTPStatus.NOT_IMPLEMENTED
-            else HTTPStatus(code)
-        )
-        self.respond(status, json.dumps({"error": status.phrase}).encode())
-
-    def response_headers(
-        self,
-        status: HTTPStatus,
-        length: int,
-        content_type: str,
-        extra: dict[str, str] | None = None,
-    ) -> None:
-        """Send shared headers for bytes and streamed log downloads."""
-        self.send_response(status)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(length))
-        for name, value in {
-            **read_only_headers(status),
-            **(extra or {}),
-        }.items():
-            self.send_header(name, value)
-        self.end_headers()
-
-    def respond(
-        self,
-        status: HTTPStatus,
-        content: bytes,
-        content_type: str = "application/json; charset=utf-8",
-        *,
-        headers: dict[str, str] | None = None,
-    ) -> None:
-        """Send bytes or HEAD metadata with negotiated compression."""
-        encodings = self.headers.get("Accept-Encoding", "")
-        content, extra = encoded_response(content, encodings)
-        extra.update(headers or {})
-        self.response_headers(status, len(content), content_type, extra)
-        if self.command != "HEAD":
-            self.wfile.write(content)
 
 
 def read_only_headers(

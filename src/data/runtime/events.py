@@ -303,7 +303,7 @@ def _event_fields(kind: str, value: dict) -> bool:  # ruff: ignore[too-many-retu
         )
     if kind.startswith("service_"):
         return isinstance(value["service"], str) and value["service"] in {
-            "hub",
+            "hub",  # Historical service events use this identifier.
             "scheduler",
             "website",
             "web",

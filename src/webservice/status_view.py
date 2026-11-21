@@ -33,7 +33,6 @@ from webservice.presentation import (
     grouped_number,
     job_schedule,
     readable_size,
-    relative_time,
     timestamp,
     title_url,
     utc_time,
@@ -493,41 +492,6 @@ def report_context(  # ruff: ignore[too-many-arguments] - Include native paging 
     }
 
 
-def _service_time(
-    interface: Interface,
-    service: Record,
-    now: dt.datetime,
-) -> Record:
-    """Describe the time corresponding to the saved lifecycle.
-
-    Returns:
-        Start, stop request or completion time and localized labels.
-        Older stopped records use their terminal observation time.
-    """
-    lifecycle = service.get("lifecycle")
-    key = (
-        "stopping"
-        if lifecycle == "draining"
-        else "stopped"
-        if lifecycle == "stopped"
-        else "started"
-    )
-    instant = service.get(f"{key}_at")
-    if lifecycle == "stopped" and instant is None:
-        instant = service.get("updated_at")
-    return {
-        "time": observed_time(instant)
-        if instant or lifecycle in {"draining", "stopped"}
-        else None,
-        "time_label": interface.text(f"server.{key}"),
-        "time_relative": {
-            "label": (relative_time(instant, interface, now) or "").strip(
-                "()\uff08\uff09",
-            ),
-        },
-    }
-
-
 def _service_expiry(service: Record) -> str | None:
     """Return the expiration for an active service's current heartbeat.
 
@@ -544,92 +508,17 @@ def _service_expiry(service: Record) -> str | None:
     return None
 
 
-def _core_label(interface: Interface, cores: float | None) -> str:
+def _core_label(interface: Interface, cores: float) -> str:
     """Format an observed CPU count without losing small fractions.
 
     Returns:
-        Localized cores, or the status label for a missing observation.
+        A localized CPU usage or allocation label.
     """
-    if cores is None:
-        return interface.text("ops.unavailable")
     count = f"{cores:.3f}".rstrip("0").rstrip(".")
     return interface.text(
         "server.cpu_core" if count == "1" else "server.cpu_cores",
         count=count,
     )
-
-
-def _runtime_cells(
-    interface: Interface,
-    service: Record,
-    now: dt.datetime,
-    *,
-    version: str | None = None,
-    built_at: str | None = None,
-) -> dict[str, Record]:
-    """Format independent service facts with their own heartbeat expiry.
-
-    Returns:
-        Metric cells for a single service column.
-    """
-    fresh = service.get("freshness") == "current"
-    expires = _service_expiry(service)
-    resources = service.get("resources") or {}
-    usage = resources if expires else {}
-    unknown = interface.text("ops.unavailable")
-    stale = _state(interface, "freshness", "stale")
-    used = usage.get("memory_bytes")
-    limit = usage.get("memory_limit_bytes")
-    cpu = usage.get("cpu_percent")
-    cpu_limit = usage.get("cpu_limit")
-    cpu_label = (
-        f"{_core_label(interface, cpu / 100 if cpu is not None else None)}"
-        f" / {_core_label(interface, cpu_limit)}"
-        if cpu is not None or cpu_limit is not None
-        else unknown
-    )
-    build = built_at or resources.get("aranami_built_at")
-    heartbeat = service.get("heartbeat_at")
-    return {
-        "state": {
-            "value": _state(interface, "service", service["lifecycle"])
-            if fresh
-            else _state(
-                interface,
-                "freshness",
-                service.get("freshness", "unknown"),
-            ),
-            "expires": expires,
-            "stale": stale,
-            **_service_time(interface, service, now),
-        },
-        "version": {
-            "value": version or resources.get("aranami_version") or unknown,
-            "time": observed_time(build) if build else None,
-            "time_label": interface.text("server.updated"),
-            "time_relative": {
-                "label": (relative_time(build, interface, now) or "").strip(
-                    "()\uff08\uff09",
-                ),
-            },
-        },
-        "memory": {
-            "value": (
-                f"{readable_size(used) if used is not None else unknown}"
-                " / "
-                f"{readable_size(limit) if limit is not None else unknown}"
-            ),
-            "expires": expires,
-            "stale": unknown,
-        },
-        "cpu": {"value": cpu_label, "expires": expires, "stale": unknown},
-        "heartbeat": {
-            "time": observed_time(heartbeat),
-            "time_relative": {
-                "label": relative_time(heartbeat, interface, now),
-            },
-        },
-    }
 
 
 def _job_usage(
@@ -792,7 +681,6 @@ def _toolforge_rows(
     Returns:
         The web job followed by installed collection and report jobs.
     """
-    plan = status["toolforge_schedules"]
     web = status.get("services", {}).get("web", {})
     expiry = _service_expiry(web)
     resources = web.get("resources") or {}
@@ -818,6 +706,9 @@ def _toolforge_rows(
             "idle_usage": _job_usage(interface, {}, resources),
         },
     ]
+    if not (plan := status.get("toolforge_schedules")):
+        return rows
+
     executions = {}
     for run in sorted(
         native_executions(status),
@@ -861,13 +752,12 @@ def _toolforge_rows(
     return rows
 
 
-def status_context(  # ruff: ignore[too-many-arguments]
+def status_context(
     interface: Interface,
     status: Record,
     version: str,
     now: dt.datetime,
     *,
-    built_at: str | None = None,
     history_limit: int | None = None,
 ) -> Record:
     """Present a validated status envelope with explicit missing facts.
@@ -877,7 +767,6 @@ def status_context(  # ruff: ignore[too-many-arguments]
         status: Version-one saved observations read by the data layer.
         version: Running web source version.
         now: UTC rendering instant.
-        built_at: Recorded UTC source build time, independent of uptime.
         history_limit: Optional bound on localized execution details;
             zero omits them and none preserves the complete direct view.
 
@@ -886,11 +775,8 @@ def status_context(  # ruff: ignore[too-many-arguments]
     """
     services = _services(interface, status)
     web = status.get("services", {}).get("web", {})
-    service = status.get("services", {}).get("scheduler", {})
-    native = bool(status.get("toolforge_schedules"))
-    uptime = web if native else service
-    expires = _service_expiry(uptime)
-    started = uptime.get("started_at") if expires else None
+    expires = _service_expiry(web)
+    started = web.get("started_at") if expires else None
     instant = timestamp(started)
     footer_unknown = interface.text("footer.uptime_unknown", version=version)
     footer_label = (
@@ -907,22 +793,6 @@ def status_context(  # ruff: ignore[too-many-arguments]
         if instant
         else footer_unknown
     )
-    hub_cells = _runtime_cells(interface, service, now)
-    web_cells = _runtime_cells(
-        interface,
-        web,
-        now,
-        version=version,
-        built_at=built_at,
-    )
-    runtime_rows = [
-        {
-            "key": key,
-            "label": interface.text(f"server.{key}"),
-            "cells": [hub_cells[key], web_cells[key]],
-        }
-        for key in ("state", "version", "memory", "cpu", "heartbeat")
-    ]
     return {
         **history_context(interface, status, now, limit=history_limit),
         "status_availability": _state(
@@ -964,10 +834,6 @@ def status_context(  # ruff: ignore[too-many-arguments]
         },
         "server": {
             "dataset_updates": dataset_updates_context(interface, status, now),
-            "rows": runtime_rows,
-            "jobs": _toolforge_rows(interface, status, now) if native else [],
-            "opening": " (" if interface.locale == "en" else "\uff08",
-            "separator": ", " if interface.locale == "en" else "\uff0c",
-            "closing": ")" if interface.locale == "en" else "\uff09",
+            "jobs": _toolforge_rows(interface, status, now),
         },
     }

@@ -234,141 +234,18 @@ class StatusPresentationTests(unittest.TestCase):  # ruff: ignore[too-many-publi
         assert context["footer"]["started"] is None
         assert context["clock_expires"] is None
 
-    def test_service_expiry_is_based_on_heartbeat(self) -> None:
-        """Expire the same saved heartbeat in the browser."""
+    def test_footer_uses_the_web_heartbeat_without_a_schedule(self) -> None:
+        """Use the web heartbeat even before schedules are available."""
+        self.status["services"]["web"] = {
+            **self.status["services"].pop("scheduler"),
+            "service_id": "web",
+            "schedules": {},
+        }
         context = self.context()
         assert context["clock_expires"] == "2026-10-18T12:01:30+00:00"
         assert context["footer"]["started"] == "2026-10-16T08:56:00Z"
-
-    def test_stopped_service_never_runs_an_uptime_clock(self) -> None:
-        """Avoid an active uptime clock for stopped services."""
-        self.status["services"]["scheduler"]["lifecycle"] = "stopped"
-        context = self.context()
-        assert context["server"]["rows"][0]["cells"][0]["value"] == "Stopped"
-        assert context["footer"]["started"] is None
-
-    def test_service_status_uses_its_lifecycle_time(self) -> None:
-        """Pair each lifecycle label with its actual instant."""
-        service = self.status["services"]["scheduler"]
-        for lifecycle, key, instant in (
-            ("running", "started", service["started_at"]),
-            ("draining", "stopping", "2026-10-18T11:59:45Z"),
-            ("stopped", "stopped", "2026-10-18T11:59:55Z"),
-        ):
-            service.update(lifecycle=lifecycle, **{f"{key}_at": instant})
-            for locale in ("en", "zh-hans", "zh-hant"):
-                with self.subTest(lifecycle=lifecycle, locale=locale):
-                    interface = Interface(locale)
-                    server = self.context(locale)["server"]["rows"][0][
-                        "cells"
-                    ][0]
-                    assert server["value"] == interface.text(
-                        f"observability.service.{lifecycle}",
-                    )
-                    assert server["time"]["value"] == instant
-                    output = render_live_status(
-                        self.status,
-                        self.config,
-                        locale,
-                        self.now,
-                    )
-                    state_row = re.search(
-                        r'<span id="server-state".*?</tr>',
-                        output,
-                        re.DOTALL,
-                    )[0]
-                    assert interface.text(f"server.{key}") in state_row
-                    assert f'datetime="{instant}"' in state_row
-                    if lifecycle != "running":
-                        assert (
-                            interface.text("server.started") not in state_row
-                        )
-
-    def test_drain_time_survives_heartbeats_and_can_be_unknown(self) -> None:
-        """Preserve stop request time across heartbeats."""
-        service = self.status["services"]["scheduler"]
-        service.update(
-            lifecycle="draining",
-            stopping_at="2026-10-18T11:59:45Z",
-        )
-        service["updated_at"] = "2026-10-18T12:00:20Z"
-        assert self.context()["server"]["rows"][0]["cells"][0]["time"][
-            "value"
-        ] == ("2026-10-18T11:59:45Z")
-        del service["stopping_at"]
-        assert not self.context()["server"]["rows"][0]["cells"][0]["time"][
-            "known"
-        ]
-
-    def test_legacy_stopped_time_uses_terminal_observation(self) -> None:
-        """Use the final observation for older stopped records."""
-        service = self.status["services"]["scheduler"]
-        service["lifecycle"] = "stopped"
-        assert (
-            self.context()["server"]["rows"][0]["cells"][0]["time"]["value"]
-            == (service["updated_at"])
-        )
-
-    def test_resources_keep_zero_and_unknown_distinct(self) -> None:
-        """Distinguish zero resource use from missing allocation."""
-        self.status["services"]["scheduler"]["resources"].update(
-            memory_bytes=0,
-            memory_limit_bytes=None,
-            cpu_percent=0,
-            cpu_limit=None,
-        )
-        rows = self.context()["server"]["rows"]
-        assert rows[2]["cells"][0]["value"].startswith("0 B / ")
-        unknown = Interface("en").text("ops.unavailable")
-        assert rows[3]["cells"][0]["value"] == f"0 cores / {unknown}"
-        resources = self.status["services"]["scheduler"]["resources"]
-        resources.update(cpu_percent=3, cpu_limit=1)
-        assert (
-            self.context()["server"]["rows"][3]["cells"][0]["value"]
-            == "0.03 cores / 1 core"
-        )
-        resources.update(cpu_percent=0.3)
-        assert (
-            self.context()["server"]["rows"][3]["cells"][0]["value"]
-            == "0.003 cores / 1 core"
-        )
-        self.status["services"]["scheduler"]["freshness"] = "stale"
-        assert (
-            self.context()["server"]["rows"][3]["cells"][0]["value"] == unknown
-        )
-
-    def test_one_version_uses_build_time_independently_of_restarts(
-        self,
-    ) -> None:
-        """Show one source version and its immutable build timestamp."""
-        built_at = "2026-10-18T10:00:00Z"
-        for locale in ("en", "zh-hans", "zh-hant"):
-            interface = Interface(locale)
-            context = status_context(
-                interface,
-                self.status,
-                "1.0.0a26",
-                self.now,
-                built_at=built_at,
-            )
-            rows = context["server"]["rows"]
-            assert len(rows) == 5
-            assert rows[1]["label"] == interface.text("server.version")
-            assert rows[1]["cells"][1]["value"] == "1.0.0a26"
-            assert rows[1]["cells"][1]["time"]["value"] == built_at
-            self.status["services"]["scheduler"]["started_at"] = (
-                "2026-10-18T12:00:00Z"
-            )
-            assert (
-                status_context(
-                    interface,
-                    self.status,
-                    "1.0.0a26",
-                    self.now,
-                    built_at=built_at,
-                )["server"]["rows"][1]["cells"][1]["time"]["value"]
-                == built_at
-            )
+        self.status["services"]["web"]["lifecycle"] = "stopped"
+        assert self.context()["footer"]["started"] is None
 
     def test_missing_status_is_explicit_without_success(self) -> None:
         """Keep unavailable envelopes free of inferred outcomes."""
@@ -379,6 +256,9 @@ class StatusPresentationTests(unittest.TestCase):  # ruff: ignore[too-many-publi
             assert not context["events"]
             assert not context["publications"]
             assert not context["datasets"]
+            (web,) = context["server"]["jobs"]
+            assert web["key"] == "aranami-web"
+            assert web["status"] == "Unknown"
 
     def test_history_is_bounded_and_dialogs_match(self) -> None:
         """Retain all records in the rolling seven-day history."""

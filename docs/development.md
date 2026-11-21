@@ -78,7 +78,7 @@ including assessment logs and newsletter facts, read the committed Parquet
 snapshot. New jobs should declare workload semantics in `shared.config` and
 their Toolforge allocation in `shared.toolforge.jobs`. Use `runtime.services` for leases and input readiness. Source workers retain
 typed data before analysis starts. Analysis reuses those inputs and delegates
-wiki saves to the updater. The recovery hub uses the shared idle executor.
+wiki saves to the updater. The manual recovery monitor uses the idle executor.
 Use explicit Polars schemas and native joins, aggregations and expressions.
 Eager source adapters remain eager; lazy scans
 are appropriate for saved files. Preserve null, observed zero and observed
