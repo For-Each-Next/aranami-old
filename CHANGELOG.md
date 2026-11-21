@@ -5,6 +5,14 @@ v0.8.8 was consolidated into the v0.9.2 release.
 
 ## Until 0.10
 
+### 0.9.21.post1 (2026-11-21 02:08 UTC)
+
+Overview: Reduced peak Web memory during concurrent saved-data requests.
+
+- Reused validated hub status across live updates and HTTP, with fresh service
+  and dataset observations on each read.
+- Held large HTTP responses to four concurrent requests through delivery.
+
 ### 0.9.21 (2026-11-20 15:50 UTC)
 
 Overview: Updated Article Statistics and server status, reduced repeated

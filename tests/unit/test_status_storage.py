@@ -291,6 +291,40 @@ class TestServiceStatusStorage(TestCase):
         assert saved["services"]["scheduler"].get("stopped_at") is None
         assert self.path.read_bytes() == before
 
+    def test_shared_read_cache_tracks_generations_and_freshness(self) -> None:
+        """Share saved facts while recomputing service freshness."""
+        assert self.write(self.row)
+        cache = status.StatusReadCache()
+        now = dt.datetime.fromisoformat(self.row["heartbeat_at"])
+        current = status.read_status(self.runtime, as_of=now, cache=cache)
+        stale = status.read_status(
+            self.runtime,
+            as_of=now + dt.timedelta(minutes=2),
+            cache=cache,
+        )
+        assert current["executions"] is stale["executions"]
+        assert current["services"]["scheduler"]["freshness"] == "current"
+        assert stale["services"]["scheduler"]["freshness"] == "stale"
+        assert status.save_status(
+            "services",
+            "web",
+            {**self.row, "service_id": "web"},
+            runtime=self.runtime,
+        )
+        web = status.read_status(self.runtime, as_of=now, cache=cache)
+        assert web["services"]["web"]["freshness"] == "current"
+        assert web["executions"] is current["executions"]
+        assert self.write({**self.row, "sequence": 2})
+        newest = status.read_status(self.runtime, as_of=now, cache=cache)
+        assert newest["services"]["scheduler"]["sequence"] == 2
+        assert current["services"]["scheduler"]["sequence"] == 1
+
+        self.path.write_text("{}", encoding="utf-8")
+        corrupt = status.read_status(self.runtime, as_of=now, cache=cache)
+        assert corrupt["availability"] == "corrupt"
+        assert set(corrupt["services"]) == {"web"}
+        assert corrupt["services"]["web"]["freshness"] == "current"
+
     def test_nullable_stop_times_do_not_mark_running_service_as_stopping(
         self,
     ) -> None:

@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
     import httpx2
-    from starlette.types import Message
+    from starlette.types import Message, Receive, Scope, Send
 
     from webservice.asgi import DjangoWebsite
 
@@ -920,6 +920,65 @@ class PublicWebsiteTests(unittest.TestCase):  # ruff: ignore[too-many-public-met
         assert int(dict(messages[0]["headers"])[b"content-length"]) == len(
             content,
         )
+
+    def test_large_responses_share_slots_through_delivery(self) -> None:
+        """Queue status responses while assets remain responsive."""
+
+        async def exercise() -> None:
+            """Hold responses while more requests arrive."""
+            entered = asyncio.Event()
+            release = asyncio.Event()
+            pending = peak = 0
+            original = self.app.http
+
+            async def delayed(
+                scope: Scope,
+                receive: Receive,
+                send: Send,
+            ) -> None:
+                """Keep status responses in flight."""
+                nonlocal pending, peak
+                if scope["path"] != "/api/status":
+                    await original(scope, receive, send)
+                    return
+                pending += 1
+                peak = max(peak, pending)
+                if pending == 4:
+                    entered.set()
+
+                async def hold_body(message: Message) -> None:
+                    """Wait for the test to release the response."""
+                    if message["type"] == "http.response.body":
+                        await release.wait()
+                    await send(message)
+
+                try:
+                    await original(scope, receive, hold_body)
+                finally:
+                    pending -= 1
+
+            with patch.object(self.app, "http", delayed):
+                requests = [
+                    asyncio.create_task(_exchange(self.app, "/api/status"))
+                    for _ in range(6)
+                ]
+                try:
+                    await asyncio.wait_for(entered.wait(), timeout=5)
+                    asset = await asyncio.wait_for(
+                        _exchange(self.app, "/styles.css"),
+                        timeout=5,
+                    )
+                    assert asset[0]["status"] == HTTPStatus.OK
+                    assert peak == 4
+                finally:
+                    release.set()
+                    responses = await asyncio.gather(*requests)
+            assert peak == 4
+            assert all(
+                result[0]["status"] == HTTPStatus.OK for result in responses
+            )
+
+        asyncio.run(exercise())
 
     def test_excessive_query_fields_retain_public_error_headers(self) -> None:
         """Reject excessive fields before Django parses the query."""

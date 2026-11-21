@@ -295,10 +295,13 @@ of the wall clock and saved-store resets. Validate the envelope and all regions
 before applying a snapshot, reject older responses, and preserve focus and open
 dialogs. A heartbeat proves connectivity; it does not refresh saved evidence.
 
-One `webservice.live.LiveFeed` per application watches saved status, loads each
-changed generation once and shares rendered views by locale. Each connection
-retains at most the newest pending update, so a slow reader cannot accumulate
-history or delay others. The watcher stops when the final subscriber leaves.
+One `webservice.live.LiveFeed` per application watches saved status and shares
+rendered views by locale. Live updates and HTTP requests reuse the latest
+validated hub status generation and derive freshness for each read. Large
+pages and API responses share four concurrent HTTP slots through delivery.
+Each live connection retains at most the newest pending update, so a slow
+reader cannot accumulate history or delay others. The watcher stops when the
+final subscriber leaves.
 An unchanged file is reread periodically to recompute freshness. Construction,
 subscriptions and HTTP fallback never collect source data or write runtime files.
 
