@@ -1,42 +1,19 @@
 /* Aranami page layouts and native browser controls. */
+@import url("codex.css");
+
 :root {
-    --color-base: #273437;
-    --color-emphasized: #25494e;
-    --color-subtle: #52676b;
-    --color-progressive: #176c73;
-    --color-progressive--hover: #10535a;
-    --color-progressive--active: #0d4147;
-    --color-visited: #6a60b0;
-    --color-success: #177860;
-    --color-warning: #886425;
-    --color-error: #bf3c2c;
-    --background-color-base: #fff;
-    --background-color-neutral-subtle: #f5f8f8;
-    --background-color-neutral: #e5eeee;
-    --background-color-progressive-subtle: #edf5f5;
-    --background-color-error-subtle: #ffe9e5;
-    --border-color-base: #a2a9b1;
-    --border-color-subtle: #dce6e7;
-    --border-color-interactive: #72777d;
-    --border-radius-base: .35rem;
+    --border-radius-base: 2px;
     --font-family-base: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
     --font-family-monospace: Menlo, Consolas, "Liberation Mono", "Fira Code", "Courier New", monospace;
-    --font-size-small: .875rem;
-    --font-size-medium: 1rem;
-    --font-size-large: 1.125rem;
-    --font-size-x-large: 1.25rem;
-    --font-size-xx-large: 1.5rem;
-    --font-size-xxx-large: 1.75rem;
     color-scheme: light;
     color: var(--color-base);
     background: var(--background-color-base);
     font-family: var(--font-family-base);
     font-size: 100%;
-    line-height: 1.625;
+    line-height: var(--line-height-content);
 }
 
-/* Native controls and reusable page layouts; all styles ship as authored CSS. */
-button, input, select, textarea {
+:where(button, input, select, textarea) {
     font: inherit;
     color: inherit;
 }
@@ -45,12 +22,12 @@ button, summary, select {
     cursor: pointer;
 }
 
-button:disabled, select:disabled {
+:where(button:disabled, select:disabled) {
     cursor: default;
     opacity: .55;
 }
 
-button, .ui-button {
+:where(button:not(.ui-button, .cdx-button)) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -59,7 +36,7 @@ button, .ui-button {
     padding: .25rem .75rem;
     border: 1px solid var(--border-color-base);
     border-radius: var(--border-radius-base);
-    background: var(--background-color-neutral-subtle);
+    background: var(--background-color-interactive-subtle);
     color: var(--color-base);
     font-size: 1rem;
     font-weight: 600;
@@ -67,32 +44,16 @@ button, .ui-button {
     text-decoration: none;
 }
 
-button:hover:enabled, a.ui-button:hover {
-    background: var(--background-color-neutral);
+:where(button:not(.ui-button, .cdx-button):hover:enabled) {
+    background: var(--background-color-interactive-subtle--hover);
     text-decoration: none;
 }
 
-.ui-button--weight-primary {
-    background: var(--color-progressive);
-    border-color: var(--color-progressive);
-    color: white;
-}
-
-.ui-button--weight-primary:hover:enabled, a.ui-button--weight-primary:hover {
-    background: var(--color-progressive--hover);
-    color: white;
-}
-
-.ui-button--weight-quiet {
-    border-color: transparent;
-    background: transparent;
-}
-
-.ui-button--icon-only {
-    padding: .375rem;
-}
-
-input:not([type=checkbox], [type=radio], [type=hidden]), select, textarea {
+:where(
+    input:not([type=checkbox], [type=radio], [type=hidden], .ui-text-input__input, .cdx-text-input__input),
+    select:not(.ui-select, .cdx-select),
+    textarea:not(.ui-text-area__textarea, .cdx-text-area__textarea)
+) {
     min-block-size: 2rem;
     min-inline-size: 0;
     max-inline-size: 100%;
@@ -103,8 +64,8 @@ input:not([type=checkbox], [type=radio], [type=hidden]), select, textarea {
     line-height: 1.375rem;
 }
 
-.ui-text-input__input, .ui-text-area__textarea {
-    inline-size: 100%;
+input[type=checkbox], input[type=radio] {
+    accent-color: var(--background-color-progressive);
 }
 
 textarea {
@@ -112,12 +73,8 @@ textarea {
     resize: vertical;
 }
 
-.ui-select {
-    padding-inline-end: 2rem;
-    background-repeat: no-repeat;
-    background-position: right .5rem center;
-    background-size: 1rem;
-    appearance: none;
+.ui-select, .cdx-select, .ui-text-input, .cdx-text-input {
+    min-inline-size: 0;
 }
 
 .ui-label {
@@ -127,13 +84,7 @@ textarea {
 }
 
 .ui-card {
-    display: flex;
-    align-items: flex-start;
     gap: .75rem;
-    padding: 1rem;
-    border: 1px solid var(--border-color-subtle);
-    border-radius: .6rem;
-    background: var(--background-color-base);
     color: inherit;
     min-inline-size: 0;
 }
@@ -148,6 +99,7 @@ a.ui-card:hover {
     inline-size: 1.375rem;
     block-size: 1.375rem;
     margin-block-start: .125rem;
+    margin-inline-end: 0;
 }
 
 .ui-card__text {
@@ -203,7 +155,7 @@ a.ui-card:hover {
 
 .ui-message--warning {
     border-color: var(--color-warning);
-    background: #fff8df;
+    background: var(--background-color-warning-subtle);
 }
 
 .ui-message__content {
@@ -445,7 +397,7 @@ a[aria-haspopup="dialog"] {
 }
 
 :where(a, button, input, select, summary, [tabindex]):focus-visible {
-    outline: 3px solid #a75f12;
+    outline: 2px solid var(--border-color-progressive--focus);
     outline-offset: 2px;
     border-radius: var(--border-radius-base);
 }
@@ -798,7 +750,7 @@ main {
 }
 
 .ui-card:hover {
-    border-color: #78a8ab;
+    border-color: var(--border-color-interactive);
 }
 
 .ui-card:focus-within {
@@ -1096,14 +1048,6 @@ summary:hover {
 .field .ui-select, .field .ui-text-input {
     inline-size: 100%;
     min-inline-size: 0;
-}
-
-.ui-select:enabled:not([multiple]) {
-    background-image: url("/assets/icons/codex-select.svg");
-}
-
-.ui-select:disabled:not([multiple]) {
-    background-image: url("/assets/icons/codex-select-disabled.svg");
 }
 
 /* Reuse the credited local chevron artwork under the strict CSP. */
@@ -2116,7 +2060,7 @@ footer nav {
 }
 
 .heading-copy:focus-visible {
-    outline: 3px solid #a75f12;
+    outline: 2px solid var(--border-color-progressive--focus);
     outline-offset: -2px;
 }
 

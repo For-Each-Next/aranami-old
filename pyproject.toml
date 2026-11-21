@@ -1,6 +1,6 @@
 [project]
 name = "aranami"
-version = "0.9.21"
+version = "0.9.22"
 description = "Wikipedia reports and a read-only Vue dashboard."
 readme = "README.md"
 authors = [
@@ -42,6 +42,7 @@ dependencies = [
     "pymysql",
     "pywikibot[mwoauth]",
     "python-dateutil",
+    "regex",
     "sqlalchemy",
     "tqdm",
     "uvicorn",

@@ -58,6 +58,11 @@ _IMPORTANCE = tuple(
     for label in _PROFILE.importance
     if label.code not in {"NA", "Bottom"}
 )
+_GRADE_GROUPS = {
+    label.code: label.article_group
+    for label in _PROFILE.classes
+    if label.code in _GRADES
+}
 _DISTRIBUTION_GRADES = tuple(
     label.code
     for group in (0, 1, 2)
@@ -580,17 +585,24 @@ def _main_contributors(proof: dict, interface: Interface) -> list[dict]:
     ]
 
 
-def _catalog_article(row: dict, interface: Interface) -> list:
+def catalog_article(
+    row: dict,
+    interface: Interface,
+    *,
+    include_authorship: bool = True,
+) -> list:
     """Encode one deferred article with consistent contributor roles.
 
     Returns:
         Compact article values, observed proof and display descriptors.
     """
-    proof = _authorship(row, interface)
-    main = _main_contributors(proof, interface)
+    proof = _authorship(row, interface) if include_authorship else None
+    main = _main_contributors(proof, interface) if proof else []
     return [
         *(
-            row.get(key)
+            (row.get(key) or "Unknown")
+            if key == "importance"
+            else row.get(key)
             for key in (
                 "page_id",
                 "title",
@@ -605,13 +617,30 @@ def _catalog_article(row: dict, interface: Interface) -> list:
         [editor["name"] for editor in main],
         display_title(row["title"].replace("_", " "), interface.locale),
         interface.date(row["listed_date"]) if row["listed_date"] else None,
-        proof if proof["available"] else None,
+        proof if proof and proof["available"] else None,
         review_url({
             "nomination_link": row.get("listed_review_link"),
             "title": row["title"],
         }),
         main,
     ]
+
+
+def contributor_names(row: dict, interface: Interface) -> dict:
+    """Use the same evidence thresholds in display and search.
+
+    Returns:
+        Display names and identities for the two contributor types.
+    """
+    proof = _authorship(row, interface)
+    main = _main_contributors(proof, interface)
+    return {
+        "main": [editor["name"] for editor in main],
+        "labels": [editor["label"] for editor in main],
+        "significant": [editor["name"] for editor in proof["editors"]]
+        if proof["available"]
+        else [],
+    }
 
 
 def main_author_directory(
@@ -709,12 +738,46 @@ def _coverage_cards(data: dict, interface: Interface) -> list[dict]:
     ]
 
 
-def quality_analysis_context(data: dict, interface: Interface) -> dict:
+def _matrix_grade_groups(
+    grades: list[dict],
+    interface: Interface,
+) -> list[dict]:
+    """Pair article and list grades using the assessment profile.
+
+    Returns:
+        Ordered labels and the article or list grades they select.
+    """
+    groups = {}
+    for grade in grades:
+        code = grade["value"]
+        group = _GRADE_GROUPS[code]
+        if group not in groups:
+            groups[group] = {
+                "value": group,
+                "label": interface.text("quality_analysis.featured_grade")
+                if group == "FA"
+                else grade_label(group, interface),
+                "grades": [],
+            }
+        kind = "article" if code == group else "list"
+        groups[group]["grades"].append(
+            {**grade, "kind": "unassessed" if code == "Unassessed" else kind},
+        )
+    return list(groups.values())
+
+
+def quality_analysis_context(
+    data: dict,
+    interface: Interface,
+    *,
+    paged: bool = False,
+) -> dict:
     """Localize saved metrics and lay out proportional chart marks.
 
     Args:
         data: Validated saved article rows and precomputed summaries.
         interface: Negotiated interface language.
+        paged: Use a separate server-side directory for article details.
 
     Returns:
         Chart geometry and complete table rows, with explicit coverage.
@@ -749,13 +812,24 @@ def quality_analysis_context(data: dict, interface: Interface) -> dict:
     matrix = None
     shown = data.get("articles", [])
     if selection:
-        default_ids = {
-            row["page_id"]
-            for row in selection["defaults"][
-                int(bool(data.get("all_grades")))
-            ]["articles"][:20]
-        }
-        shown = [row for row in shown if row["page_id"] in default_ids]
+        defaults = selection["defaults"][int(bool(data.get("all_grades")))]
+        ordered = defaults["articles"]
+        if paged:
+            ordered = sorted(
+                ordered,
+                key=lambda row: row.get("listed_date") or "",
+                reverse=True,
+            )
+            positions = {
+                row["page_id"]: index for index, row in enumerate(ordered[:20])
+            }
+            shown = sorted(
+                (row for row in shown if row["page_id"] in positions),
+                key=lambda row: positions[row["page_id"]],
+            )
+        else:
+            default_ids = {row["page_id"] for row in ordered[:20]}
+            shown = [row for row in shown if row["page_id"] in default_ids]
     if selection:
         codes = [
             code
@@ -767,8 +841,10 @@ def quality_analysis_context(data: dict, interface: Interface) -> dict:
             "cells": selection["cells"],
             "assessment_comparison": data.get("assessment_comparison"),
             "length_scale_maximum": length_maximum,
-            "extra": [
-                _catalog_article(row, interface)
+            "extra": []
+            if paged
+            else [
+                catalog_article(row, interface)
                 for row in selection["articles"]
                 if row["page_id"] not in default_ids
             ],
@@ -853,6 +929,9 @@ def quality_analysis_context(data: dict, interface: Interface) -> dict:
         "quality_analysis": {
             "available": bool(data.get("available")),
             "matrix": matrix,
+            "grade_groups": _matrix_grade_groups(matrix["grades"], interface)
+            if matrix
+            else [],
             "listing_authors": data.get("authorship_basis") == "listed",
             "total": _number(total),
             "coverage_cards": _coverage_cards(data, interface),

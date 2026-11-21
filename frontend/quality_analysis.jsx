@@ -114,6 +114,110 @@ export function QualityAnalysisContents(context) {
     );
 }
 
+function AnalysisCheckbox({ label, input }) {
+    return (
+        <label class="cdx-checkbox cdx-checkbox--inline analysis-checkbox">
+            <span class="cdx-checkbox__wrapper">
+                <input type="checkbox" class="cdx-checkbox__input" {...input} />
+                <span class="cdx-checkbox__icon" aria-hidden="true"></span>
+                {label && <span class="cdx-checkbox__label">{label}</span>}
+            </span>
+        </label>
+    );
+}
+
+function ListingAuthorsControl({ quality_analysis, t }) {
+    return (
+        <div class="analysis-authorship-basis">
+            <AnalysisCheckbox
+                label={t.quality_analysis.use_listing_authors}
+                input={{
+                    form: "analysis-authorship-basis",
+                    name: "listing_authors",
+                    value: "1",
+                    checked: !!quality_analysis?.listing_authors,
+                }}
+            />
+            <noscript>
+                <button type="submit" form="analysis-authorship-basis" class="cdx-button cdx-button--action-progressive cdx-button--weight-primary">
+                    {t.quality_analysis.apply}
+                </button>
+            </noscript>
+        </div>
+    );
+}
+
+function MatrixTable({ quality_analysis, t }) {
+    const labels = t.quality_analysis;
+    // Saved Vue pages created before grouping still have the original grades.
+    const groups = quality_analysis.grade_groups ?? quality_analysis.matrix.grades.map(grade => ({
+        value: grade.value,
+        label: grade.label,
+        grades: [grade],
+    }));
+    return (
+        <div class="table-scroll" tabindex="0" role="region" aria-label={labels.grades}>
+            <table class="analysis-matrix" data-no-pagination="">
+                <colgroup span="1"></colgroup>
+                {groups.map(group => <colgroup key={group.value} span={group.grades.length}></colgroup>)}
+                <thead>
+                    <tr>
+                        <th scope="col" rowspan="2">
+                            <AnalysisCheckbox input={{"data-matrix-all": "", "aria-label": labels.select_all}} />
+                        </th>
+                        {groups.map(group => (
+                            <th key={group.value} scope="colgroup" colspan={group.grades.length}>
+                                <AnalysisCheckbox label={group.label} input={{
+                                    "data-matrix-group": group.value,
+                                    checked: group.grades.every(grade => grade.checked),
+                                }} />
+                            </th>
+                        ))}
+                    </tr>
+                    <tr>
+                        {groups.flatMap(group => group.grades.map(grade => (
+                            <th key={grade.value} scope="col">
+                                <AnalysisCheckbox label={{
+                                    article: labels.matrix_article,
+                                    list: labels.matrix_list,
+                                    unassessed: "-",
+                                }[grade.kind] ?? grade.label} input={{
+                                    "data-matrix-grade": grade.value,
+                                    "aria-label": grade.label,
+                                    checked: grade.checked,
+                                }} />
+                            </th>
+                        )))}
+                    </tr>
+                </thead>
+                <tbody>
+                    {quality_analysis.matrix.importance.map(importance => (
+                        <tr key={importance.value}>
+                            <th scope="row">
+                                <AnalysisCheckbox label={importance.label} input={{
+                                    "data-matrix-importance": importance.value,
+                                }} />
+                            </th>
+                            {groups.flatMap(group => group.grades.map(grade => (
+                                <td key={grade.value}>
+                                    <AnalysisCheckbox input={{
+                                        "data-matrix-cell": "",
+                                        "data-grade": grade.value,
+                                        "data-grade-group": group.value,
+                                        "data-importance": importance.value,
+                                        "aria-label": importance.label + " · " + grade.label,
+                                        checked: grade.checked,
+                                    }} />
+                                </td>
+                            )))}
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
 function AssessmentMatrix(context) {
     const { t, quality_analysis } = context;
     return hasContent(quality_analysis?.matrix) ? (
@@ -130,9 +234,15 @@ function AssessmentMatrix(context) {
                 {...(hasContent(quality_analysis?.metadata_url)
                     ? {
                           "data-metadata-url": attribute(quality_analysis?.metadata_url),
-                          "data-selected-page-ids": attribute(
-                              JSON.stringify(quality_analysis?.selected_page_ids ?? null),
-                          ),
+                          ...(quality_analysis.directory_url ? {
+                              "data-directory-url": quality_analysis.directory_url,
+                              "data-loading-page": t.quality_analysis.loading_page,
+                              "data-page-failed": t.quality_analysis.page_failed,
+                          } : {
+                              "data-selected-page-ids": attribute(
+                                  JSON.stringify(quality_analysis?.selected_page_ids ?? null),
+                              ),
+                          }),
                           "data-loading": attribute(t.quality_analysis.loading_catalog),
                           "data-load-failed": attribute(t.quality_analysis.catalog_failed),
                           "data-retry": attribute(t.quality_analysis.retry),
@@ -154,89 +264,12 @@ function AssessmentMatrix(context) {
                         </button>
                     </>
                 ) : null}
-                <div
-                    class="table-scroll"
-                    tabindex="0"
-                    role="region"
-                    aria-label={t.quality_analysis.grades}
-                >
-                    <table class="analysis-matrix" data-no-pagination="">
-                        <thead>
-                            <tr>
-                                <th scope="col">
-                                    <input
-                                        type="checkbox"
-                                        data-matrix-all={""}
-                                        aria-label={attribute(t.quality_analysis.select_all)}
-                                    />
-                                </th>
-                                {(quality_analysis?.matrix?.grades ?? []).map((grade, gradeIndex) => (
-                                    <th key={gradeIndex} scope="col">
-                                        <label>
-                                            <input
-                                                type="checkbox"
-                                                data-matrix-grade={attribute(grade?.value)}
-                                                {...(hasContent(grade?.checked)
-                                                    ? {
-                                                          checked: true,
-                                                      }
-                                                    : {})}
-                                            />{" "}
-                                            {display(grade?.label)}
-                                        </label>
-                                    </th>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {(quality_analysis?.matrix?.importance ?? []).map(
-                                (importance, importanceIndex) => (
-                                    <tr key={importanceIndex}>
-                                        <th scope="row">
-                                            <label>
-                                                <input
-                                                    type="checkbox"
-                                                    data-matrix-importance={attribute(importance?.value)}
-                                                />{" "}
-                                                {display(importance?.label)}
-                                            </label>
-                                        </th>
-                                        {(quality_analysis?.matrix?.grades ?? []).map(
-                                            (grade, gradeIndex) => (
-                                                <td key={gradeIndex}>
-                                                    <label>
-                                                        <input
-                                                            type="checkbox"
-                                                            data-matrix-cell={""}
-                                                            data-grade={attribute(grade?.value)}
-                                                            data-importance={attribute(
-                                                                importance?.value,
-                                                            )}
-                                                            aria-label={
-                                                                attribute(importance?.label) +
-                                                                " · " +
-                                                                attribute(grade?.label)
-                                                            }
-                                                            {...(hasContent(grade?.checked)
-                                                                ? {
-                                                                      checked: true,
-                                                                  }
-                                                                : {})}
-                                                        />
-                                                    </label>
-                                                </td>
-                                            ),
-                                        )}
-                                    </tr>
-                                ),
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+                {MatrixTable(context)}
                 <div class="analysis-year-filter">
                     <label>
                         {t.quality_analysis.year_from}{" "}
                         <input
+                            class="cdx-text-input__input"
                             type="number"
                             min="2009"
                             max={attribute(quality_analysis?.matrix?.last_year)}
@@ -248,6 +281,7 @@ function AssessmentMatrix(context) {
                     <label>
                         {t.quality_analysis.year_to}{" "}
                         <input
+                            class="cdx-text-input__input"
                             type="number"
                             min="2009"
                             max={attribute(quality_analysis?.matrix?.last_year)}
@@ -256,13 +290,11 @@ function AssessmentMatrix(context) {
                             required
                         />
                     </label>
-                    <label>
-                        <input type="checkbox" data-matrix-unknown={""} checked />{" "}
-                        {t.quality_analysis.unknown_time}
-                    </label>
+                    <AnalysisCheckbox label={t.quality_analysis.unknown_time} input={{"data-matrix-unknown": "", checked: true}} />
                 </div>
+                {ListingAuthorsControl(context)}
                 <div class="analysis-filter-actions">
-                    <button type="submit" class="ui-button ui-button--primary" data-matrix-apply="" disabled>
+                    <button type="submit" class="cdx-button cdx-button--action-progressive cdx-button--weight-primary" data-matrix-apply="" disabled>
                         {t.quality_analysis.apply_filters}
                     </button>
                     <p class="context" role="status" data-matrix-status=""
@@ -534,6 +566,63 @@ function QualityOverview(context) {
     );
 }
 
+function DirectoryFilters({ quality_analysis, t }) {
+    const labels = t.quality_analysis;
+    return (
+        <div class="analysis-filters" data-analysis-controls="" hidden>
+            <div class="analysis-filter-row">
+                <label class="analysis-filter-field analysis-filter-search">
+                    <span class="analysis-filter-title">{labels.search}</span>
+                    <span class="cdx-text-input">
+                        <input class="cdx-text-input__input" type="search" data-analysis-search="" autocomplete="off" maxlength="200" />
+                    </span>
+                </label>
+                <AnalysisCheckbox label={labels.regex} input={{"data-analysis-regex": ""}} />
+            </div>
+            <div class="analysis-filter-row">
+                <label class="analysis-filter-field analysis-filter-search">
+                    <span class="analysis-filter-title">{labels.author_filter}</span>
+                    <span class="cdx-text-input">
+                        <input class="cdx-text-input__input" type="search" data-analysis-author="" autocomplete="off" maxlength="200" list="analysis-author-names" />
+                    </span>
+                </label>
+                <datalist id="analysis-author-names"></datalist>
+                <label class="analysis-filter-field">
+                    <span>{labels.author_role}</span>
+                    <select class="cdx-select" data-analysis-author-role="">
+                        <option value="main">{labels.main_contributors}</option>
+                        <option value="significant">{labels.significant_contributors}</option>
+                    </select>
+                </label>
+            </div>
+            <div class="analysis-filter-row" role="group" aria-labelledby="analysis-rating-label">
+                <span class="analysis-filter-title" id="analysis-rating-label">{labels.rating ?? t.quality_authorship.grade}</span>
+                <label class="analysis-filter-field">
+                    <span>{t.quality_authorship.grade}</span>
+                    <select class="cdx-select" data-analysis-grade-filter="">
+                        <option value="">{labels.all_grades}</option>
+                        {(quality_analysis.grade_options ?? []).map(grade => (
+                            <option key={grade.value} value={grade.value}>{grade.label}</option>
+                        ))}
+                    </select>
+                </label>
+                <label class="analysis-filter-field">
+                    <span>{labels.importance}</span>
+                    <select class="cdx-select" data-analysis-importance-filter="">
+                        <option value="">{labels.all_importance}</option>
+                        {(quality_analysis.importance_options ?? []).map(importance => (
+                            <option key={importance.value} value={importance.value}>{importance.label}</option>
+                        ))}
+                    </select>
+                </label>
+                <button type="button" class="cdx-button cdx-button--weight-quiet" data-analysis-reset="">
+                    {labels.reset}
+                </button>
+            </div>
+        </div>
+    );
+}
+
 function ArticleDirectory(context) {
     const { t, quality_analysis, quality_authorship } = context;
     return (
@@ -549,75 +638,7 @@ function ArticleDirectory(context) {
                         data-page-status={attribute(t.reports.page_status)}
                         data-empty={attribute(t.quality_analysis.no_matches)}
                     >
-                        <div class="analysis-filters" data-analysis-controls={""} hidden>
-                            <label>
-                                {t.quality_analysis.search}
-                                <input
-                                    type="search"
-                                    data-analysis-search={""}
-                                    autocomplete="off"
-                                    maxlength="200"
-                                />
-                            </label>
-                                <label>
-                                    <input type="checkbox" data-analysis-regex={""} />
-                                    {" "}{t.quality_analysis.regex}
-                                </label>
-                                <label>
-                                    {display(t.quality_analysis.author_filter)}
-                                <input
-                                    type="search"
-                                    data-analysis-author={""}
-                                    autocomplete="off"
-                                    maxlength="200"
-                                    list="analysis-author-names"
-                                />
-                                <datalist id="analysis-author-names"></datalist>
-                            </label>
-                            <label>
-                                {display(t.quality_analysis.author_role)}
-                                <select data-analysis-author-role={""}>
-                                    <option value="main">
-                                        {display(t.quality_analysis.main_contributors)}
-                                    </option>
-                                    <option value="significant">
-                                        {display(t.quality_analysis.significant_contributors)}
-                                    </option>
-                                </select>
-                            </label>
-                            <label>
-                                {t.quality_authorship.grade}
-                                <select data-analysis-grade-filter={""}>
-                                    <option value={""}>{display(t.quality_analysis.all_grades)}</option>
-                                    {(quality_analysis?.grade_options ?? []).map((grade, gradeIndex) => (
-                                        <option key={gradeIndex} value={attribute(grade?.value)}>
-                                            {display(grade?.label)}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
-                            <label>
-                                {t.quality_analysis.importance}
-                                <select data-analysis-importance-filter={""}>
-                                    <option value={""}>
-                                        {display(t.quality_analysis.all_importance)}
-                                    </option>
-                                    {(quality_analysis?.importance_options ?? []).map(
-                                        (importance, importanceIndex) => (
-                                            <option
-                                                key={importanceIndex}
-                                                value={attribute(importance?.value)}
-                                            >
-                                                {display(importance?.label)}
-                                            </option>
-                                        ),
-                                    )}
-                                </select>
-                            </label>
-                            <button type="button" class="ui-button" data-analysis-reset={""}>
-                                {t.quality_analysis.reset}
-                            </button>
-                        </div>
+                        {DirectoryFilters(context)}
                         <p role="status" aria-live="polite" data-analysis-result-count={""}></p>
                         <div class="ui-table">
                             <div
@@ -955,7 +976,7 @@ function ArticleDirectory(context) {
                                     <option value="20">{"20"}</option>
                                     <option value="50">{"50"}</option>
                                     <option value="100">{"100"}</option>
-                                    <option value="all">{display(t.quality_analysis.all_rows)}</option>
+                                    {!quality_analysis.directory_url && <option value="all">{display(t.quality_analysis.all_rows)}</option>}
                                 </select>
                             </label>
                             <span class="ui-table-pager__center" data-analysis-page-status={""}></span>
@@ -1374,25 +1395,13 @@ export function QualityAnalysis(context) {
             <p class="lead">{t.quality_analysis.intro}</p>
             <p>{t.quality_analysis.listing_intro}</p>
             <p>{t.quality_analysis.author_intro}</p>
-            {AssessmentMatrix(context)}
-            <form method="get" action="/quality-analysis/" data-authorship-basis={""}>
+            <form id="analysis-authorship-basis" method="get" action="/quality-analysis/" data-authorship-basis="">
                 {hasContent(quality_analysis?.all_grades) ? (
                     <input type="hidden" name="all_grades" value="1" />
                 ) : null}
                 <input type="hidden" name="lang" value={attribute(quality_analysis?.locale)} />
-                <label>
-                    <input
-                        type="checkbox"
-                        name="listing_authors"
-                        value="1"
-                        {...(hasContent(quality_analysis?.listing_authors) ? { checked: true } : {})}
-                    />{" "}
-                    {t.quality_analysis.use_listing_authors}
-                </label>
-                <noscript>
-                    <button type="submit">{t.quality_analysis.apply}</button>
-                </noscript>
             </form>
+            {hasContent(quality_analysis?.matrix) ? AssessmentMatrix(context) : ListingAuthorsControl(context)}
             <div data-quality-results={""}>
                 {QualityOverview(context)}
                 {ArticleDirectory(context)}

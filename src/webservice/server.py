@@ -83,6 +83,7 @@ from webservice.quality_chart_requests import (
     StaleQualityChartError,
     filtered_charts,
 )
+from webservice.quality_directory import DirectorySearchError, read_directory
 lazy from data.newsletter.archive import (
     DEFAULT_PATH as DRAFT_ARCHIVE_PATH,
     NewsletterDraftArchive,
@@ -739,6 +740,7 @@ class _PublicViews:
         self.quality_resources = QualityResourceCache()
         self.pages = PageCache()
         self.chart_lock = BoundedSemaphore(1)
+        self.directory_lock = BoundedSemaphore(1)
         self.socket_clients = 0
         self.live_feed = LiveFeed(
             lambda: read_status(self.runtime),
@@ -1473,6 +1475,53 @@ class _PublicViews:
             return _error(HTTPStatus.SERVICE_UNAVAILABLE)
         finally:
             self.chart_lock.release()
+        return _json(result)
+
+    def quality_directory(self, request: ASGIRequest) -> HttpResponseBase:
+        """Read one bounded view of the saved directory.
+
+        Returns:
+            A page, summary, or error from the requested preset.
+        """
+        match = re.fullmatch(
+            r"/quality-analysis/resources/(en|zh-hans|zh-hant)/"
+            r"(0|all)/(current|listed)/(directory-[0-9a-f]{64}\.json)",
+            request.path,
+        )
+        query = request.GET.getlist("q")
+        if match is None or set(request.GET) != {"q"} or len(query) != 1:
+            status = (
+                HTTPStatus.NOT_FOUND
+                if match is None
+                else HTTPStatus.BAD_REQUEST
+            )
+            return _error(status)
+        locale, cohort, basis, name = match.groups()
+        path = quality_pages.path_for(
+            self.runtime,
+            locale,
+            basis=basis,
+            all_grades=cohort == "all",
+        )
+        if not self.directory_lock.acquire(blocking=False):
+            return _error(HTTPStatus.TOO_MANY_REQUESTS)
+        try:
+            result = read_directory(path, name, locale, query[0])
+        except DirectorySearchError:
+            return _json(
+                {"regex_error": True},
+                HTTPStatus.UNPROCESSABLE_CONTENT,
+            )
+        except LookupError:
+            return _error(HTTPStatus.NOT_FOUND)
+        except (ValueError, OSError, PolarsError) as error:
+            return _error(
+                HTTPStatus.BAD_REQUEST
+                if isinstance(error, ValueError)
+                else HTTPStatus.SERVICE_UNAVAILABLE,
+            )
+        finally:
+            self.directory_lock.release()
         return _json(result)
 
     def quality_resource(self, request: ASGIRequest) -> HttpResponseBase:
@@ -2217,6 +2266,10 @@ def create_app(runtime: Path, assets: Path = _ASSETS) -> DjangoWebsite:
         url_path("api/live", _route(views.live_api)),
         url_path("api/logs", _route(views.api_logs)),
         re_path(r"^newsletter/charts/[^/]+$", _route(views.newsletter_chart)),
+        re_path(
+            r"^quality-analysis/resources/[^/]+/[^/]+/[^/]+/directory-.*$",
+            _route(views.quality_directory),
+        ),
         re_path(
             r"^quality-analysis/resources/.*$",
             _route(views.quality_resource),

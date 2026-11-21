@@ -1,4 +1,5 @@
 /** Sort and paginate saved editor tables without replacing their native cells. */
+import { matchesQualitySelection } from "./quality_matrix.js";
 
 let detailHandlersInstalled = false;
 let tableSequence = 0;
@@ -7,6 +8,13 @@ const detailRequests = new Map();
 /** Keep delayed details consistent with the currently selected matrix cohort. */
 export function applyQualityDetailCohort(dialog) {
     const form = document.querySelector("[data-quality-matrix]");
+    if (form?.dataset?.directoryUrl && form.qualitySelection) {
+        for (const row of dialog.querySelectorAll("[data-matrix-page][data-matrix-importance]")) {
+            const {matrixGrade, matrixImportance, matrixYear} = row.dataset;
+            row.dataset.cohort = matchesQualitySelection(form.qualitySelection, matrixGrade, matrixImportance, matrixYear) ? "1" : "0";
+        }
+        return;
+    }
     if (form && !form.qualitySelectedIds && form.dataset.selectedPageIds)
         form.qualitySelectedIds = new Set(JSON.parse(form.dataset.selectedPageIds).map(String));
     const ids = form?.qualitySelectedIds;

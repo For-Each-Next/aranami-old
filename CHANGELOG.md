@@ -5,6 +5,17 @@ v0.8.8 was consolidated into the v0.9.2 release.
 
 ## Until 0.10
 
+### 0.9.22 (2026-11-21 02:16 UTC)
+
+Overview: Updated the site to use Wikimedia Codex and reduced the initial
+Article Statistics payload.
+
+- Grouped article and list filters by quality, kept one unassessed column,
+  and moved the listing-time contribution option above the primary button.
+- Arranged directory filters in three rows with a standard regex checkbox.
+- Sent chart summaries and requested article pages from saved data, with
+  server-side search and sorting across the full selected cohort.
+
 ### 0.9.21 (2026-11-20 15:50 UTC)
 
 Overview: Updated Article Statistics and server status, reduced repeated

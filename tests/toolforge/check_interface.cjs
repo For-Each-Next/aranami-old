@@ -565,7 +565,7 @@ async function checkInterface(assetRoot) {
                 const style = getComputedStyle(link);
                 return {color: style.color, decoration: style.textDecorationLine};
             }))()`);
-            assert.ok(links.every(link => link.color === 'rgb(39, 52, 55)' && link.decoration === 'none'), 'header links must stay near-black without underlines');
+            assert.ok(links.every(link => link.color === 'rgb(32, 33, 34)' && link.decoration === 'none'), 'header links must use the Codex base color without underlines');
             await leaveTools();
             assert.equal(await isOpen(), false, 'hover-only Tools stayed open after leaving');
             await evaluate("document.querySelector('.brand').focus()");

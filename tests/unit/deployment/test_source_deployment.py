@@ -568,9 +568,9 @@ class TestWebSourcePayload(TestCase):
         assert manifest["built_at"].endswith("+00:00")
         assert "src/webservice/settings.py" in self.payload
         assert "src/webservice/public_html/components.js" in self.payload
+        assert "src/webservice/public_html/codex.css" in self.payload
         assert not any(
-            name.endswith((".ts", ".vue", "codex.css"))
-            or "/generated/" in name
+            name.endswith((".ts", ".vue")) or "/generated/" in name
             for name in self.payload
         )
 

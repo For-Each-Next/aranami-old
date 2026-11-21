@@ -7,12 +7,14 @@ const vm = require("node:vm");
 const root = path.join(__dirname, "../../src/webservice/public_html");
 const interfaceMessages = JSON.parse(fs.readFileSync(path.join(root, "../messages.json"), "utf8"));
 const shared = fs.readFileSync(path.join(root, "quality_authorship.js"), "utf8")
+    .replace(/^import .*;$/gm, "")
     .replaceAll("export function", "function");
 const analysis = fs.readFileSync(path.join(root, "quality_analysis.js"), "utf8")
     .replace(/^import .*;$/gm, "")
     .replaceAll("export function", "function");
 const context = { document: { querySelector: () => null } };
-const matrix = fs.readFileSync(path.join(root, "quality_matrix.js"), "utf8").replaceAll("export function", "function");
+const matrix = fs.readFileSync(path.join(root, "quality_matrix.js"), "utf8")
+    .replaceAll("export function", "function").replaceAll("export async function", "async function");
 const characters = fs.readFileSync(path.join(root, "quality_search_characters.js"), "utf8").replace("export const", "const");
 const source = [shared, matrix, characters, analysis].join("\n");
 vm.runInNewContext(source, context);

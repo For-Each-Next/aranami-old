@@ -1,6 +1,7 @@
 /** Combine saved matrix statistics and keep every report view in one cohort. */
 
 const metadataRequests = new WeakMap();
+const directoryPages = new WeakMap();
 
 /** Reuse the parsed catalog for both article controls and matrix filters. */
 export function qualityMetadata(form = document.querySelector("[data-quality-matrix]")) {
@@ -31,9 +32,11 @@ export function loadQualityMetadata(form) {
                     !response.headers.get("content-type")?.startsWith("application/json"))
                 throw new Error("Quality catalog unavailable");
             const data = await response.json();
-            if (!data || ![data.cells, data.extra, data.grades, data.importance].every(Array.isArray) ||
+            if (!data || ![data.cells, data.grades, data.importance].every(Array.isArray) ||
                     !data.labels || typeof data.labels !== "object" ||
-                    !data.extra.every(row => Array.isArray(row) && row.length >= 13))
+                    (form.dataset.directoryUrl
+                        ? !Number.isInteger(data.total)
+                        : !Array.isArray(data.extra) || !data.extra.every(row => Array.isArray(row) && row.length >= 13)))
                 throw new Error("Invalid quality catalog");
             data.authorshipIcon = form.dataset.authorshipIcon;
             form.qualityMetadata = data;
@@ -47,9 +50,62 @@ export function loadQualityMetadata(form) {
     return request;
 }
 
+/** Read one view of the confirmed selection and retain at most three pages. */
+export async function requestQualityPage(form, selection, options, signal) {
+    const url = new URL(form.dataset.directoryUrl, location.href);
+    if (url.origin !== location.origin) throw new Error("Invalid article directory URL");
+    const query = JSON.stringify({
+        cells: [...selection.chosen],
+        first: selection.firstYear, last: selection.lastYear, unknown: selection.includeUnknown,
+        ...options,
+    });
+    const encoded = btoa(String.fromCharCode(...new TextEncoder().encode(query)))
+        .replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+    url.searchParams.set("q", encoded);
+    if (!directoryPages.has(form)) directoryPages.set(form, new Map());
+    const cache = directoryPages.get(form);
+    if (cache.has(encoded)) {
+        const saved = cache.get(encoded);
+        cache.delete(encoded);
+        cache.set(encoded, saved);
+        return saved;
+    }
+    let response;
+    const timeout = AbortSignal.timeout(15000);
+    const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
+    for (const delay of [0, 125, 250]) {
+        if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+        response = await fetch(url, {
+            credentials: "same-origin", redirect: "error", signal: requestSignal,
+            headers: {Accept: "application/json"},
+        });
+        if (response.status !== 429) break;
+    }
+    if ((response.url && new URL(response.url).origin !== location.origin) ||
+            !response.headers.get("content-type")?.startsWith("application/json"))
+        throw new Error("Invalid article directory response");
+    if (response.status === 422) return {regex_error: true};
+    if (!response.ok) throw new Error("Article directory unavailable");
+    const result = await response.json();
+    if (options.view !== "summary") {
+        if (!Array.isArray(result.rows) || result.rows.length > options.size ||
+                !Number.isInteger(result.page) || !Number.isInteger(result.total))
+            throw new Error("Invalid article directory page");
+        cache.set(encoded, result);
+        if (cache.size > 3) cache.delete(cache.keys().next().value);
+    }
+    return result;
+}
+
 /** Include unknown dates independently of the inclusive year range. */
 export function yearSelected(year, from, to, unknown) {
     return year === null || year === "" ? unknown : Number(year) >= Math.max(2009, from) && Number(year) <= to;
+}
+
+/** Use the same confirmed grade, importance and year in every browse view. */
+export function matchesQualitySelection(selection, grade, importance, year) {
+    return selection.chosen.has(grade + ":" + importance)
+        && yearSelected(year, selection.firstYear, selection.lastYear, selection.includeUnknown);
 }
 
 /** Recover an exact linear quantile from a saved, counted length histogram. */
@@ -309,7 +365,7 @@ function annualFigure(years, grades, caption) {
     return svg;
 }
 
-/** Draw the default figures from the overview before loading the full catalog. */
+/** Draw the default figures directly from the prepared overview. */
 export function initializeQualityFigures(form) {
     if (!form?.qualityOverview) return;
     const {analysis, labels} = form.qualityOverview;
@@ -338,7 +394,7 @@ export function initializeQualityFigures(form) {
                 mean: saved.mean ?? null, quantiles: [null, null, saved.median_characters ?? null],
                 quartiles: [25, 75].map(percentile =>
                     saved.quartiles.find(mark => mark.percentile === percentile)?.value ?? null),
-                density: saved.density.map(({position, density}) => [position, density]),
+                density: (saved.density || []).map(({position, density}) => [position, density]),
             };
             const option = {value, label: saved.label, color: saved.color};
             cell.replaceChildren(violinFigure(summary, group, option, labels, analysis.length_scale_maximum));
@@ -399,6 +455,17 @@ export function catalogRows() {
     const gradeOrder = new Map(data.grades.map((item, index) => [item.value, item.order ?? index]));
     const importanceOrder = new Map(data.importance.map((item, index) => [item.value, item.order ?? index]));
     return (data.extra || []).map(values => catalogRecord(values, data, gradeOrder, importanceOrder));
+}
+
+/** Convert only the returned page into renderable article records. */
+export function directoryRows(data, rows) {
+    const grades = new Map(data.grades.map(({value, order}, index) => [value, order ?? index]));
+    const importance = new Map(data.importance.map(({value, order}, index) => [value, order ?? index]));
+    return rows.map(values => {
+        const row = catalogRecord(values, data, grades, importance);
+        row.dataset.cohort = "1";
+        return row;
+    });
 }
 
 /** Build a fresh visible row with the same markup as the prepared article table. */
@@ -548,6 +615,9 @@ export function initializeQualitySelection(form) {
     const cells = [...form.querySelectorAll("[data-matrix-cell]")];
     const parents = [
         [form.querySelector("[data-matrix-all]"), cells],
+        ...[...form.querySelectorAll("[data-matrix-group]")].map(input => [
+            input, cells.filter(cell => cell.dataset.gradeGroup === input.dataset.matrixGroup),
+        ]),
         ...[...form.querySelectorAll("[data-matrix-grade]")].map(input => [
             input, cells.filter(cell => cell.dataset.grade === input.dataset.matrixGrade),
         ]),
@@ -590,6 +660,7 @@ export function initializeQualityMatrix() {
     const data = qualityMetadata(form);
     const apply = form.querySelector("[data-matrix-apply]");
     if (!data || !apply) return;
+    const remote = Boolean(form.dataset.directoryUrl);
     const inputs = [...form.querySelectorAll("[data-matrix-cell]")];
     const rows = document.querySelector("[data-quality-analysis]")?.analysisRows || [...document.querySelectorAll("[data-analysis-row]")];
     const from = form.querySelector("[data-matrix-from]");
@@ -618,7 +689,7 @@ export function initializeQualityMatrix() {
         };
     });
 
-    function renderDistribution(host, group, options, selected, total) {
+    function renderDistribution(host, group, options, selected, total, lengths) {
         if (!host) return;
         const groups = new Map();
         for (const cell of selected) {
@@ -629,7 +700,15 @@ export function initializeQualityMatrix() {
         const entries = [];
         for (const option of options) {
             const cells = groups.get(option.value);
-            if (cells) entries.push({option, summary: combineCells(cells)});
+            if (!cells) continue;
+            const summary = lengths ? {
+                pages: cells.reduce((sum, cell) => sum + cell.pages, 0),
+                measured: cells.reduce((sum, cell) => sum + cell.measured, 0),
+                minimum: null, maximum: null, mean: null,
+                quartiles: [null, null], quantiles: [null, null, null], density: [],
+                ...lengths[option.value],
+            } : combineCells(cells);
+            entries.push({option, summary});
         }
         const body = host.closest("figure").querySelector("tbody");
         const tableRows = entries.map(({option, summary}) => {
@@ -691,35 +770,39 @@ export function initializeQualityMatrix() {
 
     const distributionGrades = [...grades].sort((left, right) =>
         (left.distribution_order ?? left.order) - (right.distribution_order ?? right.order));
-    const matches = (selection, grade, importance, year) =>
-        selection.chosen.has(key(grade, importance)) &&
-        yearSelected(year, selection.firstYear, selection.lastYear, selection.includeUnknown);
-
-    function render(selection) {
-        const selected = data.cells.filter(cell => matches(selection, cell.grade, cell.importance, cell.year));
+    function render(selection, summary) {
+        const selected = summary?.cells ?? data.cells.filter(cell =>
+            matchesQualitySelection(selection, cell.grade, cell.importance, cell.year));
         const total = selected.reduce((sum, cell) => sum + cell.pages, 0);
-        renderDistribution(gradeHost, "grade", distributionGrades, selected, total);
-        renderDistribution(importanceHost, "importance", data.importance, selected, total);
+        renderDistribution(gradeHost, "grade", distributionGrades, selected, total, summary?.lengths.grade);
+        renderDistribution(importanceHost, "importance", data.importance, selected, total, summary?.lengths.importance);
         renderYears(selected, grades.filter(grade => selection.grades.has(grade.value)), selection.firstYear, selection.lastYear);
-        const undated = data.cells.reduce((count, cell) =>
+        const undated = summary?.undated ?? data.cells.reduce((count, cell) =>
             count + (cell.year === null && selection.chosen.has(key(cell.grade, cell.importance)) ? cell.pages : 0), 0);
         const undatedLabel = document.querySelector("[data-undated-count]");
         if (undatedLabel) undatedLabel.textContent = undatedLabel.dataset.label.replace("{count}", format(undated));
 
         const ids = new Set();
-        for (const row of rows) {
-            const keep = matches(selection, row.dataset.grade, row.dataset.importance, row.dataset.year);
-            row.dataset.cohort = keep ? "1" : "0";
-            if (keep) ids.add(row.dataset.pageId);
-        }
-        form.qualitySelectedIds = ids;
-        for (const row of document.querySelectorAll("[data-matrix-page]")) {
-            row.dataset.cohort = ids.has(row.dataset.matrixPage) ? "1" : "0";
+        form.qualitySelection = selection;
+        if (summary) {
+            form.qualityCoverage = summary.coverage;
+        } else {
+            for (const row of rows) {
+                const keep = matchesQualitySelection(selection, row.dataset.grade, row.dataset.importance, row.dataset.year);
+                row.dataset.cohort = keep ? "1" : "0";
+                if (keep) ids.add(row.dataset.pageId);
+            }
+            form.qualitySelectedIds = ids;
+            for (const row of document.querySelectorAll("[data-matrix-page]")) {
+                row.dataset.cohort = ids.has(row.dataset.matrixPage) ? "1" : "0";
+            }
         }
         for (const {row, link, label, pages} of authorRows) {
             const dialog = pages ? null : document.getElementById(link.getAttribute("aria-controls"));
-            const count = pages ? pages.filter(id => ids.has(id)).length :
-                dialog?.querySelectorAll('[data-matrix-page][data-cohort="1"]').length ?? 0;
+            const count = summary
+                ? (Object.hasOwn(summary.author_counts, row.dataset.matrixAuthor) ? summary.author_counts[row.dataset.matrixAuthor] : 0)
+                : (pages ? pages.filter(id => ids.has(id)).length :
+                    dialog?.querySelectorAll('[data-matrix-page][data-cohort="1"]').length ?? 0);
             row.dataset.cohort = count ? "1" : "0";
             row.cells[2].dataset.sort = String(count);
             link.textContent = label.replace("{count}", String(count));
@@ -757,7 +840,9 @@ export function initializeQualityMatrix() {
             // Paint the progress state before combining the saved cells.
             await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
             if (!form.isConnected) return;
-            render(chosen);
+            const summary = remote ? await requestQualityPage(form, chosen, {view: "summary"}) : null;
+            if (!form.isConnected) return;
+            render(chosen, summary);
             message.textContent = form.dataset.qualitySelectionChanged ? status.dataset.pending : status.dataset.applied;
         } catch {
             message.textContent = status.dataset.failed;
@@ -770,7 +855,9 @@ export function initializeQualityMatrix() {
     }
 
     const defaultGrades = new Set(grades.filter(grade => grade.checked).map(grade => grade.value));
-    render(selection(inputs.filter(input => defaultGrades.has(input.dataset.grade)), Number(from.min), Number(to.max), true));
+    const defaults = selection(inputs.filter(input => defaultGrades.has(input.dataset.grade)), Number(from.min), Number(to.max), true);
+    if (remote) form.qualitySelection = defaults;
+    else render(defaults);
     form.setAttribute("data-matrix-enhanced", "");
     form.addEventListener("submit", event => void confirm(event));
     apply.hidden = false;

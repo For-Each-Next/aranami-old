@@ -3,16 +3,17 @@ import { compareValues, initializeQualityAuthorship } from "./quality_authorship
 import { initializeQualityCoverage } from "./quality_coverage.js";
 import { initializeQualityChartControls } from "./quality_chart_controls.js";
 import { traditional } from "./quality_search_characters.js";
-import { initializeQualityFigures, initializeQualityMatrix, initializeQualitySelection, prepareCatalogRows, catalogRows, articleElement, qualityMetadata, loadQualityMetadata } from "./quality_matrix.js";
+import { initializeQualityFigures, initializeQualityMatrix, initializeQualitySelection, prepareCatalogRows, catalogRows, articleElement, qualityMetadata, loadQualityMetadata, directoryRows, requestQualityPage } from "./quality_matrix.js";
 
-/** Keep the prepared overview usable while its full catalog loads after paint. */
+/** Keep the prepared overview usable while its controls load after paint. */
 export function initializeQualityPage(previous = {}) {
     const form = document.querySelector("[data-quality-matrix]");
     initializeQualityFigures(form);
     if (typeof initializeQualityChartControls === "function") initializeQualityChartControls();
     const complete = () => {
+        if (form?.dataset.directoryUrl) initializeQualityMatrix();
         initializeQualityAnalysis(previous);
-        initializeQualityMatrix();
+        if (!form?.dataset.directoryUrl) initializeQualityMatrix();
         if (document.querySelector("[data-quality-coverage]")) initializeQualityCoverage();
         if (document.querySelector("[data-quality-results]")) initializeQualityAuthorship();
         if (form) form.dataset.qualityReady = "1";
@@ -38,7 +39,7 @@ export function initializeQualityPage(previous = {}) {
         if (retry) retry.hidden = true;
         try {
             await loadQualityMetadata(form);
-            await prepareCatalogRows(form);
+            if (!form.dataset.directoryUrl) await prepareCatalogRows(form);
             if (!form.isConnected) return;
             complete();
             form.dataset.qualityLoadState = "ready";
@@ -116,8 +117,10 @@ export function initializeQualityAnalysis(previous = {}) {
     const host = document.querySelector("[data-quality-analysis]");
     if (!host || host.hasAttribute("data-analysis-enhanced")) return;
     host.setAttribute("data-analysis-enhanced", "");
-    const rows = [...host.querySelectorAll("[data-analysis-row]"), ...catalogRows()];
-    host.analysisRows = rows;
+    const form = document.querySelector("[data-quality-matrix]");
+    const remote = Boolean(form?.dataset.directoryUrl);
+    const rows = [...host.querySelectorAll("[data-analysis-row]"), ...(remote ? [] : catalogRows())];
+    if (!remote) host.analysisRows = rows;
     const table = host.querySelector("table");
     const body = table.tBodies[0];
     const headings = [...table.querySelectorAll("thead th")];
@@ -128,12 +131,16 @@ export function initializeQualityAnalysis(previous = {}) {
     const importance = host.querySelector("[data-analysis-importance-filter]");
     const author = host.querySelector("[data-analysis-author]");
     const role = host.querySelector("[data-analysis-author-role]");
-    const contributors = new Map(rows.map(row => [row, articleContributorRoles(row)]));
+    const contributors = new Map(remote ? [] : rows.map(row => [row, articleContributorRoles(row)]));
     const suggestions = host.querySelector("#analysis-author-names");
-    function suggestContributors() {
+    function showSuggestions(names) {
         if (!suggestions) return;
-        const names = [...new Set([...contributors.values()].flatMap(items => items[role?.value === "significant" ? "significant" : "mainLabels"] || []))].sort();
         suggestions.replaceChildren(...names.map(name => {const option = document.createElement("option"); option.value = name; return option;}));
+    }
+    function suggestContributors() {
+        if (remote) return;
+        showSuggestions([...new Set([...contributors.values()].flatMap(items =>
+            items[role?.value === "significant" ? "significant" : "mainLabels"] || []))].sort());
     }
     const size = host.querySelector("[data-analysis-size]");
     const pager = host.querySelector("[data-analysis-pager]");
@@ -153,11 +160,70 @@ export function initializeQualityAnalysis(previous = {}) {
     let descending = previous.descending ?? true;
     let page = previous.page || 1;
     let pages = 1;
+    let visiblePage = page, pending, debounce;
     const actions = ["first", "prev", "next", "last"].map((name) =>
         host.querySelector(`[data-analysis-${name}]`));
 
+    function showPage(records, count, total, limit) {
+        pages = Math.max(1, Math.ceil(count / limit));
+        page = Math.min(page, pages);
+        visiblePage = page;
+        const start = (page - 1) * limit;
+        host.dataset.analysisColumn = String(column);
+        host.dataset.analysisDescending = String(descending);
+        host.dataset.analysisPage = String(page);
+        body.replaceChildren(...records.map((record, index) => {
+            const row = articleElement(record);
+            row.hidden = false;
+            row.cells[0].textContent = String(start + index + 1);
+            return row;
+        }));
+        result.textContent = host.dataset.resultCount
+            .replace("{count}", String(count)).replace("{total}", String(total));
+        pageStatus.textContent = host.dataset.pageStatus
+            .replace("{start}", String(count ? start + 1 : 0))
+            .replace("{end}", String(start + records.length))
+            .replace("{total}", String(count));
+        empty.hidden = count !== 0;
+        pager.hidden = false;
+        actions[0].disabled = actions[1].disabled = page <= 1;
+        actions[2].disabled = actions[3].disabled = page >= pages;
+        headings.forEach((heading, index) => {
+            if (index) heading.setAttribute("aria-sort", index === column ?
+                (descending ? "descending" : "ascending") : "none");
+        });
+    }
+
+    async function readPage(options) {
+        const request = new AbortController();
+        pending = request;
+        table.setAttribute("aria-busy", "true");
+        result.textContent = form.dataset.loadingPage;
+        try {
+            const response = await requestQualityPage(form, form.qualitySelection, options, request.signal);
+            if (request.signal.aborted || !host.isConnected) return;
+            if (response.regex_error) {
+                regexError.hidden = false;
+                showPage([], 0, form.qualityCoverage?.total ?? qualityMetadata(form).total, options.size);
+                return;
+            }
+            showSuggestions(response.suggestions);
+            page = response.page;
+            showPage(directoryRows(qualityMetadata(form), response.rows), response.total, response.cohort, options.size);
+        } catch {
+            if (!request.signal.aborted && host.isConnected) {
+                page = visiblePage;
+                result.textContent = form.dataset.pageFailed;
+            }
+        } finally {
+            if (pending === request) table.removeAttribute("aria-busy");
+        }
+    }
+
     /** Apply filters before ordering and pagination, retaining stable ties. */
-    function render() {
+    function render(typing = false) {
+        clearTimeout(debounce);
+        pending?.abort();
         const titleMatches = searchMatcher(search.value, regex?.checked, locale);
         const authorMatches = searchMatcher(author?.value || "", regex?.checked, locale, true);
         for (const [input, matcher] of [[search, titleMatches], [author, authorMatches]]) {
@@ -166,6 +232,19 @@ export function initializeQualityAnalysis(previous = {}) {
         }
         if (regexError) regexError.hidden = Boolean(titleMatches && authorMatches);
         const roleName = role?.value || "main";
+        if (remote) {
+            if (!titleMatches || !authorMatches) {
+                table.removeAttribute("aria-busy");
+                showPage([], 0, form.qualityCoverage?.total ?? qualityMetadata(form).total, Number(size.value));
+                return;
+            }
+            const options = {view: "articles", page, size: Number(size.value), column, descending,
+                search: search.value, regex: !!regex?.checked, author: author?.value || "", role: roleName,
+                grade: grade.value, importance: importance.value};
+            if (typing) debounce = setTimeout(() => void readPage(options), 180);
+            else void readPage(options);
+            return;
+        }
         const selected = rows.filter((row) =>
             (row.dataset.cohort !== "0") &&
             authorMatches && (!author?.value.trim() || contributorsForRole(contributors.get(row), roleName).some(authorMatches)) &&
@@ -178,35 +257,13 @@ export function initializeQualityAnalysis(previous = {}) {
         pages = Math.max(1, Math.ceil(selected.length / limit));
         page = Math.min(page, pages);
         const start = (page - 1) * limit;
-        host.dataset.analysisColumn = String(column);
-        host.dataset.analysisDescending = String(descending);
-        host.dataset.analysisPage = String(page);
-        body.replaceChildren(...selected.slice(start, start + limit).map((record, index) => {
-            const row = articleElement(record); row.hidden = false;
-            row.cells[0].textContent = String(start + index + 1);
-            Object.assign(row.dataset, record.dataset);
-            return row;
-        }));
-        result.textContent = host.dataset.resultCount
-            .replace("{count}", String(selected.length)).replace("{total}", String(rows.length));
-        pageStatus.textContent = host.dataset.pageStatus
-            .replace("{start}", String(selected.length ? start + 1 : 0))
-            .replace("{end}", String(Math.min(start + limit, selected.length)))
-            .replace("{total}", String(selected.length));
-        empty.hidden = selected.length !== 0;
-        pager.hidden = false;
-        actions[0].disabled = actions[1].disabled = page <= 1;
-        actions[2].disabled = actions[3].disabled = page >= pages;
-        headings.forEach((heading, index) => {
-            if (index) heading.setAttribute("aria-sort", index === column ?
-                (descending ? "descending" : "ascending") : "none");
-        });
+        showPage(selected.slice(start, start + limit), selected.length, rows.length, limit);
     }
     [search, regex, grade, importance, size, author, role].filter(Boolean).forEach((control) => {
         control.addEventListener(control === search || control === author ? "input" : "change", () => {
             if (control === role) suggestContributors();
             page = 1;
-            render();
+            render(control === search || control === author);
         });
     });
     headings.forEach((heading, index) => {
@@ -247,9 +304,12 @@ export function initializeQualityAnalysis(previous = {}) {
         render();
     };
     document.addEventListener("quality-cohort-change", cohortChanged);
-    initializeChartArticles(rows);
+    initializeChartArticles(rows, form);
     host.querySelector("[data-analysis-controls]").hidden = false;
-    render();
+    if (remote && !Object.keys(previous).length) {
+        const {total} = qualityMetadata(form);
+        showPage(rows, total, total, Number(size.value));
+    } else render();
 }
 
 /** Select a chart's saved cohort independently of directory filters. */
@@ -266,7 +326,7 @@ export function orderChartArticles(rows, column, descending, locale) {
 }
 
 /** Fill one accessible dialog from already rendered, escaped article cells. */
-function initializeChartArticles(rows) {
+function initializeChartArticles(rows, form) {
     const dialog = document.getElementById("analysis-chart-articles");
     if (!dialog || typeof dialog.showModal !== "function") return;
     const body = dialog.querySelector("[data-chart-article-rows]");
@@ -276,16 +336,16 @@ function initializeChartArticles(rows) {
     const sizeControl = pager.querySelector("[data-chart-size]");
     const headings = [...dialog.querySelectorAll("thead th")];
     const sortCaption = document.querySelector("[data-quality-analysis]")?.dataset.sortCaption;
-    let selected = [], page = 1;
+    const remote = Boolean(form?.dataset.directoryUrl);
+    let selected = [], page = 1, total = 0, chart, pending;
     let column = 4, descending = true;
-    const pageCount = () => Math.max(1, Math.ceil(selected.length / Number(sizeControl.value)));
+    const pageCount = () => Math.max(1, Math.ceil(total / Number(sizeControl.value)));
     const actions = {first: () => 1, prev: () => page - 1, next: () => page + 1, last: pageCount};
-    function render() {
+    function showPage(ordered) {
         const size = Number(sizeControl.value), pages = pageCount();
         page = Math.max(1, Math.min(page, pages));
         const start = (page - 1) * size;
-        const ordered = orderChartArticles(selected, column, descending, document.documentElement.lang);
-        body.replaceChildren(...ordered.slice(start, start + size).map((source, index) => {
+        body.replaceChildren(...ordered.map((source, index) => {
             const row = document.createElement("tr");
             row.dataset.chartArticle = source.dataset.title;
             const original = articleElement(source);
@@ -297,13 +357,42 @@ function initializeChartArticles(rows) {
             return row;
         }));
         pager.querySelector("[data-chart-page-status]").textContent = pager.dataset.pageStatus
-            .replace("{start}", String(selected.length ? start + 1 : 0))
-            .replace("{end}", String(Math.min(start + size, selected.length)))
-            .replace("{total}", String(selected.length));
+            .replace("{start}", String(total ? start + 1 : 0))
+            .replace("{end}", String(start + ordered.length))
+            .replace("{total}", String(total));
         for (const key of Object.keys(actions)) pager.querySelector(`[data-chart-${key}]`).disabled = ["first", "prev"].includes(key) ? page === 1 : page === pages;
         headings.forEach((heading, index) => {
             if (index) heading.setAttribute("aria-sort", index === column ? (descending ? "descending" : "ascending") : "none");
         });
+        count.textContent = count.dataset.label.replace("{count}", String(total));
+    }
+    async function render() {
+        const size = Number(sizeControl.value);
+        if (!remote) {
+            page = Math.max(1, Math.min(page, pageCount()));
+            const start = (page - 1) * size;
+            const ordered = orderChartArticles(selected, column, descending, document.documentElement.lang);
+            showPage(ordered.slice(start, start + size));
+            return;
+        }
+        pending?.abort();
+        const request = new AbortController();
+        pending = request;
+        count.textContent = form.dataset.loadingPage;
+        try {
+            const response = await requestQualityPage(form, form.qualitySelection, {
+                view: "chart", page, size, column: [0, 1, 2, 3, 4, 6][column], descending,
+                group: chart.chartGroup, value: chart.chartValue,
+                ...(chart.chartYear ? {year: Number(chart.chartYear)} : {}),
+                measured: !!chart.chartMeasured,
+            }, request.signal);
+            if (request.signal.aborted || !dialog.open) return;
+            total = response.total;
+            page = response.page;
+            showPage(directoryRows(qualityMetadata(form), response.rows));
+        } catch {
+            if (!request.signal.aborted && dialog.open) count.textContent = form.dataset.pageFailed;
+        }
     }
     headings.forEach((heading, index) => {
         if (!index) return;
@@ -331,16 +420,27 @@ function initializeChartArticles(rows) {
         if (!link || event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
         event.stopPropagation();
-        selected = rows.filter(row => chartArticleMatches(row, link.dataset));
+        chart = link.dataset;
+        if (remote) {
+            body.replaceChildren();
+            pager.querySelector("[data-chart-page-status]").textContent = "";
+            for (const key of Object.keys(actions)) pager.querySelector(`[data-chart-${key}]`).disabled = true;
+        } else {
+            selected = rows.filter(row => chartArticleMatches(row, chart));
+            total = selected.length;
+        }
         page = 1;
         column = 4;
         descending = true;
-        render();
         heading.textContent = link.dataset.chartLabel;
-        count.textContent = count.dataset.label.replace("{count}", String(selected.length));
         link.focus();
         if (!dialog.open) dialog.showModal();
+        void render();
     };
+    if (remote) dialog.addEventListener("close", () => {
+        pending?.abort();
+        body.replaceChildren();
+    });
     document.addEventListener("click", openChart);
     const activateChart = event => {
         if (!dialog.isConnected) {
@@ -374,4 +474,4 @@ function analysisState() {
 document.addEventListener?.("quality-charts-replaced", () => initializeQualityChartControls());
 initializeQualityPage();
 const basis = document.querySelector("[data-authorship-basis]");
-if (basis) basis.querySelector("input[type=checkbox]").addEventListener("change", () => basis.requestSubmit());
+basis?.elements.namedItem("listing_authors")?.addEventListener("change", () => basis.requestSubmit());

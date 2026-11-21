@@ -1,5 +1,5 @@
 /** Show evidence coverage and bounded lists for the selected article cohort. */
-import { qualityMetadata } from "./quality_matrix.js";
+import { qualityMetadata, requestQualityPage } from "./quality_matrix.js";
 
 let cohortListenerInstalled = false;
 
@@ -43,7 +43,9 @@ export function initializeQualityCoverage() {
     const table = body.closest("table");
     const pager = status.closest("nav");
     const size = pager.querySelector("select");
-    let selected = [], page = 1, kind, opener;
+    const form = document.querySelector("[data-quality-matrix]");
+    const remote = Boolean(form?.dataset.directoryUrl);
+    let selected = [], page = 1, total = 0, kind, opener, pending;
     const number = value => value.toLocaleString(document.documentElement.lang);
     const records = () => document.querySelector("[data-quality-analysis]")?.analysisRows || [];
     const metadata = () => qualityMetadata();
@@ -63,21 +65,21 @@ export function initializeQualityCoverage() {
 
     /** Retain references only to the currently requested missing-page list. */
     function chooseRows() {
+        if (remote) return;
         selected = kind === "total" ? comparisonSelection(comparison(), grades()) : records().filter(record =>
             record.dataset.cohort !== "0" && !articleCoverage(record)[kind]);
+        total = selected.length;
     }
 
     /** Replace the requested page and retain its navigation controls. */
-    function render() {
+    function showPage(visible, available) {
         const limit = Number(size?.value || 50);
-        const pages = Math.max(1, Math.ceil(selected.length / limit));
-        page = Math.max(1, Math.min(page, pages));
+        const pages = Math.max(1, Math.ceil(total / limit));
         const start = (page - 1) * limit;
-        const visible = selected.slice(start, start + limit);
         body.replaceChildren(...visible.map((record, index) => {
             const row = node("tr"), titleCell = node("td");
-            const title = kind === "total" ? record.title : record.article?.title || record.dataset.title;
-            const label = kind === "total" ? title.replaceAll("_", " ") : record.article?.title_label || title.replaceAll("_", " ");
+            const title = record.title ?? record.article?.title ?? record.dataset.title;
+            const label = record.article?.title_label ?? title.replaceAll("_", " ");
             const link = node("a", label);
             link.href = `https://zh.wikipedia.org/wiki/${encodeURIComponent(title.replaceAll(" ", "_"))}`;
             titleCell.append(link);
@@ -89,19 +91,45 @@ export function initializeQualityCoverage() {
             return row;
         }));
         for (const heading of dialog.querySelectorAll("[data-coverage-comparison-column]")) heading.hidden = kind !== "total";
-        empty.hidden = selected.length > 0;
-        empty.textContent = kind === "total" && !comparison()?.available ? labels.comparison_unavailable : labels.no_missing;
-        table.hidden = selected.length === 0;
-        status.textContent = status.dataset.template.replace("{start}", number(selected.length ? start + 1 : 0))
-            .replace("{end}", number(start + visible.length)).replace("{total}", number(selected.length));
+        empty.hidden = total > 0;
+        empty.textContent = kind === "total" && !available ? labels.comparison_unavailable : labels.no_missing;
+        table.hidden = total === 0;
+        status.textContent = status.dataset.template.replace("{start}", number(total ? start + 1 : 0))
+            .replace("{end}", number(start + visible.length)).replace("{total}", number(total));
         for (const button of dialog.querySelectorAll("[data-coverage-page]")) button.disabled =
             ["first", "previous"].includes(button.dataset.coveragePage) ? page === 1 : page === pages;
     }
 
+    async function render() {
+        const limit = Number(size?.value || 50);
+        if (!remote) {
+            page = Math.max(1, Math.min(page, Math.ceil(total / limit)));
+            const start = (page - 1) * limit;
+            showPage(selected.slice(start, start + limit), comparison()?.available);
+            return;
+        }
+        pending?.abort();
+        const request = new AbortController();
+        pending = request;
+        status.textContent = form.dataset.loadingPage;
+        try {
+            const response = await requestQualityPage(form, form.qualitySelection,
+                {view: "coverage", value: kind, page, size: limit}, request.signal);
+            if (request.signal.aborted || !dialog.open) return;
+            total = response.total;
+            page = response.page;
+            showPage(response.rows, response.available);
+        } catch {
+            if (!request.signal.aborted && dialog.open) status.textContent = form.dataset.pageFailed;
+        }
+    }
+
     size?.addEventListener("change", () => { page = 1; render(); });
     host.coverageRefresh = () => {
-        const counts = coverageSummary(records());
-        for (const element of host.querySelectorAll("[data-coverage-count]")) element.textContent = number(counts[element.dataset.coverageCount]);
+        const counts = remote ? form.qualityCoverage : coverageSummary(records());
+        if (counts) {
+            for (const element of host.querySelectorAll("[data-coverage-count]")) element.textContent = number(counts[element.dataset.coverageCount]);
+        }
         if (dialog.open) {chooseRows(); page = 1; render();}
     };
     host.addEventListener("click", event => {
@@ -111,17 +139,21 @@ export function initializeQualityCoverage() {
         kind = control.dataset.coverageOpen;
         opener = control;
         dialog.querySelector(".ui-dialog__header__title").textContent = labels[kind === "total" ? "comparison" : `missing_${kind}`];
-        chooseRows(); page = 1; render(); dialog.showModal();
+        chooseRows();
+        page = 1;
+        dialog.showModal();
+        void render();
     });
     dialog.addEventListener("click", event => {
         const control = event.target.closest("[data-coverage-page]");
         if (!control) return;
         const target = control.dataset.coveragePage;
-        page = target === "first" ? 1 : target === "last" ? Math.ceil(selected.length / Number(size?.value || 50)) : page + (target === "next" ? 1 : -1);
+        page = target === "first" ? 1 : target === "last" ? Math.ceil(total / Number(size?.value || 50)) : page + (target === "next" ? 1 : -1);
         render();
         dialog.querySelector(".ui-dialog__body")?.scrollTo(0, 0);
     });
     dialog.addEventListener("close", () => {
+        pending?.abort();
         selected = []; body.replaceChildren();
         const returnFocus = opener;
         opener = kind = undefined;

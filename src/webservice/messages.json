@@ -4328,9 +4328,14 @@
     "zh-hant": "尚無已儲存的正文測量結果。"
   },
   "quality_analysis.search": {
-    "en": "Find an article",
-    "zh-hans": "查找条目",
-    "zh-hant": "尋找條目"
+    "en": "Article title",
+    "zh-hans": "条目名",
+    "zh-hant": "條目名"
+  },
+  "quality_analysis.rating": {
+    "en": "Rating",
+    "zh-hans": "评级",
+    "zh-hant": "評級"
   },
   "quality_analysis.all_grades": {
     "en": "All grades",
@@ -4584,6 +4589,21 @@
     "zh-hans": "全选",
     "zh-hant": "全選"
   },
+  "quality_analysis.featured_grade": {
+    "en": "Featured",
+    "zh-hans": "典范",
+    "zh-hant": "典範"
+  },
+  "quality_analysis.matrix_article": {
+    "en": "Article",
+    "zh-hans": "文",
+    "zh-hant": "文"
+  },
+  "quality_analysis.matrix_list": {
+    "en": "List",
+    "zh-hans": "表",
+    "zh-hant": "表"
+  },
   "quality_analysis.unknown_listing": {
     "en": "Date not obtained",
     "zh-hans": "未取得日期",
@@ -4595,9 +4615,9 @@
     "zh-hant": "{name}的條目"
   },
   "quality_analysis.author_filter": {
-    "en": "Author",
-    "zh-hans": "作者",
-    "zh-hant": "作者"
+    "en": "Contributor",
+    "zh-hans": "贡献者",
+    "zh-hant": "貢獻者"
   },
   "quality_analysis.use_listing_authors": {
     "en": "Use authorship analysis of the listing-time revision",
@@ -4658,6 +4678,16 @@
     "en": "Article filters could not load. The saved overview remains visible. Retry, or reload the page if the report has changed.",
     "zh-hans": "无法加载条目筛选，已保留报告概览。请重试；若报告已更新，请重新加载页面。",
     "zh-hant": "無法載入條目篩選，已保留報告概覽。請重試；若報告已更新，請重新載入頁面。"
+  },
+  "quality_analysis.loading_page": {
+    "en": "Loading articles…",
+    "zh-hans": "正在加载条目…",
+    "zh-hant": "正在載入條目…"
+  },
+  "quality_analysis.page_failed": {
+    "en": "Articles could not load. Try again or reload the page.",
+    "zh-hans": "无法加载条目。请重试或重新加载页面。",
+    "zh-hant": "無法載入條目。請重試或重新載入頁面。"
   },
   "quality_analysis.retry": {
     "en": "Retry",

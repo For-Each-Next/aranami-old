@@ -8,6 +8,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import unittest
+from base64 import urlsafe_b64encode
 from hashlib import sha256
 from html import unescape
 from http import HTTPStatus
@@ -26,7 +27,11 @@ from test_quality_authorship import (
 from data.articles import quality_pages
 from data.articles.quality_selection import quartiles
 from webservice.http import encoded_response
-from webservice.pages import render_quality_analysis, render_quality_authorship
+from webservice.pages import (
+    render_quality_analysis,
+    render_quality_authorship,
+    render_quality_preset,
+)
 from webservice.presentation import Interface
 from webservice.quality_analysis import (
     main_author_directory,
@@ -509,7 +514,7 @@ class QualityResourcePresentationTests(unittest.TestCase):
                     f"/quality-analysis/resources/{locale}/0/current/"
                 ),
             )
-            select = output.split("<select data-analysis-author-role>", 1)[1]
+            select = output.split("data-analysis-author-role>", 1)[1]
             select = select.split("</select>", 1)[0]
             assert select.count("<option ") == 2
             assert '<option value="main">' in select
@@ -1138,3 +1143,125 @@ class QualityResourceHTTPTests(unittest.TestCase):
                     client.get(_PREFIX + suffix).status_code
                     == HTTPStatus.NOT_FOUND
                 )
+
+    @staticmethod
+    def test_directory_reads_only_requested_rows() -> None:
+        """Page a private catalog and search all its articles."""
+        data = _catalog_fixture()
+        selection = data["analysis"]["selection"]
+        selection["articles"][-1]["title"] = "超級馬力歐銀河2"
+        selection["cells"] = [
+            {
+                "grade": "FA",
+                "importance": "High",
+                "year": 2026,
+                "pages": 100,
+                "measured": 100,
+                "histogram": [{"value": 1000, "count": 100}],
+                "density": [{"position": 1000, "density": 1}],
+            },
+        ]
+        native, browser, resources = render_quality_preset(
+            data,
+            None,
+            None,
+            "en",
+            navigation={},
+            resource_prefix=_PREFIX,
+            fallback="/quality-analysis/?render=html",
+        )
+        directory = next(
+            name for name in resources if name.startswith("directory-")
+        )
+        catalog = next(
+            name for name in resources if name.startswith("catalog-")
+        )
+        assert native.count("<tr data-analysis-row ") == 20
+        assert "data-page-ids=" not in native
+        assert "selected_page_ids" not in browser
+        assert "超級馬力歐" not in browser
+
+        def query(**options: object) -> str:
+            """Encode one compact directory query.
+
+            Returns:
+                The relative path to the selected directory view.
+            """
+            request = {
+                "view": "articles",
+                "cells": ["FA:High"],
+                "first": 2009,
+                "last": 2026,
+                "unknown": True,
+                **options,
+            }
+            encoded = (
+                urlsafe_b64encode(
+                    json.dumps(request, ensure_ascii=False).encode(),
+                )
+                .decode()
+                .rstrip("=")
+            )
+            return f"{_PREFIX}{directory}?q={encoded}"
+
+        with TemporaryDirectory() as temporary:
+            path = quality_pages.path_for(
+                Path(temporary),
+                "en",
+                basis="current",
+            )
+            quality_pages.save(
+                path,
+                native,
+                (),
+                resources=resources,
+                browser=browser,
+            )
+            with TestClient(create_app(Path(temporary))) as client:
+                metadata = client.get(_PREFIX + catalog).json()
+                assert "extra" not in metadata
+                assert metadata["total"] == 100
+                assert (
+                    client.get(_PREFIX + directory).status_code
+                    == HTTPStatus.BAD_REQUEST
+                )
+                page = client.get(query(page=2)).json()
+                assert [row[0] for row in page["rows"]] == list(range(21, 41))
+                assert page["total"] == 100
+                assert page["page"] == 2
+                for search in (
+                    query(search="马力欧"),
+                    query(search="銀河[12]$", regex=True),
+                ):
+                    result = client.get(search).json()
+                    assert [row[0] for row in result["rows"]] == [100]
+                assert client.get(query(search="[", regex=True)).json() == {
+                    "regex_error": True,
+                }
+                assert (
+                    client.get(query(size=101)).status_code
+                    == HTTPStatus.BAD_REQUEST
+                )
+                for url, expected in (
+                    (query(view="chart", group="grade", value="FA"), 100),
+                    (query(view="coverage", value="authorship"), 98),
+                ):
+                    result = client.get(url).json()
+                    assert result["total"] == expected
+                    assert len(result["rows"]) == 20
+                author = data["authorship"]["authors"][0]["name"]
+                result = client.get(query(author=author)).json()
+                assert [row[0] for row in result["rows"]] == [1, 2]
+                summary = client.get(query(view="summary")).json()
+                assert "rows" not in summary
+                assert "histogram" not in summary["cells"][0]
+                assert summary["coverage"] == {
+                    "total": 100,
+                    "authorship": 2,
+                    "dates": 100,
+                    "length": 100,
+                }
+                assert summary["lengths"]["grade"]["FA"]["quartiles"] == [
+                    1000,
+                    1000,
+                ]

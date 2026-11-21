@@ -3,6 +3,21 @@
 {% from "includes/quality_authorship_tables.html" import table_labels, article_table with context %}
 {% block assets %}<link rel="stylesheet" href="{{ asset_url('quality_analysis.css') }}"><script type="module" src="{{ asset_url('quality_analysis.js') }}"></script>{% endblock %}
 {% block contents_links %}<ul><li><a href="#analysis-overview">{{ t.quality_analysis.overview }}</a></li><li><a href="#analysis-articles">{{ t.quality_analysis.articles }}</a></li><li><a href="#quality-authors">{{ t.quality_analysis.by_author }}</a></li></ul>{% endblock %}
+{% macro checkbox(label=none, attrs={}, checked=false) %}
+<label class="cdx-checkbox cdx-checkbox--inline analysis-checkbox">
+  <span class="cdx-checkbox__wrapper">
+    <input type="checkbox" class="cdx-checkbox__input" {{ attrs | xmlattr }}{% if checked %} checked{% endif %}>
+    <span class="cdx-checkbox__icon" aria-hidden="true"></span>
+    {% if label %}<span class="cdx-checkbox__label">{{ label }}</span>{% endif %}
+  </span>
+</label>
+{% endmacro %}
+{% macro listing_authors_control() %}
+<div class="analysis-authorship-basis">
+  {{ checkbox(t.quality_analysis.use_listing_authors, {'form': 'analysis-authorship-basis', 'name': 'listing_authors', 'value': '1'}, quality_analysis.listing_authors) }}
+  <noscript><button type="submit" form="analysis-authorship-basis" class="cdx-button cdx-button--action-progressive cdx-button--weight-primary">{{ t.quality_analysis.apply }}</button></noscript>
+</div>
+{% endmacro %}
 {% macro pie_chart(rows, dimension, caption) %}
 <figure class="analysis-pie-panel"><figcaption id="analysis-{{ dimension }}-pie-heading" class="visually-hidden">{{ caption }}</figcaption>
 <div data-quality-chart="{{ 'grades' if dimension == 'class' else 'importance' }}" data-chart-caption="{{ caption }}">{{ quality_analysis.charts.grades_svg if dimension == 'class' else quality_analysis.charts.importance_svg }}</div>
@@ -14,24 +29,57 @@
 <p class="lead">{{ t.quality_analysis.intro }}</p>
 <p>{{ t.quality_analysis.listing_intro }}</p><p>{{ t.quality_analysis.author_intro }}</p>
 
+<form id="analysis-authorship-basis" method="get" action="/quality-analysis/" data-authorship-basis>
+  {% if quality_analysis.all_grades %}<input type="hidden" name="all_grades" value="1">{% endif %}
+  <input type="hidden" name="lang" value="{{ quality_analysis.locale }}">
+</form>
 {% if quality_analysis.matrix %}
-<form action="/quality-analysis/" method="get" class="analysis-selection" data-quality-matrix data-authorship-icon="{{ asset_url('assets/icons/report-icons.svg') }}#message-notice" {% if quality_analysis.metadata_url %}data-metadata-url="{{ quality_analysis.metadata_url }}" data-selected-page-ids='{{ quality_analysis.selected_page_ids | tojson }}' data-loading="{{ t.quality_analysis.loading_catalog }}" data-load-failed="{{ t.quality_analysis.catalog_failed }}" data-retry="{{ t.quality_analysis.retry }}"{% else %}data-metadata='{{ quality_analysis.matrix | tojson }}'{% endif %}>
+<form action="/quality-analysis/" method="get" class="analysis-selection" data-quality-matrix data-authorship-icon="{{ asset_url('assets/icons/report-icons.svg') }}#message-notice" {% if quality_analysis.metadata_url %}data-metadata-url="{{ quality_analysis.metadata_url }}" {% if quality_analysis.directory_url %}data-directory-url="{{ quality_analysis.directory_url }}" data-loading-page="{{ t.quality_analysis.loading_page }}" data-page-failed="{{ t.quality_analysis.page_failed }}"{% else %}data-selected-page-ids='{{ quality_analysis.selected_page_ids | tojson }}'{% endif %} data-loading="{{ t.quality_analysis.loading_catalog }}" data-load-failed="{{ t.quality_analysis.catalog_failed }}" data-retry="{{ t.quality_analysis.retry }}"{% else %}data-metadata='{{ quality_analysis.matrix | tojson }}'{% endif %}>
 {% if quality_analysis.metadata_url %}<p class="context" data-quality-load-status role="status" aria-live="polite"></p><button type="button" class="ui-button" data-quality-retry hidden>{{ t.quality_analysis.retry }}</button>{% endif %}
-<div class="table-scroll" tabindex="0" role="region" aria-label="{{ t.quality_analysis.grades }}"><table class="analysis-matrix" data-no-pagination><thead><tr><th scope="col"><input type="checkbox" data-matrix-all aria-label="{{ t.quality_analysis.select_all }}"></th>{% for grade in quality_analysis.matrix.grades %}<th scope="col"><label><input type="checkbox" data-matrix-grade="{{ grade.value }}"{% if grade.checked %} checked{% endif %}> {{ grade.label }}</label></th>{% endfor %}</tr></thead><tbody>
-{% for importance in quality_analysis.matrix.importance %}<tr><th scope="row"><label><input type="checkbox" data-matrix-importance="{{ importance.value }}"> {{ importance.label }}</label></th>{% for grade in quality_analysis.matrix.grades %}<td><label><input type="checkbox" data-matrix-cell data-grade="{{ grade.value }}" data-importance="{{ importance.value }}" aria-label="{{ importance.label }} · {{ grade.label }}"{% if grade.checked %} checked{% endif %}></label></td>{% endfor %}</tr>{% endfor %}
-</tbody></table></div>
-<div class="analysis-year-filter"><label>{{ t.quality_analysis.year_from }} <input type="number" min="2009" max="{{ quality_analysis.matrix.last_year }}" value="2009" data-matrix-from required></label><label>{{ t.quality_analysis.year_to }} <input type="number" min="2009" max="{{ quality_analysis.matrix.last_year }}" value="{{ quality_analysis.matrix.last_year }}" data-matrix-to required></label><label><input type="checkbox" data-matrix-unknown checked> {{ t.quality_analysis.unknown_time }}</label></div>
+<div class="table-scroll" tabindex="0" role="region" aria-label="{{ t.quality_analysis.grades }}">
+  <table class="analysis-matrix" data-no-pagination>
+    <colgroup span="1"></colgroup>
+    {% for group in quality_analysis.grade_groups %}<colgroup span="{{ group.grades | length }}"></colgroup>{% endfor %}
+    <thead>
+      <tr>
+        <th scope="col" rowspan="2">{{ checkbox(attrs={'data-matrix-all': '', 'aria-label': t.quality_analysis.select_all}) }}</th>
+        {% for group in quality_analysis.grade_groups %}
+        <th scope="colgroup" colspan="{{ group.grades | length }}">{{ checkbox(group.label, {'data-matrix-group': group.value}, group.grades | rejectattr('checked') | list | length == 0) }}</th>
+        {% endfor %}
+      </tr>
+      <tr>
+        {% set kind_labels = {'article': t.quality_analysis.matrix_article, 'list': t.quality_analysis.matrix_list, 'unassessed': '-'} %}
+        {% for group in quality_analysis.grade_groups %}{% for grade in group.grades %}
+        <th scope="col">{{ checkbox(kind_labels[grade.kind], {'data-matrix-grade': grade.value, 'aria-label': grade.label}, grade.checked) }}</th>
+        {% endfor %}{% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for importance in quality_analysis.matrix.importance %}
+      <tr>
+        <th scope="row">{{ checkbox(importance.label, {'data-matrix-importance': importance.value}) }}</th>
+        {% for group in quality_analysis.grade_groups %}{% for grade in group.grades %}
+        <td>{{ checkbox(attrs={'data-matrix-cell': '', 'data-grade': grade.value, 'data-grade-group': group.value, 'data-importance': importance.value, 'aria-label': importance.label ~ ' · ' ~ grade.label}, checked=grade.checked) }}</td>
+        {% endfor %}{% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="analysis-year-filter">
+  <label>{{ t.quality_analysis.year_from }} <input class="cdx-text-input__input" type="number" min="2009" max="{{ quality_analysis.matrix.last_year }}" value="2009" data-matrix-from required></label>
+  <label>{{ t.quality_analysis.year_to }} <input class="cdx-text-input__input" type="number" min="2009" max="{{ quality_analysis.matrix.last_year }}" value="{{ quality_analysis.matrix.last_year }}" data-matrix-to required></label>
+  {{ checkbox(t.quality_analysis.unknown_time, {'data-matrix-unknown': ''}, true) }}
+</div>
+{{ listing_authors_control() }}
 <div class="analysis-filter-actions">
-<button type="submit" class="ui-button ui-button--primary" data-matrix-apply hidden disabled>{{ t.quality_analysis.apply_filters }}</button>
+<button type="submit" class="cdx-button cdx-button--action-progressive cdx-button--weight-primary" data-matrix-apply hidden disabled>{{ t.quality_analysis.apply_filters }}</button>
 <p class="context" role="status" data-matrix-status data-pending="{{ t.quality_analysis.filters_pending }}" data-working="{{ t.quality_analysis.filters_working }}" data-applied="{{ t.quality_analysis.filters_applied }}" data-failed="{{ t.quality_analysis.filters_failed }}" data-year-order="{{ t.quality_analysis.filters_year_order }}"><span class="quality-detail-loading" data-matrix-spinner hidden aria-hidden="true"></span><span data-matrix-message></span></p>
 </div>
 </form>
+{% else %}
+{{ listing_authors_control() }}
 {% endif %}
-<form method="get" action="/quality-analysis/" data-authorship-basis>
-{% if quality_analysis.all_grades %}<input type="hidden" name="all_grades" value="1">{% endif %}
-<input type="hidden" name="lang" value="{{ quality_analysis.locale }}">
-<label><input type="checkbox" name="listing_authors" value="1"{% if quality_analysis.listing_authors %} checked{% endif %}> {{ t.quality_analysis.use_listing_authors }}</label><noscript><button type="submit">{{ t.quality_analysis.apply }}</button></noscript>
-</form>
 <div data-quality-results>
 <section id="analysis-overview" aria-labelledby="analysis-overview-heading">
 <h2 id="analysis-overview-heading">{{ t.quality_analysis.overview }}</h2>
@@ -58,13 +106,45 @@
 {% if quality_analysis.available %}
 <div class="analysis-directory" data-quality-analysis data-sort-caption="{{ t.quality_authorship.sort_caption }}" data-result-count="{{ t.quality_analysis.result_count }}" data-page-status="{{ t.reports.page_status }}" data-empty="{{ t.quality_analysis.no_matches }}">
 <div class="analysis-filters" data-analysis-controls hidden>
-<label>{{ t.quality_analysis.search }}<input type="search" data-analysis-search autocomplete="off" maxlength="200"></label>
-<label><input type="checkbox" data-analysis-regex> {{ t.quality_analysis.regex }}</label>
-<label>{{ t.quality_analysis.author_filter }}<input type="search" data-analysis-author autocomplete="off" maxlength="200" list="analysis-author-names"><datalist id="analysis-author-names"></datalist></label><label>{{ t.quality_analysis.author_role }}<select data-analysis-author-role><option value="main">{{ t.quality_analysis.main_contributors }}</option><option value="significant">{{ t.quality_analysis.significant_contributors }}</option></select></label>
-<label>{{ t.quality_authorship.grade }}<select data-analysis-grade-filter><option value="">{{ t.quality_analysis.all_grades }}</option>{% for grade in quality_analysis.grade_options %}<option value="{{ grade.value }}">{{ grade.label }}</option>{% endfor %}</select></label>
-<label>{{ t.quality_analysis.importance }}<select data-analysis-importance-filter><option value="">{{ t.quality_analysis.all_importance }}</option>{% for importance in quality_analysis.importance_options %}<option value="{{ importance.value }}">{{ importance.label }}</option>{% endfor %}</select></label>
-
-<button type="button" class="ui-button" data-analysis-reset>{{ t.quality_analysis.reset }}</button>
+  <div class="analysis-filter-row">
+    <label class="analysis-filter-field analysis-filter-search">
+      <span class="analysis-filter-title">{{ t.quality_analysis.search }}</span>
+      <span class="cdx-text-input"><input class="cdx-text-input__input" type="search" data-analysis-search autocomplete="off" maxlength="200"></span>
+    </label>
+    {{ checkbox(t.quality_analysis.regex, {'data-analysis-regex': ''}) }}
+  </div>
+  <div class="analysis-filter-row">
+    <label class="analysis-filter-field analysis-filter-search">
+      <span class="analysis-filter-title">{{ t.quality_analysis.author_filter }}</span>
+      <span class="cdx-text-input"><input class="cdx-text-input__input" type="search" data-analysis-author autocomplete="off" maxlength="200" list="analysis-author-names"></span>
+    </label>
+    <datalist id="analysis-author-names"></datalist>
+    <label class="analysis-filter-field">
+      <span>{{ t.quality_analysis.author_role }}</span>
+      <select class="cdx-select" data-analysis-author-role>
+        <option value="main">{{ t.quality_analysis.main_contributors }}</option>
+        <option value="significant">{{ t.quality_analysis.significant_contributors }}</option>
+      </select>
+    </label>
+  </div>
+  <div class="analysis-filter-row" role="group" aria-labelledby="analysis-rating-label">
+    <span class="analysis-filter-title" id="analysis-rating-label">{{ t.quality_analysis.rating }}</span>
+    <label class="analysis-filter-field">
+      <span>{{ t.quality_authorship.grade }}</span>
+      <select class="cdx-select" data-analysis-grade-filter>
+        <option value="">{{ t.quality_analysis.all_grades }}</option>
+        {% for grade in quality_analysis.grade_options %}<option value="{{ grade.value }}">{{ grade.label }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="analysis-filter-field">
+      <span>{{ t.quality_analysis.importance }}</span>
+      <select class="cdx-select" data-analysis-importance-filter>
+        <option value="">{{ t.quality_analysis.all_importance }}</option>
+        {% for importance in quality_analysis.importance_options %}<option value="{{ importance.value }}">{{ importance.label }}</option>{% endfor %}
+      </select>
+    </label>
+    <button type="button" class="cdx-button cdx-button--weight-quiet" data-analysis-reset>{{ t.quality_analysis.reset }}</button>
+  </div>
 </div><p role="status" aria-live="polite" data-analysis-result-count></p>
 <div class="ui-table"><div class="ui-table__table-wrapper table-scroll" tabindex="0" role="region" aria-label="{{ t.quality_analysis.articles }}"><table class="ui-table__table quality-data-table quality-article-directory"><caption class="visually-hidden">{{ t.quality_analysis.articles }}</caption><colgroup><col class="quality-column-ordinal"><col class="quality-column-title"><col class="quality-column-grade"><col class="quality-column-importance"><col class="quality-column-listed"><col class="quality-column-authors"><col class="quality-column-prose"><col class="quality-column-size"></colgroup><thead><tr><th scope="col">#</th><th scope="col">{{ t.quality_authorship.article }}</th><th scope="col" data-sort-type="number">{{ t.quality_authorship.grade }}</th><th scope="col" data-sort-type="number">{{ t.quality_analysis.importance }}</th><th scope="col">{{ t.quality_authorship.listed }}</th><th scope="col">{{ t.quality_analysis.contributors }}</th><th scope="col" data-sort-type="number">{{ t.quality_analysis.prose }}</th><th scope="col" data-sort-type="number">{{ t.quality_analysis.source_size }}</th></tr></thead><tbody>
 {% for article in quality_analysis.articles %}<tr data-analysis-row data-page-id="{{ article.page_id }}" data-coverage-authorship="{{ 1 if article.authorship.available else 0 }}" data-main-authors='{{ article.main_authors | tojson }}' data-main-author-labels='{{ article.main_author_labels | tojson }}' data-significant-authors='{{ article.significant_authors | tojson }}'{% if quality_analysis.matrix and not article.default_selected %} hidden data-cohort="0"{% endif %} data-grade="{{ article.grade }}" data-importance="{{ article.importance }}" data-title="{{ article.title }}" data-year="{{ article.listed_date[:4] if article.listed_date else '' }}" data-measured="{{ 1 if article.prose_characters is not none else 0 }}">
@@ -77,7 +157,7 @@
 <td data-sort="{{ article.prose_characters if article.prose_characters is not none else '' }}" class="analysis-number">{{ article.characters_label }}{% if article.prose_characters is not none %}{% if quality_analysis.locale == "en" %} {% endif %}<small>{{ t.quality_analysis.words }}</small>{% endif %}</td>
 <td data-sort="{{ article.source_bytes if article.source_bytes is not none else '' }}" class="analysis-number">{{ article.source_label }}{% if article.source_bytes is not none %} <small>kB</small>{% endif %}</td>
 </tr>{% endfor %}</tbody></table></div></div>
-<p data-analysis-regex-error role="status" hidden>{{ t.quality_analysis.regex_error }}</p><p data-analysis-no-matches hidden>{{ t.quality_analysis.no_matches }}</p><nav class="ui-table-pager" aria-label="{{ t.quality_analysis.articles }}" data-analysis-pager hidden><label class="ui-table-pager__start">{{ t.reports.page_size }}<select data-analysis-size><option value="20">20</option><option value="50">50</option><option value="100">100</option><option value="all">{{ t.quality_analysis.all_rows }}</option></select></label><span class="ui-table-pager__center" data-analysis-page-status></span><div class="ui-table-pager__end"><button type="button" class="ui-button" data-analysis-first>{{ t.reports.first }}</button><button type="button" class="ui-button" data-analysis-prev>{{ t.backlog.previous }}</button><button type="button" class="ui-button" data-analysis-next>{{ t.backlog.next }}</button><button type="button" class="ui-button" data-analysis-last>{{ t.reports.last }}</button></div></nav>
+<p data-analysis-regex-error role="status" hidden>{{ t.quality_analysis.regex_error }}</p><p data-analysis-no-matches hidden>{{ t.quality_analysis.no_matches }}</p><nav class="ui-table-pager" aria-label="{{ t.quality_analysis.articles }}" data-analysis-pager hidden><label class="ui-table-pager__start">{{ t.reports.page_size }}<select data-analysis-size><option value="20">20</option><option value="50">50</option><option value="100">100</option>{% if not quality_analysis.directory_url %}<option value="all">{{ t.quality_analysis.all_rows }}</option>{% endif %}</select></label><span class="ui-table-pager__center" data-analysis-page-status></span><div class="ui-table-pager__end"><button type="button" class="ui-button" data-analysis-first>{{ t.reports.first }}</button><button type="button" class="ui-button" data-analysis-prev>{{ t.backlog.previous }}</button><button type="button" class="ui-button" data-analysis-next>{{ t.backlog.next }}</button><button type="button" class="ui-button" data-analysis-last>{{ t.reports.last }}</button></div></nav>
 </div>
 {% call popup("analysis-chart-articles", t.quality_analysis.articles, "#analysis-overview") %}
 <p data-chart-article-count data-label="{{ t.quality_analysis.chart_article_count }}"></p>

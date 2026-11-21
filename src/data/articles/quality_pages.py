@@ -20,7 +20,7 @@ from shared.support.files import atomic_json, encode_json, file_identity
 
 MAX_BYTES = 16 * 1024 * 1024
 _RESOURCE_NAME = re.compile(
-    r"(?:catalog-[0-9a-f]{64}\.json|"
+    r"(?:(?:catalog|directory)-[0-9a-f]{64}\.json|"
     r"author-quality-author-[1-9][0-9]*-[0-9a-f]{64}\.html)",
 )
 

@@ -24,17 +24,18 @@ native view is available with `render=html`, and browsers with scripting
 disabled follow the fallback link automatically.
 
 Use Python 3.15 with `uv sync --locked`. With Node.js 24 or later, run `npm ci`
-and `npm run build:web` after editing Vue components. The source uploader
-includes the self-hosted bundle in `public_html/`, where it shares the source
-inventory and content hashes with the templates and other assets. Toolforge
-serves the checked-in bundle with Python. Run `npm run check:web` to verify the
-bundle and `node --test tests/toolforge/test_*.cjs` to exercise browser behavior.
+and `npm run build:web` after editing Vue components or Codex dependencies.
+The source uploader includes the self-hosted bundle and Codex stylesheet in
+`public_html/`. Toolforge serves both with Python. Run `npm run check:web` to
+verify the assets and `node --test tests/toolforge/test_*.cjs` to exercise
+browser behavior.
 
 ## Native controls and DOM ownership
 
 Vue views and fallback templates use semantic cards, tables, GET forms,
-disclosures and native `dialog` elements. Local CSS owns appearance, responsive
-wrapping and scrolling.
+disclosures and native `dialog` elements. Shared styles load Wikimedia Codex
+design tokens and CSS-only components. Local CSS handles responsive wrapping
+and scrolling.
 Preserve focus visibility, labels, contrast, keyboard access and forced-color
 support. Use platform fonts without external requests. Retained icon artwork
 keeps its original source and license attribution.

@@ -113,8 +113,8 @@ def quartiles(
     """Derive cohort quartiles, mean and extrema from saved histograms.
 
     Returns:
-        P25, P75, weighted mean and observed minimum/maximum for each
-        grade and importance group.
+        P25, P50, P75, weighted mean and observed extrema for each grade
+        and importance group.
         Missing histograms produce no percentile observations.
     """
     if not saved:
@@ -162,6 +162,7 @@ def quartiles(
                     / pl.col("count").sum()
                 ).alias("mean"),
                 _weighted_quantile(0.25).alias("p25"),
+                _weighted_quantile(0.5).alias("p50"),
                 _weighted_quantile(0.75).alias("p75"),
             )
         )

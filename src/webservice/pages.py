@@ -316,6 +316,18 @@ _MAINTENANCE_ICONS = {
     "expert": "ambox-important.svg",
 }
 _CONSISTENCY_HISTORY_PREVIEW = 10
+_DIRECTORY_ARTICLE_FIELDS = {
+    "authorship",
+    "grade",
+    "importance",
+    "listed_date",
+    "listed_oldid",
+    "listed_review_link",
+    "page_id",
+    "prose_characters",
+    "source_bytes",
+    "title",
+}
 
 
 @lru_cache(maxsize=64)
@@ -382,8 +394,15 @@ def _render_browser(name: str, context: Record, fallback: str) -> str:
         context = {
             **context,
             "quality_analysis": {
-                **context["quality_analysis"],
-                "charts": {},
+                key: value
+                for key, value in context["quality_analysis"].items()
+                if key
+                not in {
+                    "charts",
+                    "lengths",
+                    "grade_lengths",
+                    "importance_lengths",
+                }
             },
         }
     return browser.render_document(
@@ -1510,10 +1529,25 @@ def render_quality_preset(  # ruff: ignore[too-many-arguments]
     Returns:
         Native HTML, Vue bootstrap HTML, and digest-addressed resources.
     """
-    context = _quality_analysis_view(data, status, config, locale, None)
+    context = _quality_analysis_view(
+        data,
+        status,
+        config,
+        locale,
+        None,
+        paged=True,
+    )
     context["navigation"] = navigation
     resources: dict[str, str] = {}
-    _quality_resources(context, resources, resource_prefix)
+    analysis = data.get("analysis", data)
+    _quality_resources(
+        context,
+        resources,
+        resource_prefix,
+        directory=analysis["selection"]["articles"]
+        if analysis.get("selection")
+        else None,
+    )
     name = "quality_analysis.html"
     return (
         _render(name, context),
@@ -1522,12 +1556,14 @@ def render_quality_preset(  # ruff: ignore[too-many-arguments]
     )
 
 
-def _quality_analysis_view(
+def _quality_analysis_view(  # ruff: ignore[too-many-arguments]
     data: Record,
     status: Record | None,
     config: Record | None,
     locale: str,
     now: dt.datetime | None,
+    *,
+    paged: bool = False,
 ) -> Record:
     """Prepare one localized statistics view and its static charts.
 
@@ -1561,7 +1597,9 @@ def _quality_analysis_view(
         analysis.get("articles", []),
         authorship.get("authors", []),
     )
-    context.update(quality_analysis_context(analysis, page.interface))
+    context.update(
+        quality_analysis_context(analysis, page.interface, paged=paged),
+    )
     chart_rows = (
         defaults["articles"] if selection else analysis.get("articles", [])
     )
@@ -1598,28 +1636,105 @@ def _quality_resources(
     context: dict,
     resources: dict[str, str],
     prefix: str,
+    *,
+    directory: list[dict] | None = None,
 ) -> None:
     """Separate the optional catalog and author details from a page."""
     analysis = context["quality_analysis"]
-    matrix = analysis.get("matrix")
-    selected_ids = (
-        set(analysis["selected_page_ids"])
-        if "selected_page_ids" in analysis
-        else None
-    )
-    if matrix:
-        content = json.dumps(
-            matrix,
-            ensure_ascii=False,
-            separators=(",", ":"),
-            sort_keys=True,
+    matrix = analysis["matrix"]
+    selected_ids = analysis.get("selected_page_ids")
+    if directory is not None:
+        membership = _quality_author_resources(
+            context,
+            resources,
+            prefix,
+            selected_ids,
+            directory,
         )
-        name = f"catalog-{sha256(content.encode()).hexdigest()}.json"
-        resources[name] = content
-        analysis["metadata_url"] = prefix + name
+        saved = {
+            "articles": [
+                {
+                    key: value
+                    for key, value in article.items()
+                    if key in _DIRECTORY_ARTICLE_FIELDS
+                    or key.startswith("authorship_")
+                }
+                for article in directory
+            ],
+            "authors": membership,
+            "last_year": matrix["last_year"],
+            "grades": [grade["value"] for grade in matrix["grades"]],
+            "importance": [level["value"] for level in matrix["importance"]],
+            "cells": matrix["cells"],
+            "comparison": matrix["assessment_comparison"],
+        }
+        analysis["directory_url"] = prefix + _quality_resource_name(
+            resources,
+            "directory",
+            saved,
+        )
+        matrix = {
+            key: matrix[key]
+            for key in (
+                "grades",
+                "importance",
+                "labels",
+                "last_year",
+                "length_scale_maximum",
+            )
+        }
+        matrix.update(cells=[], total=len(selected_ids or []))
+        analysis.pop("selected_page_ids", None)
+        analysis.pop("assessment_comparison", None)
+    else:
+        _quality_author_resources(context, resources, prefix, selected_ids)
+    if matrix:
+        analysis["metadata_url"] = prefix + _quality_resource_name(
+            resources,
+            "catalog",
+            matrix,
+        )
         analysis["matrix"] = {
             key: matrix[key] for key in ("grades", "importance", "last_year")
         }
+
+
+def _quality_resource_name(resources: dict, kind: str, value: dict) -> str:
+    """Store a saved JSON resource and return its digest-addressed name.
+
+    Returns:
+        An immutable name for the encoded value.
+    """
+    content = json.dumps(
+        value,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    name = f"{kind}-{sha256(content.encode()).hexdigest()}.json"
+    resources[name] = content
+    return name
+
+
+def _quality_author_resources(
+    context: dict,
+    resources: dict,
+    prefix: str,
+    selected_ids: list[int] | None,
+    directory: list[dict] | None = None,
+) -> dict:
+    """Prepare standalone contributor pages using their own membership.
+
+    Returns:
+        Private contributor memberships for matrix-wide author counts.
+    """
+    analysis = context["quality_analysis"]
+    defaults = set(selected_ids) if selected_ids is not None else None
+    articles = (
+        {article["page_id"]: article for article in directory}
+        if directory is not None
+        else None
+    )
     return_url = local_url(
         "/quality-analysis/",
         lang=analysis["locale"],
@@ -1627,17 +1742,31 @@ def _quality_resources(
         **({"listing_authors": "1"} if analysis["listing_authors"] else {}),
     )
     number = 0
+    membership = {}
     for author in context["quality_authorship"]["authors"]:
-        author["page_ids"] = [
+        page_ids = [
             article["page_id"]
             for article in author["articles"]
             if article.get("page_id") is not None
         ]
-        if selected_ids is not None:
+        if articles is None:
+            author["page_ids"] = page_ids
+        else:
+            membership[author["name"]] = page_ids
+            for article in author["articles"]:
+                source = articles.get(article.get("page_id"))
+                if source is not None:
+                    article["matrix_importance"] = (
+                        source.get("importance") or "Unknown"
+                    )
+                    article["matrix_year"] = (source.get("listed_date") or "")[
+                        :4
+                    ]
+        if defaults is not None:
             visible = 0
             for article in author["articles"]:
                 article["default_selected"] = (
-                    article.get("page_id") in selected_ids
+                    article.get("page_id") in defaults
                 )
                 visible += int(article["default_selected"])
                 article["display_number"] = visible
@@ -1662,6 +1791,9 @@ def _quality_resources(
         resources[name] = content
         author["detail_url"] = prefix + name + "#" + author["popup_id"]
         author.pop("articles")
+        author.pop("quality_articles")
+        author.pop("featured_articles")
+    return membership
 
 
 def render_quality_authorship(  # ruff: ignore[too-many-arguments]

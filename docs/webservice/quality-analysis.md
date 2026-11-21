@@ -6,8 +6,9 @@ games quality cohort and its contributor statistics. Former
 promotions and departed project members do not add author credits.
 
 A leading quality-by-importance checkbox matrix selects any current article
-class, from featured through unassessed. The default includes FA, FL, A, AL,
-GA and Bplus. The inclusive year range defaults to 2009 through the current
+class, from featured through unassessed. Grade headers group their article
+and list columns, with one column for unassessed pages. The default includes
+FA, FL, A, AL, GA and Bplus. The inclusive year range defaults to 2009 through the current
 year; unknown dates are included by default through a separate checkbox.
 Quality distribution rows show article grades first, list grades next and
 unassessed articles last. Matrix labels contain no counts. Every chart and both directories use the
@@ -148,12 +149,12 @@ delay source dispatch or on-wiki reports.
 Bounded analysis and authorship passes refresh it after their checkpoints.
 Background presentation then renders twelve localized presets into
 `data/webservice/quality-page-*.json`. Each preset contains a small initial
-page, a separate article catalog and individual contributor detail pages.
-The browser draws the default figures from the prepared summaries while the
-catalog downloads once. Selecting **Apply filters** updates
-the figures and tables from the same confirmed cohort. The pies and annual
-stacked bars use stored counts, and the violin charts combine saved densities
-and exact length histograms. Focused figures accept arrow keys, plus/minus
+page, a server-side directory and individual contributor detail pages.
+The browser draws the default figures from the prepared summaries.
+Selecting **Apply filters** requests counts and plotted length summaries for
+the confirmed cohort. The pies and annual stacked bars use stored counts.
+Violin summaries use saved densities and exact length histograms.
+Focused figures accept arrow keys, plus/minus
 and Home for pan, zoom and reset. Figures link to paginated article lists.
 Script-free views use prepared Matplotlib figures and native tables.
 
@@ -179,19 +180,18 @@ locale, class preset and attribution basis.
 
 ## Browser pagination
 
-Only the initial twenty article rows are emitted as table markup. The overview,
-charts and these rows remain readable while the separate catalog loads after
-the initial rendering opportunity. Filters and complete-directory controls
-become available when that catalog is ready. A failed download preserves the
-initial content and offers a retry. The catalog is decoded once and shared by
-the matrix, charts and article directory.
+The initial document includes twenty article rows and the figure summaries.
+Search, sorting and paging read the full confirmed cohort on the server and
+encode only the requested rows. Page sizes are 20, 50 and 100. Chart and
+coverage dialogs request their own pages when opened. The browser retains
+up to three recently requested pages for the current document.
 
 Contributor summaries link to separately prepared detail pages. JavaScript
 opens the selected detail in a dialog and initializes only that table. Native
 links still open a readable detail page without JavaScript. Detail rows follow
 the current matrix selection when opened in the enhanced page.
 
-Catalog and detail URLs include their content digest and preset identity.
+Metadata, directory and detail URLs include their content digest and preset identity.
 Only matching saved resources receive immutable browser caching and ETags;
 the main HTML continues to use `no-store`. Each preset is committed atomically
 with its resources so a request never substitutes a different generation for
@@ -199,8 +199,7 @@ the requested digest. Older HTML-only presets remain readable until the next
 background preparation.
 
 The browser builds fresh article rows for the visible page after every filter,
-sort or page change. It does not cache row elements or pre-render adjacent
-pages. Initial and subsequently displayed rows retain the same links,
+sort or page change. Initial and subsequently displayed rows retain the same links,
 assessment colors, number formats and attribution controls. Filtering,
 sorting and chart dialogs use the saved catalog without contacting upstream
 APIs or replicas. Chart dialogs likewise materialize only their visible page

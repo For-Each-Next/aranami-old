@@ -11,6 +11,7 @@ from unittest.mock import patch
 from starlette.testclient import TestClient
 
 from data.runtime.status import WEB_STATUS_NAME, read_status, status_path
+from shared.deployment import project_version
 from webservice.server import create_app
 
 
@@ -37,7 +38,10 @@ class WebHeartbeatTests(unittest.IsolatedAsyncioTestCase):
                     hub_status = status_path(runtime)
                     assert not hub_status.exists()
                     assert hub_status.with_name(WEB_STATUS_NAME).is_file()
-                    assert first["resources"]["aranami_version"] == "0.9.21"
+                    assert (
+                        first["resources"]["aranami_version"]
+                        == project_version()
+                    )
                     assert first["schedules"] == {
                         "routines": {},
                         "collections": {},
