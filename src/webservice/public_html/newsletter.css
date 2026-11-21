@@ -111,6 +111,10 @@
     aspect-ratio: 76 / 43;
 }
 
+.newsletter-charts img[data-newsletter-chart-src] {
+    visibility: hidden;
+}
+
 .newsletter-charts figcaption {
     padding-block-start: .25rem;
     text-align: center;

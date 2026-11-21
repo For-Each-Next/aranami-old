@@ -685,6 +685,34 @@ async function checkInterface(assetRoot) {
             })()`);
             assert.ok(controls.heights.length >= 4 && controls.heights.every(control => Math.abs(control.height - controls.expected) < 1), `newsletter controls must share the standard height: ${JSON.stringify(controls)}`);
         };
+        const checkNewsletterChart = async () => {
+            const preview = await evaluate(`(() => {
+                const image = document.querySelector('.newsletter-charts img');
+                return {
+                    below: image.getBoundingClientRect().top >= innerHeight,
+                    pending: image.dataset.newsletterChartSrc,
+                    src: image.getAttribute('src'),
+                    sourceLink: image.parentElement.querySelector('figcaption a:last-child').getAttribute('href'),
+                };
+            })()`);
+            assert.equal(preview.sourceLink, "/newsletter/charts/fixture.py", "chart captions must include the source link");
+            if (preview.below) {
+                assert.equal(preview.pending, "/newsletter/charts/fixture.png", "offscreen chart preview must stay deferred");
+                assert.equal(preview.src, null, "offscreen chart preview must have no image request");
+            }
+            const loaded = await evaluate(`new Promise(resolve => {
+                const image = document.querySelector('.newsletter-charts img');
+                if (image.complete && image.naturalWidth) return resolve(true);
+                const deadline = setTimeout(() => resolve(false), 3000);
+                image.addEventListener('load', () => {
+                    clearTimeout(deadline);
+                    resolve(true);
+                }, {once: true});
+                image.scrollIntoView({block: 'center'});
+            })`);
+            assert.equal(loaded, true, "the chart preview must load when scrolled into view");
+            await evaluate("scrollTo(0, 0)");
+        };
         const checkNewsletterKeyboardActions = async () => {
             await evaluate("document.querySelector('.newsletter-code').open = true; document.querySelector('[data-newsletter-wikitext]').focus()");
             await press("Tab", 9);
@@ -1321,6 +1349,7 @@ async function checkInterface(assetRoot) {
                     }
                 }
                 if (surface === "newsletter") {
+                    if ([320, 1440].includes(width)) await checkNewsletterChart();
                     await checkNewsletterControlHeights();
                     await checkNewsletterAccordion();
                     const calendar = await evaluate(`(() => {
@@ -2517,6 +2546,7 @@ async function checkInterface(assetRoot) {
                     assert.ok(articlePage, 'native detail dismissal must return to the article page');
                 }
                 if (surface === "newsletter") {
+                    assert.equal(await evaluate("document.querySelector('.newsletter-charts img')?.getAttribute('src')"), "/newsletter/charts/fixture.png", "native chart previews must work without JavaScript");
                     await checkNewsletterControlHeights();
                     await checkNewsletterAccordion();
                     assert.equal(await evaluate("[...document.querySelectorAll('.newsletter-controls button[type=submit], .newsletter-date-controls button[type=submit]')].filter(button => button.getBoundingClientRect().height > 0).length"), 2, "issue and date forms need visible submit buttons without JavaScript");

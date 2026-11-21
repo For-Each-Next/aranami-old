@@ -40,7 +40,11 @@ from shared.support.assessment_encoding import (
     restore_assessment_schema,
 )
 from shared.support.dataset_activity import dataset_activity
-from shared.support.files import read_json_object, staging_directory
+from shared.support.files import (
+    file_identity,
+    read_json_object,
+    staging_directory,
+)
 from shared.support.parquet import parquet_metadata, validate_parquet_metadata
 from shared.support.parquet_tables import (
     MAX_BYTES as MAX_TABLE_BYTES,
@@ -570,6 +574,35 @@ class ReportStore:
             Whether this report has selection metadata.
         """
         return self.selection_path(key).exists()
+
+    def current_identity(
+        self,
+        key: str,
+        *artifacts: str,
+    ) -> tuple[tuple[int, ...] | None, ...]:
+        """Identify the selected generation and named files by metadata.
+
+        Returns:
+            Selector, lock and artifact identities for cache checks.
+        """
+        selector = self.selection_path(key)
+        identity = file_identity(selector)
+        if identity is None:
+            return (None,)
+        directory = self.data_path(key)
+        if not self.daily:
+            generation = self._selection(key, directory)["latest"]
+            if generation is None:
+                return (identity,)
+            directory = self._generation_path(directory, str(generation))
+        return (
+            identity,
+            file_identity(self.lock_path(key)),
+            *(
+                file_identity(artifact_path(directory, name))
+                for name in artifacts
+            ),
+        )
 
     def lock_path(self, key: str) -> Path:
         """Locate an ASCII lock independently of retained legacy data.

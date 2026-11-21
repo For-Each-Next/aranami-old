@@ -186,6 +186,20 @@ def _store(runtime: Path | None, *, dry: bool) -> ReportStore:
     )
 
 
+def historical_identity(runtime: Path) -> tuple[tuple[int, ...] | None, ...]:
+    """Identify saved history without reading its tables.
+
+    Returns:
+        Filesystem identities for invalidating rendered annual issues.
+    """
+    return _store(runtime, dry=False).current_identity(
+        _KEY,
+        "manifest.json",
+        "figures.parquet",
+        "report.wikitext",
+    )
+
+
 def read_historical_data(
     runtime: Path | None = None,
     *,

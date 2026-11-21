@@ -178,6 +178,11 @@ class HistoricalNewsletterRequests(TestCase):
             assert response.headers["Content-Type"] == "image/png"
             assert response.content.startswith(b"\x89PNG\r\n\x1a\n")
         assert _UNKNOWN not in text
+        with patch(
+            "data.newsletter.historical.read_historical_data",
+            side_effect=AssertionError("warm HTML should reuse saved figures"),
+        ):
+            assert _UNKNOWN not in self._get()[1]
         saved = self.archive.read_feature(_ISSUE, _DAY)
         assert "dyk_series" not in saved["year_review"]
 

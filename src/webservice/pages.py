@@ -65,7 +65,11 @@ from webservice.quality_authorship import (
     quality_authorship_context,
 )
 from webservice.quality_charts import render_charts
-from webservice.status_view import report_context, status_context
+from webservice.status_view import (
+    report_context,
+    status_context,
+    uptime_context,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -2282,7 +2286,7 @@ def render_newsletter(  # ruff: ignore[too-many-arguments]
             and optional daily draft history.
         locale: Negotiated interface language; wikitext stays Chinese.
         status: Saved monitor observations for the shared footer.
-        config: Current application version and routine definitions.
+        config: Current application version for the footer.
         now: Optional server clock for observed uptime.
         navigation: Request route and language choices, when available.
 
@@ -2291,12 +2295,16 @@ def render_newsletter(  # ruff: ignore[too-many-arguments]
     """
     page = _Page(locale)
     context = page.context(page.text("newsletter.heading"), live=True)
+    now = now or dt.datetime.now(dt.UTC)
+    uptime = uptime_context(
+        page.interface,
+        status or {},
+        (config or {}).get("version") or page.text("ops.unavailable"),
+        now,
+    )
     context.update(
-        page.live_status(
-            status or {},
-            config or {},
-            now or dt.datetime.now(dt.UTC),
-        ),
+        footer=uptime["footer"],
+        clock=page.clock({"expires_at": uptime["clock_expires"]}, now),
     )
     labels = {
         "主頁": "main",

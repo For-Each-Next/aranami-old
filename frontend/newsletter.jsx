@@ -1,4 +1,5 @@
 /** Render draft selections and keep wikitext available as literal text. */
+import { Fragment } from "@vue/runtime-dom";
 import { jsx, iconHref, attribute, display, hasContent } from "./rendering.js";
 import { NewsletterDraft, Time } from "./shared.jsx";
 
@@ -197,7 +198,7 @@ export function Newsletter(context) {
                                   <div class="newsletter-charts">
                                       {draft.charts.map((chart) => (
                                           <figure key={chart.filename} lang={attribute(chart.language)}>
-                                              <img src={attribute(chart.url)} alt={attribute(chart.title)} loading="lazy" />
+                                              <img data-newsletter-chart-src={attribute(chart.url)} alt={attribute(chart.title)} loading="lazy" />
                                               <figcaption>
                                                   <a href={attribute(chart.url)} download={attribute(chart.filename)}>
                                                       {display(chart.title)} · {display(chart.label)}

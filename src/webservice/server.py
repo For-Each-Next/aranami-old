@@ -99,7 +99,7 @@ lazy from data.newsletter.archive import (
     NewsletterDraftArchive,
 )
 lazy from data.newsletter.historical import (
-    read_historical_data,
+    historical_identity,
     with_canonical_dyk_series,
 )
 lazy from data.newsletter.schema import (
@@ -1058,21 +1058,11 @@ class _PublicViews:
             feature_dates = (
                 tuple(store.feature_dates(issue)) if issue.month == 1 else ()
             )
-            figures = (
-                read_historical_data(self.runtime)
-                if issue.month == 1
-                else None
+            figure_identity = (
+                historical_identity(self.runtime) if issue.month == 1 else None
             )
         except OSError, ValueError:
             return None
-        figure_identity = (
-            (
-                figures.manifest["generation"],
-                figures.manifest["tables"]["figures"]["sha256"],
-            )
-            if figures is not None
-            else None
-        )
         try:
             info = values_path(
                 self.runtime / OBSERVATIONS_PATH / "current.json",

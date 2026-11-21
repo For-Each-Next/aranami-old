@@ -752,34 +752,23 @@ def _toolforge_rows(
     return rows
 
 
-def status_context(
+def uptime_context(
     interface: Interface,
     status: Record,
     version: str,
     now: dt.datetime,
-    *,
-    history_limit: int | None = None,
 ) -> Record:
-    """Present a validated status envelope with explicit missing facts.
-
-    Args:
-        interface: Selected locale and authored messages.
-        status: Version-one saved observations read by the data layer.
-        version: Running web source version.
-        now: UTC rendering instant.
-        history_limit: Optional bound on localized execution details;
-            zero omits them and none preserves the complete direct view.
+    """Present shared footer uptime from the web heartbeat.
 
     Returns:
-        Independent runtime domains and shared footer contexts.
+        The localized footer and the expiry of its service observation.
     """
-    services = _services(interface, status)
-    web = status.get("services", {}).get("web", {})
-    expires = _service_expiry(web)
-    started = web.get("started_at") if expires else None
+    service = status.get("services", {}).get("web", {})
+    expires = _service_expiry(service)
+    started = service.get("started_at") if expires else None
     instant = timestamp(started)
-    footer_unknown = interface.text("footer.uptime_unknown", version=version)
-    footer_label = (
+    unknown = interface.text("footer.uptime_unknown", version=version)
+    label = (
         interface.text(
             "footer.uptime",
             version=version,
@@ -791,22 +780,12 @@ def status_context(
             since=utc_time(started),
         )
         if instant
-        else footer_unknown
+        else unknown
     )
     return {
-        **history_context(interface, status, now, limit=history_limit),
-        "status_availability": _state(
-            interface,
-            "availability",
-            status.get("availability", "missing"),
-        ),
-        "status_available": status.get("availability") == "available",
-        "services": services,
-        "datasets": _datasets(interface, status),
-        "publications": _publications(interface, status),
         "clock_expires": expires,
         "footer": {
-            "label": footer_label,
+            "label": label,
             "started": started,
             "template": interface.text(
                 "footer.uptime",
@@ -830,8 +809,45 @@ def status_context(
             )
             if started
             else None,
-            "unknown": footer_unknown,
+            "unknown": unknown,
         },
+    }
+
+
+def status_context(
+    interface: Interface,
+    status: Record,
+    version: str,
+    now: dt.datetime,
+    *,
+    history_limit: int | None = None,
+) -> Record:
+    """Present a validated status envelope with explicit missing facts.
+
+    Args:
+        interface: Selected locale and authored messages.
+        status: Version-one saved observations read by the data layer.
+        version: Running web source version.
+        now: UTC rendering instant.
+        history_limit: Optional bound on localized execution details;
+            zero omits them and none preserves the complete direct view.
+
+    Returns:
+        Independent runtime domains and shared footer contexts.
+    """
+    services = _services(interface, status)
+    return {
+        **history_context(interface, status, now, limit=history_limit),
+        "status_availability": _state(
+            interface,
+            "availability",
+            status.get("availability", "missing"),
+        ),
+        "status_available": status.get("availability") == "available",
+        "services": services,
+        "datasets": _datasets(interface, status),
+        "publications": _publications(interface, status),
+        **uptime_context(interface, status, version, now),
         "server": {
             "dataset_updates": dataset_updates_context(interface, status, now),
             "jobs": _toolforge_rows(interface, status, now),

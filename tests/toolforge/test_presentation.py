@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import copy
 import datetime as dt
+import json
 import re
 import sys
 import tempfile
@@ -488,8 +489,26 @@ def write_interface_fixtures(
         "pa_class": ["GA"],
         "pa_importance": ["Mid"],
     }).write_parquet(stored / "assessments-20260808.parquet")
-    chart_runtime = destination / ".quality-chart-runtime"
-    analysis = saved_analysis_fixture(now, runtime=chart_runtime)
+    analysis = saved_analysis_fixture(
+        now,
+        runtime=destination / ".quality-chart-runtime",
+    )
+    newsletter_charts = destination / "newsletter/charts"
+    newsletter_charts.mkdir(parents=True, exist_ok=True)
+    (newsletter_charts / "fixture.png").write_bytes(
+        (
+            resource_root("webservice")
+            / "public_html/assets/images/favicon.png"
+        ).read_bytes(),
+    )
+    newsletter_chart = {
+        "url": "/newsletter/charts/fixture.png",
+        "source_url": "/newsletter/charts/fixture.py",
+        "filename": "fixture.png",
+        "language": "zh-cn",
+        "label": "简体中文",
+        "title": "Annual chart preview",
+    }
     for locale in ("en", "zh-hans", "zh-hant"):
         directory = destination / locale
         directory.mkdir(parents=True, exist_ok=True)
@@ -603,6 +622,9 @@ def write_interface_fixtures(
                             "text": "\n{{模板|標題}}\r\n"
                             + "長條目名稱" * 100
                             + "\n</textarea><script>literal</script>\n",
+                            "charts": [newsletter_chart]
+                            if suffix == "/專題"
+                            else [],
                         }
                         for suffix in ("", "/特優內容", "/宣告", "/專題")
                     ],
@@ -2123,10 +2145,9 @@ class PresentationTests(unittest.TestCase):
                 r'<(?:link|script)\b[^>]*(?:href|src)="([^"]+)"',
                 output,
             )
-            assert "/styles.css" in {urlsplit(asset).path for asset in assets}
-            assert (
-                "/components.js" in {urlsplit(asset).path for asset in assets}
-            ) == (
+            paths = [urlsplit(asset).path for asset in assets]
+            assert paths.index("/codex.css") < paths.index("/styles.css")
+            assert ("/components.js" in paths) == (
                 'id="log-activity"' in output
                 or 'id="recent-events"' in output
                 or 'id="dataset-updates-previous"' in output
@@ -2139,21 +2160,14 @@ class PresentationTests(unittest.TestCase):
                 assert parse_qs(parsed.query) == {
                     "v": [sha256(source.read_bytes()).hexdigest()],
                 }
-        for output in (
-            render_maintenance(
-                consistency_snapshot(),
-                {"task": ["consistency_history"]},
-                "en",
-            ),
-            render_newsletter(
-                {"issue": "2027-01", "available": False, "pages": []},
-                "en",
-            ),
-        ):
-            assert (
-                output.count('<script type="module" src="/components.js?v=')
-                == 1
-            )
+        output = render_maintenance(
+            consistency_snapshot(),
+            {"task": ["consistency_history"]},
+            "en",
+        )
+        assert (
+            output.count('<script type="module" src="/components.js?v=') == 1
+        )
         assert not list(root.rglob("*.php"))
         assert set(root.rglob("*.js")) == {
             root / "public_html" / "app.js",
@@ -2181,6 +2195,39 @@ class PresentationTests(unittest.TestCase):
             ),
         }
         assert not list(root.rglob("*.mjs"))
+
+    @staticmethod
+    def test_newsletter_page_model_only_includes_footer_status() -> None:
+        """Keep full monitoring payloads off newsletter navigations."""
+        fixture = _fixtures()
+        status = fixture["status"]
+        status["services"]["web"] = {
+            **status["services"].pop("scheduler"),
+            "service_id": "web",
+        }
+        with browser_document("?render=html"):
+            output = render_newsletter(
+                {"issue": "2027-01", "available": False, "pages": []},
+                "en",
+                status=status,
+                config=fixture["config"],
+                now=dt.datetime(2026, 10, 18, 12, 0, 30, tzinfo=dt.UTC),
+            )
+        _, _, bootstrap = output.partition('id="aranami-page">')
+        encoded, _, _ = bootstrap.partition("</script>")
+        model = json.loads(encoded)
+        context = model["context"]
+        assert context["footer"]["started"]
+        assert context["clock"]["expires"]
+        assert (
+            not {"server", "routines", "datasets", "publications"}
+            & context.keys()
+        )
+        assert [urlsplit(url).path for url in model["scripts"]] == [
+            "/navigation.js",
+            "/newsletter.js",
+            "/live.js",
+        ]
 
 
 if __name__ == "__main__":

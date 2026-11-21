@@ -19,7 +19,7 @@ _PAGE_ASSETS = {
     "dataset": ("components.js",),
     "logs": ("components.js",),
     "maintenance": ("components.js",),
-    "newsletter": ("components.js", "newsletter.js", "newsletter.css"),
+    "newsletter": ("newsletter.js", "newsletter.css"),
     "quality_analysis": ("quality_analysis.js", "quality_analysis.css"),
     "quality_authorship": ("components.js",),
     "reports": ("components.js",),
@@ -82,7 +82,7 @@ def render_document(
     assets = _PAGE_ASSETS.get(name, ())
     styles = "".join(
         f'<link rel="stylesheet" href="{escape(asset_url(asset))}">'
-        for asset in ("styles.css", *assets)
+        for asset in ("codex.css", "styles.css", *assets)
         if asset.endswith(".css")
     )
     scripts = [

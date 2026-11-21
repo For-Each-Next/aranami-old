@@ -1,3 +1,30 @@
+let chartObserver;
+
+/** Load saved chart previews as they enter the viewport. */
+function initializeChartPreviews(root) {
+    chartObserver?.disconnect();
+    chartObserver = null;
+    const images = root.querySelectorAll("img[data-newsletter-chart-src]");
+    if (!images.length) return;
+
+    const load = (image) => {
+        image.src = image.dataset.newsletterChartSrc;
+        delete image.dataset.newsletterChartSrc;
+    };
+    if (typeof IntersectionObserver !== "function") {
+        images.forEach(load);
+        return;
+    }
+    chartObserver = new IntersectionObserver((entries, observer) => {
+        for (const { target, isIntersecting } of entries) {
+            if (!isIntersecting || !target.isConnected) continue;
+            load(target);
+            observer.unobserve(target);
+        }
+    });
+    for (const image of images) chartObserver.observe(image);
+}
+
 function sizeNewsletterText(source) {
     if (
         globalThis.CSS?.supports("field-sizing", "content") ||
@@ -15,6 +42,7 @@ function sizeNewsletterText(source) {
     );
 }
 function initializeNewsletterResult(root = document) {
+    initializeChartPreviews(root);
     for (const date of root.querySelectorAll("#newsletter-data-date")) {
         date.addEventListener("change", () => {
             if (date.value) date.form?.requestSubmit();
@@ -105,7 +133,6 @@ function initializeIssueForm() {
             }
             result.replaceWith(replacement);
             result = replacement;
-            globalThis.aranamiComponents?.enhance(result);
             issue.replaceChildren(...choices.options);
             issue.value = requestedIssue;
             for (const selector of [
