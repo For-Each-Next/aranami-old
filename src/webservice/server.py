@@ -90,6 +90,7 @@ from webservice.quality_chart_requests import (
     filtered_charts,
 )
 from webservice.quality_directory import DirectorySearchError, read_directory
+from webservice.redis_page_cache import RedisPageCache
 lazy from data.newsletter.archive import (
     DEFAULT_PATH as DRAFT_ARCHIVE_PATH,
     NewsletterDraftArchive,
@@ -726,7 +727,7 @@ class _PublicViews:
         self.assets = assets
         self.asset_cache = AssetCache()
         self.quality_resources = QualityResourceCache()
-        self.pages = PageCache()
+        self.pages = PageCache(RedisPageCache.from_environment(runtime))
         self._status_cache = StatusReadCache()
         self.chart_lock = BoundedSemaphore(1)
         self.directory_lock = BoundedSemaphore(1)
@@ -918,11 +919,17 @@ class _PublicViews:
                 all_grades=all_grades,
             )
             identity = quality_pages.identity(preset)
-            content = self.pages.get(key, identity)
+            content = self.pages.get(key, identity, shared=True)
             if content is None:
                 content = quality_pages.read(preset, browser=client)
-                if content is not None:
-                    self.pages.put(key, identity, content)
+                if (
+                    content is not None
+                    and quality_pages.identity(
+                        preset,
+                    )
+                    == identity
+                ):
+                    self.pages.put(key, identity, content, shared=True)
             if content is not None:
                 return _html(content, locale)
         except OSError, ValueError, PolarsError:
@@ -2231,6 +2238,7 @@ async def _website_lifecycle(app: DjangoWebsite) -> AsyncIterator[None]:
         with suppress(asyncio.CancelledError):
             await task
         await app.state.live_feed.close()
+        await asyncio.to_thread(app.state.page_cache.close)
         await observe("stopped")
         _LOGGER.info(
             "Aranami web application stopped.",

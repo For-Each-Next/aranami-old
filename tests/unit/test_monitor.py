@@ -196,7 +196,7 @@ class TestMonitor(TestCase):
         assert set(jobs) == set(expected)
         for name in expected:
             job = jobs[name]
-            assert job.func.__name__ == "_dispatch"
+            assert job.func is monitor.dispatch_scheduled_report
             assert job.args == (name,)
             assert job.kwargs == {"dry": False}
             assert job.max_instances == 1

@@ -24,6 +24,7 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from shared import deployment
+from shared.config import TASK_DEFINITIONS
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -330,9 +331,11 @@ class TestSourcePayload(TestCase):
             in self.payload["scripts/toolforge/run-hub.sh"].decode()
         )
         assert (
-            "--mem 4Gi"
-            in self.payload["scripts/toolforge/deploy-source.sh"].decode()
+            'exec "$runtime_python" -m runtime.toolforge_job "$@"'
+            in self.payload["scripts/toolforge/run-job.sh"].decode()
         )
+        assert "src/runtime/toolforge_job.py" in self.payload
+        assert "src/shared/toolforge_jobs.py" in self.payload
         assert not any(
             Path(name).suffix in {".php", ".mjs"} for name in self.payload
         )
@@ -368,7 +371,7 @@ class TestSourcePayload(TestCase):
             '--runtime "$tool_dir"'
             in self.payload["scripts/toolforge/run-web.sh"].decode()
         )
-        for name in ("run-hub.sh", "run-web.sh"):
+        for name in ("run-hub.sh", "run-job.sh", "run-web.sh"):
             assert (
                 '. "$tool_dir/app/scripts/toolforge/runtime-env.sh"'
                 in self.payload[f"scripts/toolforge/{name}"].decode()
@@ -718,8 +721,10 @@ class TestSourceImports(TestCase):
 
     @staticmethod
     def test_jobs_only_read_destinations_and_refresh_pexbot() -> None:
-        """Allow destination reads and intentional PexBot refreshes."""
-        for path in (_ROOT / "src/runtime/jobs").rglob("*.py"):
+        """Limit report modules to destination reads and PexBot."""
+        jobs = _ROOT / "src/runtime/jobs"
+        for name in ("__init__", "context", "dispatch", *TASK_DEFINITIONS):
+            path = jobs / f"{name}.py"
             tree = ast.parse(path.read_text(), filename=str(path))
             for node in ast.walk(tree):
                 for target in _import_targets(node):

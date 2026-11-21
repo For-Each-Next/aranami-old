@@ -7,6 +7,7 @@ from hashlib import sha256
 from typing import TYPE_CHECKING
 from urllib.parse import urlencode
 
+from data.runtime.dataset_updates import collection_schedules
 from shared.config import COLLECTION_DEFINITIONS, TASK_DEFINITIONS
 from shared.support.files import encode_json
 from webservice.job_history import source_description
@@ -259,13 +260,7 @@ def _schedule_items(
     Returns:
         Ordered summaries, including queued work and known destinations.
     """
-    scheduler = status.get("services", {}).get("scheduler", {})
-    if (
-        scheduler.get("freshness") != "current"
-        or scheduler.get("lifecycle") != "running"
-    ):
-        return []
-    schedules = scheduler.get("schedules", {}).get("collections", {})
+    schedules = collection_schedules(status)
     items = []
     for task, schedule in sorted(
         schedules.items(),
@@ -386,7 +381,8 @@ def dataset_updates_context(
             "state": "running"
             if active_runs
             else "planned"
-            if scheduler.get("freshness") == "current"
+            if status.get("toolforge_schedules")
+            or scheduler.get("freshness") == "current"
             else "unavailable",
         },
         "expires": min(expiries).isoformat() if expiries else None,

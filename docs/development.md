@@ -68,11 +68,11 @@ section, with UTC timestamps. Formal 1.0.0 publication is a separate decision.
 Daily schema/storage changes start in `data.project_data`; acquisition belongs
 to `tasks.project_data`, and source selection to `runtime.project_observations`.
 Keep the primary project capture ordinary at 00:00:00 UTC. Daily consumers,
-including assessment logs and newsletter facts, use the shared idle executor
-and read the committed Parquet snapshot. Independent reports can run concurrently
-after the daily newsletter barrier; article statistics have lower idle priority.
-Declare idle collection jobs through
-`CollectionDefinition.idle`; never block a worker while waiting for capture.
+including assessment logs and newsletter facts, read the committed Parquet
+snapshot. New jobs should declare workload semantics in `shared.config` and
+their Toolforge allocation in `shared.toolforge_jobs`. Scheduled reports and
+collectors use `runtime.toolforge_job` for leases and input readiness. The
+legacy hub uses the shared idle executor.
 Use explicit Polars schemas and native joins, aggregations and expressions.
 Eager source adapters remain eager; lazy scans
 are appropriate for saved files. Preserve null, observed zero and observed

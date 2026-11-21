@@ -163,12 +163,19 @@ def _report_schedule(
     interface: Interface,
     service: Record,
     identifier: str,
+    configured_at: str | None = None,
 ) -> Record:
-    """Describe a saved report schedule without inventing a next run.
+    """Describe observed scheduler times and configured launches.
 
     Returns:
         Next observed check or the reason that its time is unavailable.
     """
+    if configured_at:
+        return {
+            "time": observed_time(configured_at),
+            "label": interface.text("ops.schedule_configured"),
+            "expires": configured_at,
+        }
     schedule = (
         service
         .get("schedules", {})
@@ -446,7 +453,16 @@ def report_context(  # ruff: ignore[too-many-arguments] - Include the native tab
             ),
             "running": run is not None and run["outcome"] == "running",
             "deferred": run is not None and run["outcome"] == "deferred",
-            "schedule": _report_schedule(interface, service, identifier),
+            "schedule": _report_schedule(
+                interface,
+                service,
+                identifier,
+                status
+                .get("toolforge_schedules", {})
+                .get("routines", {})
+                .get(identifier, {})
+                .get("next_run_at"),
+            ),
             "saved": observed_time(
                 max(saves, key=timestamp) if saves else None,
             ),

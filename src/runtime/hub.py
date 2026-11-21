@@ -15,64 +15,34 @@ import math
 import signal
 from contextlib import ExitStack
 from dataclasses import dataclass
-from functools import partial
 from pathlib import Path
 from threading import Event
 from time import monotonic
 from typing import TYPE_CHECKING
 
-import pywikibot
-
-from data import project_data
-from data.articles.milestone_store import sync_current_assessments
-from data.articles.scope import reconcile_scope
-from data.articles.storage import MILESTONES_PATH
-from data.caching.project_observations import (
-    prune as prune_hourly_observations,
-)
 from data.runtime.events import event_extra
 from data.runtime.logs import open_run_log
 from runtime import monitor
-from runtime.collection_status import collection_run
-from runtime.consistency_repairs import (
-    refresh_saved_repairs,
-    save_dashboard_snapshot,
+from runtime.consistency_repairs import refresh_saved_repairs
+from runtime.dashboard import DashboardHTTPServer
+from runtime.jobs.newsletter_history import run as refresh_article_history
+from runtime.jobs.project_data import run as refresh_project_data
+from runtime.jobs.website import (
+    DEFAULT_DAYS,
+    DEFAULT_OUTPUT,
+    dashboard_updater,
+    refresh_newsletter,
+    refresh_website,
 )
-from runtime.dashboard import (
-    DashboardHTTPServer,
-    DashboardUpdater,
-    collect_dashboard_pass,
-)
-from runtime.project_observations import (
-    collect_project_categories,
-    collect_project_membership,
-    link_rollover_membership,
-    project_cycle,
-)
-from runtime.quality_analysis import (
-    schedule_quality_analysis,
-)
-from shared.assessment_profiles import assessment_profile
-from shared.config import COLLECTION_DEFINITIONS, PROJECT_DATA_SCOPES
+from runtime.quality_analysis import schedule_quality_analysis
+from shared.config import COLLECTION_DEFINITIONS
 from shared.deployment import project_version
 from shared.identity import configure_pywikibot
-from shared.sources.cycle import source_cycle
-from shared.sources.quarry.projects import query_pages_by_wikiproject
-from tasks import project_data as project_capture
-from tasks.articles.history import (
-    DEFAULT_PATH,
-    collect_article_history,
-    history_membership,
-)
-from tasks.articles.milestones import enrich_milestones
-from tasks.enwiki import talks as english_talks
 from tasks.website.collect import (
     add_refresh_arguments,
-    collect_dashboard,
     refresh_arguments,
     report_intervals,
 )
-lazy from webservice.newsletter_charts import prepare_newsletter_charts
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -80,6 +50,7 @@ if TYPE_CHECKING:
 
     from apscheduler.schedulers.background import BackgroundScheduler
 
+    from runtime.dashboard import DashboardUpdater
     from runtime.idle_scheduler import IdleScheduler
 
 _MAX_DAYS = 365
@@ -107,10 +78,10 @@ class HubConfig:
 
     dry: bool = False
     run_immediately: bool = True
-    output: Path = Path("data/parsed/dashboard.json")
+    output: Path = DEFAULT_OUTPUT
     log_dir: Path = Path("logs")
     interval: float = _WEBSITE_CHECK_SECONDS
-    days: int = 100
+    days: int = DEFAULT_DAYS
     host: str = "127.0.0.1"
     port: int = 8765
     refresh_intervals: dict[str, float] | None = None
@@ -131,138 +102,6 @@ class HubConfig:
             message = "--port must be between 0 and 65535."
             raise ValueError(message)
         report_intervals(self.refresh_intervals)
-
-
-def refresh_website(updater: DashboardUpdater) -> None:
-    """Check due website reports in an independent source cycle.
-
-    Args:
-        updater: Managed collector serializing overlapping attempts.
-    """
-    with project_cycle():
-        updater.refresh(trigger="scheduled")
-
-
-def refresh_newsletter(updater: DashboardUpdater) -> None:
-    """Collect newsletter history through the latest completed UTC day.
-
-    Args:
-        updater: Collector whose active refresh must finish first.
-    """
-    with project_cycle(daily=True):
-        updater.refresh(
-            wait=True,
-            task_id="newsletter-daily",
-            trigger="scheduled",
-        )
-
-
-def _prepare_newsletter_assets(data: dict) -> None:
-    """Draw charts after newsletter observations have been saved."""
-    try:
-        prepare_newsletter_charts(Path.cwd(), data)
-    except ImportError, OSError, ValueError:
-        _LOGGER.exception("Could not prepare saved newsletter charts.")
-
-
-def refresh_article_history() -> None:
-    """Maintain project recognition evidence in an hourly pass.
-
-    Preserve recorded years; idle workers fill missing author credits.
-    Newsletter preparation reads the saved evidence separately.
-    """
-    with (
-        collection_run("newsletter-history", trigger="scheduled"),
-        project_cycle(now=dt.datetime.now(dt.UTC)),
-    ):
-        configure_pywikibot()
-        site = pywikibot.Site("zh", "wikipedia")
-        membership = query_pages_by_wikiproject(site, "电子游戏")
-        history_members = history_membership(site, membership)
-        reconcile_scope(
-            history_members,
-            MILESTONES_PATH.parent,
-            observed_at=dt.datetime.now(dt.UTC),
-        )
-        events = collect_article_history(
-            site,
-            history_members,
-            now=dt.datetime.now(dt.UTC),
-            path=DEFAULT_PATH,
-        )
-        enrich_milestones(events, site, max_requests=10)
-        sync_current_assessments(
-            membership,
-            MILESTONES_PATH,
-            observed_at=dt.datetime.now(dt.UTC),
-            profile=assessment_profile(site.dbName(), "电子游戏"),
-        )
-        _LOGGER.info(
-            "Hourly recognition scan retained %d project events.",
-            events.height,
-        )
-
-
-def refresh_project_data() -> None:  # ruff: ignore[complex-structure] - Independent project, rollover and comparison outcomes.
-    """Capture configured projects independently before daily consumers.
-
-    Startup recovery captures only the actual current UTC boundary.
-    Each project retains its first complete observation independently;
-    failure in one project does not prevent the others from completing.
-
-    Raises:
-        ExceptionGroup: One or more configured project captures failed.
-    """
-    instant = dt.datetime.now(dt.UTC)
-    if instant.date() < project_data.ACTIVATION_DATE:
-        return
-    configure_pywikibot()
-    failures = []
-    chinese_members = None
-    with (
-        collection_run("project-data", trigger="scheduled") as execution,
-        source_cycle(),
-    ):
-        for language, project in PROJECT_DATA_SCOPES:
-            try:  # ruff: ignore[too-many-statements-in-try-clause]
-                site = pywikibot.Site(language, "wikipedia")
-                if instant.hour != 0 or language != "zh":
-                    project_capture.capture(site, project, instant.date())
-                if language != "zh":
-                    if instant.hour == 0 and language == "en":
-                        link_rollover_membership(
-                            site,
-                            project,
-                            instant.date(),
-                        )
-                        english_talks.prune_daily(instant.date())
-                    continue
-                members = collect_project_membership(
-                    site,
-                    project,
-                    now=instant,
-                )
-                if project == "电子游戏":
-                    chinese_members = members
-            except Exception as error:
-                _LOGGER.exception("Project snapshot failed: %s", project)
-                failures.append(error)
-                execution.fail(error)
-        if chinese_members is not None:
-            try:
-                collect_project_categories(
-                    pywikibot.Site("zh", "wikipedia"),
-                    now=instant,
-                    assessment_members=chinese_members,
-                )
-            except Exception as error:
-                _LOGGER.exception("Central category collection failed.")
-                failures.append(error)
-                execution.fail(error)
-    if failures:
-        message = "Some daily project snapshots could not be captured."
-        raise ExceptionGroup(message, failures)
-    prune_hourly_observations(instant)
 
 
 def stop_jobs(
@@ -457,21 +296,11 @@ def run(config: HubConfig) -> None:
         updater = None
         server = None
         if not config.dry:
-            updater = DashboardUpdater(
+            updater = dashboard_updater(
                 config.output,
-                lambda: collect_dashboard_pass(
-                    updater,
-                    partial(
-                        collect_dashboard,
-                        prepare_newsletter=_prepare_newsletter_assets,
-                    ),
-                    save_dashboard_snapshot,
-                    config.days,
-                    config.refresh_intervals,
-                ),
-                save_dashboard_snapshot,
+                days=config.days,
                 log_dir=config.log_dir,
-                runtime=Path.cwd(),
+                refresh_intervals=config.refresh_intervals,
             )
             server = resources.enter_context(
                 DashboardHTTPServer((config.host, config.port), updater),
@@ -535,7 +364,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("data/parsed/dashboard.json"),
+        default=DEFAULT_OUTPUT,
     )
     parser.add_argument("--log-dir", type=Path, default=Path("logs"))
     parser.add_argument(
@@ -543,7 +372,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         type=float,
         default=_WEBSITE_CHECK_SECONDS,
     )
-    parser.add_argument("--days", type=int, default=100)
+    parser.add_argument("--days", type=int, default=DEFAULT_DAYS)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     add_refresh_arguments(parser)

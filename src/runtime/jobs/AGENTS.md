@@ -1,8 +1,9 @@
 # Report coordination instructions
 
-Each module coordinates one independently runnable report pass. It selects
-concrete settings, requests typed task results, retains a complete proposal and
-then delegates output to the updater. Jobs own no scheduler.
+The report modules select concrete settings, request typed task results,
+retain complete proposals and delegate output to the updater. Collector
+modules own the independently scheduled project, recognition, dashboard and
+newsletter passes. Jobs use shared source cycles and own no scheduler.
 
 - Use `shared.config` defaults unless the caller supplies an override.
   Do not import another job module.

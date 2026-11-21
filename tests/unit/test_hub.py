@@ -19,6 +19,7 @@ import polars as pl
 from data.runtime.logs import open_run_log
 from runtime import hub
 from runtime.dashboard import DashboardUpdater
+from runtime.jobs import newsletter_history, website as website_job
 from shared.sources.cycle import read_membership, read_top_pageviews
 from shared.sources.pageviews import TopPageviews
 
@@ -77,33 +78,39 @@ class TestHubDispatch(TestCase):
             return pl.DataFrame({"kind": ["dyk", "news"]})
 
         with (
-            patch.object(hub, "dt", clock),
-            patch.object(hub.pywikibot, "Site") as site,
+            patch.object(newsletter_history, "dt", clock),
+            patch.object(newsletter_history.pywikibot, "Site") as site,
             patch.object(
-                hub,
+                newsletter_history,
                 "query_pages_by_wikiproject",
                 side_effect=membership,
             ) as query,
             patch.object(
-                hub,
+                newsletter_history,
                 "history_membership",
                 side_effect=lambda _site, observed: observed,
             ) as history_scope,
             patch.object(
-                hub,
+                newsletter_history,
                 "collect_article_history",
                 side_effect=collect,
             ) as archive,
-            patch.object(hub, "enrich_milestones") as recognition,
-            patch.object(hub, "sync_current_assessments") as assessments,
-            patch.object(hub, "reconcile_scope") as scope,
-            patch.object(hub, "refresh_newsletter") as newsletter,
-            patch.object(hub, "refresh_website") as website,
-            patch.object(hub._LOGGER, "info") as logged,
+            patch.object(
+                newsletter_history,
+                "enrich_milestones",
+            ) as recognition,
+            patch.object(
+                newsletter_history,
+                "sync_current_assessments",
+            ) as assessments,
+            patch.object(newsletter_history, "reconcile_scope") as scope,
+            patch.object(website_job, "refresh_newsletter") as newsletter,
+            patch.object(website_job, "refresh_website") as website,
+            patch.object(newsletter_history._LOGGER, "info") as logged,
         ):
             site.return_value.dbName.return_value = "zhwiki"
-            hub.refresh_article_history()
-            hub.refresh_article_history()
+            newsletter_history.run()
+            newsletter_history.run()
         assert fetch.call_count == 2  # ruff: ignore[magic-value-comparison]
         assert site.call_args_list == [call("zh", "wikipedia")] * 2
         assert (
@@ -115,13 +122,21 @@ class TestHubDispatch(TestCase):
         assert assessments.call_count == 2  # ruff: ignore[magic-value-comparison]
         assert recognition.call_args.kwargs == {"max_requests": 10}
         assert assessments.call_args.args[0].equals(members)
-        assert assessments.call_args.args[1] == hub.MILESTONES_PATH
+        assert (
+            assessments.call_args.args[1] == newsletter_history.MILESTONES_PATH
+        )
         assert assessments.call_args.kwargs == {
             "observed_at": stamp,
-            "profile": hub.assessment_profile("zhwiki", "电子游戏"),
+            "profile": newsletter_history.assessment_profile(
+                "zhwiki",
+                "电子游戏",
+            ),
         }
         assert scope.call_args.args[0].equals(members)
-        assert scope.call_args.args[1] == hub.MILESTONES_PATH.parent
+        assert (
+            scope.call_args.args[1]
+            == newsletter_history.MILESTONES_PATH.parent
+        )
         assert scope.call_args.kwargs == {"observed_at": stamp}
         clock.datetime.now.assert_called_with(dt.UTC)
         logged.assert_called_with(
@@ -229,7 +244,7 @@ class TestHubLifecycle(TestCase):
                     "_serve_until_stopped",
                     side_effect=KeyboardInterrupt,
                 ),
-                patch.object(hub, "collect_dashboard") as collect,
+                patch.object(website_job, "collect_dashboard") as collect,
             ):
                 hub.run(hub.HubConfig(output=path, log_dir=root / "logs"))
             assert order == ["repair", "scheduler", "resume"]
@@ -270,7 +285,7 @@ class TestHubLifecycle(TestCase):
             log_dir = Path(directory) / "custom-logs"
             with (
                 patch.object(hub.signal, "signal"),
-                patch.object(hub, "DashboardUpdater") as updater_type,
+                patch.object(website_job, "DashboardUpdater") as updater_type,
                 patch.object(hub, "DashboardHTTPServer") as server_type,
                 patch.object(hub.monitor, "start", side_effect=start_monitor),
             ):
@@ -325,7 +340,7 @@ class TestHubLifecycle(TestCase):
         with (
             patch.object(hub._LOGGER, "info") as logged,
             patch.object(hub.signal, "signal", side_effect=install),
-            patch.object(hub, "DashboardUpdater") as updater_type,
+            patch.object(website_job, "DashboardUpdater") as updater_type,
             patch.object(hub, "DashboardHTTPServer") as server_type,
             patch.object(hub.monitor, "start") as start,
         ):
@@ -451,7 +466,7 @@ class TestHubLifecycle(TestCase):
         failure = RuntimeError("HTTP fixture failure")
         with (
             patch.object(hub.signal, "signal"),
-            patch.object(hub, "DashboardUpdater") as updater_type,
+            patch.object(website_job, "DashboardUpdater") as updater_type,
             patch.object(hub, "DashboardHTTPServer") as server_type,
             patch.object(hub.monitor, "start") as start,
             self.assertRaises(RuntimeError) as raised,
@@ -475,7 +490,7 @@ class TestHubLifecycle(TestCase):
         """Release the output when report scheduling cannot start."""
         with (
             patch.object(hub.signal, "signal"),
-            patch.object(hub, "DashboardUpdater") as updater_type,
+            patch.object(website_job, "DashboardUpdater") as updater_type,
             patch.object(hub, "DashboardHTTPServer") as server_type,
             patch.object(
                 hub.monitor,
@@ -493,7 +508,7 @@ class TestHubLifecycle(TestCase):
         """Start preview schedules without opening production output."""
         with (
             patch.object(hub.signal, "signal"),
-            patch.object(hub, "DashboardUpdater") as updater_type,
+            patch.object(website_job, "DashboardUpdater") as updater_type,
             patch.object(hub, "DashboardHTTPServer") as server_type,
             patch.object(hub, "Event") as stopped,
             patch.object(hub.monitor, "start") as start,

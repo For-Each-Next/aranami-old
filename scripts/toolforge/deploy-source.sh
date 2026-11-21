@@ -161,7 +161,8 @@ if [ -f "$backup/aranami-hub.replicas" ]; then drain_hub; fi
 # app is the only selection pointer. Keep every uploaded source at its path.
 python3 "$validator" select "$stage"
 selected=true
-for service in aranami-web aranami-hub; do
+# Restore wiki scheduling before restarting the public site.
+for service in aranami-hub aranami-web; do
     if [ ! -f "$backup/$service.replicas" ]; then continue; fi
     if [ -f "$backup/$service.stopped" ]; then
         resume_service "$service"
@@ -183,7 +184,6 @@ for service in aranami-web aranami-hub; do
     fi
     kubectl rollout status "deployment/$service" --timeout=180s
 done
-printf '%s\n' 'Validated code activated; existing services replaced. Missing or paused services were not started.' \
-    "Backup: $backup" \
-    "First website start: toolforge jobs run aranami-web --image python3.13 --continuous --no-filelog --mount=all --port 8000 --publish --command 'exec sh $tool_dir/app/scripts/toolforge/run-web.sh'" \
-    "First hub start (live publication): toolforge jobs run aranami-hub --image python3.13 --continuous --no-filelog --mount=all --mem 4Gi --command 'exec sh $tool_dir/app/scripts/toolforge/run-hub.sh'"
+printf '%s\n' 'Validated code activated and existing services replaced. Missing or paused services were not started.' \
+    "Backup directory $backup" \
+    "Generate individual job definitions with sh $tool_dir/app/scripts/toolforge/run-job.sh --manifest"

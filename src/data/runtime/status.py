@@ -34,6 +34,7 @@ from shared.support.files import (
     open_regular,
     stat_identity,
 )
+from shared.toolforge_jobs import configured_schedules
 lazy from data.runtime.events import current_log_context, event_extra
 
 if TYPE_CHECKING:
@@ -1139,4 +1140,7 @@ def read_status(
         )
     for row in value["datasets"].values():
         row["freshness"] = _freshness(row, now)
+    schedules = configured_schedules(runtime, now)
+    if schedules:
+        value["toolforge_schedules"] = schedules
     return {**value, "availability": availability, "as_of": now.isoformat()}

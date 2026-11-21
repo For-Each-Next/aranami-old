@@ -28,7 +28,11 @@ lazy from polars.exceptions import PolarsError
 from data.runtime.status import get_boot_id, read_status
 from runtime.collection_status import collection_run
 from runtime.dataset_updates import resumed_dataset_updates
-from shared.config import COLLECTION_DEFINITIONS, idle_priority
+from shared.config import (
+    COLLECTION_DEFINITIONS,
+    TASK_DEFINITIONS,
+    idle_priority,
+)
 lazy from data.articles.current_quality import (
     refresh_saved_quality as _refresh_saved_quality,
 )
@@ -100,11 +104,38 @@ def refresh_saved_quality(runtime: Path) -> bool:
         return updated
 
 
+def _foreground_active(status: dict, now: dt.datetime) -> bool:
+    """Check recent observations from foreground jobs.
+
+    Returns:
+        Whether a foreground worker has a current active observation.
+    """
+    foreground = {
+        "project-data",
+        "newsletter-history",
+        "newsletter-daily",
+        "website",
+        *TASK_DEFINITIONS,
+    }
+    for row in status.get("executions", {}).values():
+        if (
+            row.get("task_id") in foreground
+            and row.get("outcome") in {"queued", "running"}
+            and not row.get("finished_at")
+        ):
+            updated = dt.datetime.fromisoformat(row["updated_at"])
+            if dt.timedelta(0) <= now - updated <= dt.timedelta(seconds=90):
+                return True
+    return False
+
+
 def _should_yield(
     runtime: Path,
     owner: str | None,
     stop: Event,
     task_id: str = _TASK_ID,
+    *,
+    toolforge_job: bool = False,
 ) -> bool:
     """Stop source admissions for drain or foreground work.
 
@@ -115,20 +146,22 @@ def _should_yield(
         return True
     if owner is None:
         return False
-    if dt.datetime.now(dt.UTC).minute in {59, 0}:
+    now = dt.datetime.now(dt.UTC)
+    if now.minute in {59, 0}:
         return True
     status = read_status(runtime)
+    if toolforge_job:
+        return _foreground_active(status, now)
     scheduler = status.get("services", {}).get("scheduler", {})
     if (
         scheduler.get("boot_id") != owner
         or scheduler.get("lifecycle") != "running"
-    ):
-        return True
-    if any(
-        row.get("queued_since") is not None
-        and idle_priority(name) < idle_priority(task_id)
-        for schedules in scheduler.get("schedules", {}).values()
-        for name, row in schedules.items()
+        or any(
+            row.get("queued_since") is not None
+            and idle_priority(name) < idle_priority(task_id)
+            for schedules in scheduler.get("schedules", {}).values()
+            for name, row in schedules.items()
+        )
     ):
         return True
     return any(
@@ -150,7 +183,7 @@ def _terminate(child: subprocess.Popen) -> None:
             child.wait()
 
 
-def refresh_quality_analysis() -> None:
+def refresh_quality_analysis(*, toolforge_job: bool = False) -> None:
     """Run one hourly child and release its memory on completion.
 
     The scheduler serializes this idle routine. The parent retains no
@@ -159,22 +192,34 @@ def refresh_quality_analysis() -> None:
     can finish. Worker timeouts propagate only after reaping the child.
     Its last atomic Parquet checkpoint remains selected.
 
+    Args:
+        toolforge_job: Use foreground observations from separate jobs.
     """
-    _run_worker(_TASK_ID, _MAX_PAGES, _TIME_BUDGET, _WORKER_TIMEOUT)
+    _run_worker(
+        _TASK_ID,
+        _MAX_PAGES,
+        _TIME_BUDGET,
+        _WORKER_TIMEOUT,
+        toolforge_job=toolforge_job,
+    )
 
 
-def refresh_quality_authorship() -> None:
+def refresh_quality_authorship(*, toolforge_job: bool = False) -> None:
     """Advance all-grade rating dates and credits in an idle worker.
 
     Larger bounded passes avoid a two-article hourly cold-cache limit.
     Unchanged talk and article revisions reuse the saved Parquet facts.
     Exiting returns source buffers to the operating system.
+
+    Args:
+        toolforge_job: Use foreground observations from separate jobs.
     """
     _run_worker(
         _AUTHOR_TASK_ID,
         _AUTHOR_RANGE_PAGES,
         _AUTHOR_TIME_BUDGET,
         _AUTHOR_WORKER_TIMEOUT,
+        toolforge_job=toolforge_job,
     )
 
 
@@ -183,6 +228,8 @@ def _run_worker(
     max_pages: int,
     time_budget: float,
     timeout: float,
+    *,
+    toolforge_job: bool,
 ) -> None:
     """Own one bounded child without retaining its data or output.
 
@@ -214,6 +261,8 @@ def _run_worker(
         "--time-budget",
         str(time_budget),
     ]
+    if toolforge_job:
+        environment["ARANAMI_TOOLFORGE_WORKER"] = "1"
     with collection_run(task_id, trigger="scheduled") as execution:
         environment["ARANAMI_DATASET_RUN_ID"] = execution.run_id
         child = subprocess.Popen(  # ruff: ignore[subprocess-without-shell-equals-true] - Fixed interpreter/module and validated internal arguments.
@@ -238,6 +287,7 @@ def _collect(
 ) -> None:
     """Read a shared source cycle and checkpoint saved summaries."""
     stop = Event()
+    toolforge_job = os.environ.get("ARANAMI_TOOLFORGE_WORKER") == "1"
 
     def request_stop(_signal: int, _frame: FrameType | None) -> None:
         """Finish the active request before leaving the worker."""
@@ -260,7 +310,13 @@ def _collect(
         now = monotonic()
         if now - last_check >= 1:
             last_check = now
-            paused = _should_yield(runtime, owner, stop, task_id)
+            paused = _should_yield(
+                runtime,
+                owner,
+                stop,
+                task_id,
+                toolforge_job=toolforge_job,
+            )
         return paused
 
     if should_yield():

@@ -14,13 +14,16 @@ __all__ = ("run", "run_once")
 
 import datetime as dt
 import logging
+from contextlib import nullcontext
 from importlib import import_module
+from pathlib import Path
 from time import perf_counter
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pywikibot
 
+from data.collection_leases import collection_lease
 from data.runtime.events import event_extra, logging_context
 from data.runtime.logs import open_run_log
 from runtime import monitor
@@ -29,6 +32,7 @@ from runtime.monitor import TASK_DEFINITIONS
 from runtime.project_observations import DAILY_REPORTS, project_cycle
 from shared.deployment import project_version
 from shared.identity import configure_pywikibot
+from shared.toolforge_jobs import ACTIVE_PATH, job_name
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -111,6 +115,31 @@ def _select_tasks(tasks: Sequence[str] | str | None) -> tuple[ModuleType, ...]:
     )
 
 
+def _run_selected_job(
+    job: ModuleType,
+    context: JobContext,
+    *,
+    dry: bool,
+) -> None:
+    """Run a manual report with exclusive live ownership in Job mode.
+
+    Raises:
+        RuntimeError: The scheduled report already owns the destination.
+    """
+    name = job.__name__.rsplit(".", 1)[-1]
+    lease = (
+        collection_lease(Path.cwd(), job_name(name))
+        if not dry and ACTIVE_PATH.is_file()
+        else nullcontext(enter_result=True)
+    )
+    with lease as acquired:
+        if not acquired:
+            message = f"Toolforge job {job_name(name)} is already running."
+            raise RuntimeError(message)
+        with project_cycle(daily=name in DAILY_REPORTS, dry=dry):
+            job.run(context=context)
+
+
 def run_once(
     *,
     date: dt.date | None = None,
@@ -170,11 +199,7 @@ def run_once(
         try:
             for job in selected:
                 try:
-                    with project_cycle(
-                        daily=job.__name__.rsplit(".", 1)[-1] in DAILY_REPORTS,
-                        dry=dry,
-                    ):
-                        job.run(context=context)
+                    _run_selected_job(job, context, dry=dry)
                 except Exception as error:
                     _LOGGER.exception(
                         "Routine module failed: %s.",

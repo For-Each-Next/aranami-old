@@ -74,6 +74,7 @@ for name in TASK_DEFINITIONS:
 import runtime.hub
 import webservice.server
 import runtime.dashboard
+import runtime.toolforge_job
 import tasks.website.collect
 import webservice.pages
 import matplotlib.font_manager

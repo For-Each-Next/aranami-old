@@ -73,7 +73,10 @@ if name == "kubectl":
             raise SystemExit(9)
     elif args[:2] == ["rollout", "status"]:
         assert (root / "app").is_symlink()
-        if os.environ.get("FAKE_ROLLOUT_FAILURE"):
+        if os.environ.get("FAKE_ROLLOUT_FAILURE") or (
+            args[2] == "deployment/aranami-web"
+            and os.environ.get("FAKE_WEB_ROLLOUT_FAILURE")
+        ):
             raise SystemExit(10)
     elif args[0] == "exec":
         assert "drain-hub.py" in " ".join(args), args
@@ -359,13 +362,8 @@ class TestDeploymentShell(TestCase):  # ruff: ignore[too-many-public-methods]
         assert len(started) == 1
         assert started[0][3].startswith("aranami-setup-")
         assert "existing services replaced" in result.stdout
-        assert "--port 8000 --publish" in result.stdout
         assert (
-            f"--command 'exec sh {self.root}/app/scripts/toolforge/run-web.sh'"
-            in result.stdout
-        )
-        assert (
-            f"--command 'exec sh {self.root}/app/scripts/toolforge/run-hub.sh'"
+            f"sh {self.root}/app/scripts/toolforge/run-job.sh --manifest"
             in result.stdout
         )
 
@@ -469,7 +467,7 @@ class TestDeploymentShell(TestCase):  # ruff: ignore[too-many-public-methods]
             for index, command in enumerate(commands)
             if command[:4] == ["kubectl", "scale", "deployment", "aranami-hub"]
         )
-        assert restart < paused
+        assert paused < restart
         assert not any(
             command[:4] == ["kubectl", "scale", "deployment", "aranami-web"]
             for command in commands
@@ -578,20 +576,28 @@ class TestDeploymentShell(TestCase):  # ruff: ignore[too-many-public-methods]
     def test_failed_web_restart_keeps_selected_code_and_hub_running(
         self,
     ) -> None:
-        """Retain both immutable generations for explicit recovery."""
+        """Resume the publisher before a failed web rollout."""
         first_stage = self._stage()
         assert self._deploy(first_stage).returncode == 0
         count = len(self._commands())
         second_stage = self._stage("b" * 32)
-        result = self._deploy(second_stage, FAKE_ROLLOUT_FAILURE="1")
+        result = self._deploy(second_stage, FAKE_WEB_ROLLOUT_FAILURE="1")
         assert result.returncode != 0
         assert (self.root / "app").resolve() == second_stage
         assert first_stage.exists()
         assert "Code activated" in result.stderr
-        assert not any(
-            command[:4] == ["kubectl", "scale", "deployment", "aranami-hub"]
-            for command in self._commands()[count:]
-        )
+        commands = self._commands()[count:]
+        assert commands.index([
+            "kubectl",
+            "rollout",
+            "status",
+            "deployment/aranami-hub",
+            "--timeout=180s",
+        ]) < commands.index(["toolforge", "jobs", "restart", "aranami-web"])
+        assert json.loads((self.root / "fake-replicas.json").read_text()) == {
+            "aranami-hub": "1",
+            "aranami-web": "1",
+        }
 
     def test_hub_shutdown_timeout_never_starts_another_publisher(
         self,

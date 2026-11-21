@@ -24,6 +24,7 @@
     "deploy-source.sh",
     "drain-hub.py",
     "run-hub.sh",
+    "run-job.sh",
     "run-web.sh",
     "runtime-env.sh",
     "source-files.json",

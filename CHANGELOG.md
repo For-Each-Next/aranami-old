@@ -3,6 +3,22 @@
 Completed releases are recorded newest first. Unpublished development after
 v0.8.8 was consolidated into the v0.9.2 release.
 
+## Until 0.11
+
+### 0.10.0.dev1 (2026-11-21 04:18 UTC)
+
+Overview: Isolated Aranami's public website, data work and wiki reports in
+separate Toolforge jobs with per-job resource limits.
+
+- Generated one public web job and thirteen independently scheduled
+  collectors and report jobs with staggered starts.
+- Gated report work on committed project snapshots and guarded each job
+  against overlapping or duplicate publication.
+- Restored legacy wiki scheduling before checking the web rollout and
+  documented independent job cutover and rollback.
+- Used shared NFS for committed job results and Redis for authenticated,
+  short-lived Article Statistics pages.
+
 ## Until 0.10
 
 ### 0.9.24 (2026-11-21 03:39 UTC)

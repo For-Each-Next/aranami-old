@@ -18,7 +18,7 @@ from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine
 from wiki_fixtures import OfflineSite
 
 from data.articles import scope as article_scope
-from runtime import hub
+from runtime.jobs import newsletter_history as collection_job
 from shared.sources.quarry import Replica, projects
 from shared.sources.revisions import RevisionContent
 from tasks.articles.history import collect_article_history, history_membership
@@ -217,27 +217,35 @@ class RedirectHistoryTests(TestCase):
         expanded = pl.concat([current, _redirects()])
         empty = pl.DataFrame(schema={"kind": pl.String})
         with (
-            patch.object(hub.pywikibot, "Site", return_value=Mock()),
             patch.object(
-                hub,
+                collection_job.pywikibot,
+                "Site",
+                return_value=Mock(),
+            ),
+            patch.object(
+                collection_job,
                 "query_pages_by_wikiproject",
                 return_value=current,
             ),
-            patch.object(hub, "history_membership", return_value=expanded),
-            patch.object(hub, "reconcile_scope") as scope,
             patch.object(
-                hub,
+                collection_job,
+                "history_membership",
+                return_value=expanded,
+            ),
+            patch.object(collection_job, "reconcile_scope") as scope,
+            patch.object(
+                collection_job,
                 "collect_article_history",
                 return_value=empty,
             ) as history,
             patch.object(
-                hub,
+                collection_job,
                 "enrich_milestones",
                 side_effect=lambda events, _site, **_options: events,
             ),
-            patch.object(hub, "sync_current_assessments") as badges,
+            patch.object(collection_job, "sync_current_assessments") as badges,
         ):
-            hub.refresh_article_history()
+            collection_job.run()
         assert scope.call_args.args[0].equals(expanded)
         assert history.call_args.args[1].equals(expanded)
         assert badges.call_args.args[0].equals(current)

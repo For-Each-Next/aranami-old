@@ -531,21 +531,34 @@ def planned_files(
     ]
 
 
+def collection_schedules(status: dict) -> dict:
+    """Find collection launch plans in either scheduling mode.
+
+    Args:
+        status: Saved status plus configured Toolforge launches.
+
+    Returns:
+        Configured Toolforge launch times or recent legacy schedules.
+    """
+    if plans := status.get("toolforge_schedules"):
+        return plans["collections"]
+    scheduler = status.get("services", {}).get("scheduler", {})
+    if (
+        scheduler.get("freshness") == "current"
+        and scheduler.get("lifecycle") == "running"
+    ):
+        return scheduler.get("schedules", {}).get("collections", {})
+    return {}
+
+
 def planned_updates(runtime: Path, status: dict) -> list[dict]:
     """Read upcoming triggers without dispatching work.
 
     Returns:
         Known destinations with their actual scheduled time.
     """
-    scheduler = status.get("services", {}).get("scheduler", {})
-    if (
-        scheduler.get("freshness") != "current"
-        or scheduler.get("lifecycle") != "running"
-    ):
-        return []
-    schedules = scheduler.get("schedules", {}).get("collections", {})
     planned = []
-    for task, schedule in schedules.items():
+    for task, schedule in collection_schedules(status).items():
         stamp = schedule.get("next_run_at")
         if not stamp or schedule.get("state") != "scheduled":
             continue

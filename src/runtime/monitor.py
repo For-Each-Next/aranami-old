@@ -36,16 +36,16 @@ from apscheduler.triggers.cron import CronTrigger
 
 from data.runtime.events import event_extra
 from data.runtime.logs import open_run_log
-from runtime.execution import execution_trigger
 from runtime.idle_scheduler import EVENT_SCHEDULER_STOPPING, IdleScheduler
 from runtime.interrupted_runs import recover_interrupted_runs
-from runtime.project_observations import DAILY_REPORTS, project_cycle
+from runtime.jobs.dispatch import dispatch_scheduled_report
 from runtime.schedule_status import (
     write_resource_status,
     write_schedule_status,
 )
 from shared.config import TASK_DEFINITIONS, TaskDefinition
 from shared.support.cache import clear_runtime_cache
+from shared.toolforge_jobs import ACTIVE_PATH
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -57,25 +57,6 @@ _START_LOCK = Lock()
 _scheduler: IdleScheduler | None = None
 _dry: bool | None = None
 _active_dispatch: Callable[..., dt.datetime | None] | None = None
-
-
-def _dispatch(name: str, *, dry: bool) -> dt.datetime | None:
-    """Invoke automatic work and return its scheduling advice.
-
-    Args:
-        name: Independently scheduled routine identifier.
-        dry: Suppress publication and production observations.
-
-    Returns:
-        Confirmed completion advice, or null for normal retries.
-    """
-    callback = import_module(f"runtime.jobs.{name}").run
-    options = {"automatic": True} if name in {"new_pages", "pageviews"} else {}
-    with (
-        execution_trigger("scheduled"),
-        project_cycle(daily=name in DAILY_REPORTS, dry=dry),
-    ):
-        return callback(dry=dry, **options)
 
 
 def _heartbeat(  # ruff: ignore[too-many-arguments]
@@ -194,7 +175,7 @@ def clear_caches() -> None:
         clear_runtime_cache()
 
 
-def start(
+def start(  # ruff: ignore[complex-structure] - Check ownership before creating the scheduler.
     *,
     dry: bool = False,
     clear_cache: bool = False,
@@ -235,11 +216,15 @@ def start(
         pause, resume, or stop with ``shutdown(wait=True)``.
 
     Raises:
+        RuntimeError: Individual Toolforge jobs own live scheduling.
         ValueError: An active monitor would change mode or dispatch,
             clear caches, or use an unsafe runtime cache path.
     """
     global _active_dispatch, _dry, _scheduler  # ruff: ignore[global-statement]
-    callback = dispatch if dispatch is not None else _dispatch
+    if not dry and ACTIVE_PATH.is_file():
+        message = "Individual Toolforge jobs already own the live schedules."
+        raise RuntimeError(message)
+    callback = dispatch if dispatch is not None else dispatch_scheduled_report
     with _START_LOCK:
         if _scheduler is not None and _scheduler.running:
             if clear_cache:

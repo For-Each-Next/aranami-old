@@ -17,7 +17,7 @@ from data.observations import (
     membership_observed_at,
     project_snapshot_references,
 )
-from runtime import hub
+from runtime.jobs import project_data as collection_job
 from runtime.project_observations import project_cycle
 from shared.sources.cycle import read_membership
 from tasks.website import collect
@@ -220,10 +220,10 @@ class TestProjectCollection(TestCase):
             tzinfo=dt.UTC,
         )
         with (
-            patch.object(hub, "dt", clock),
-            patch.object(hub.pywikibot, "Site") as site,
+            patch.object(collection_job, "dt", clock),
+            patch.object(collection_job.pywikibot, "Site") as site,
         ):
-            hub.refresh_project_data()
+            collection_job.run()
         site.assert_not_called()
 
     def test_restart_only_captures_today_and_continues_other_projects(
@@ -234,28 +234,28 @@ class TestProjectCollection(TestCase):
         clock = Mock(UTC=dt.UTC)
         clock.datetime.now.return_value = instant
         with (
-            patch.object(hub, "dt", clock),
-            patch.object(hub, "configure_pywikibot"),
+            patch.object(collection_job, "dt", clock),
+            patch.object(collection_job, "configure_pywikibot"),
             patch.object(
-                hub,
+                collection_job,
                 "PROJECT_DATA_SCOPES",
                 (
                     ("zh", "Games"),
                     ("zh", "Games/Subproject"),
                 ),
             ),
-            patch.object(hub.pywikibot, "Site"),
-            patch.object(hub, "collect_project_membership"),
-            patch.object(hub, "collect_project_categories"),
+            patch.object(collection_job.pywikibot, "Site"),
+            patch.object(collection_job, "collect_project_membership"),
+            patch.object(collection_job, "collect_project_categories"),
             patch.object(
-                hub.project_capture,
+                collection_job.project_capture,
                 "capture",
                 side_effect=[ConnectionError("replica"), Mock()],
             ) as capture,
-            patch.object(hub._LOGGER, "exception"),  # ruff: ignore[private-member-access]
+            patch.object(collection_job._LOGGER, "exception"),  # ruff: ignore[private-member-access]
             self.assertRaises(ExceptionGroup),
         ):
-            hub.refresh_project_data()
+            collection_job.run()
         assert [call.args[1] for call in capture.call_args_list] == [
             "Games",
             "Games/Subproject",

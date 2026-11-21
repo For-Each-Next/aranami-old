@@ -54,7 +54,9 @@ The primary collection starts with page lists at every UTC hour, with the full
 daily capture at 00:00:00. Source collection finishes before dependent reports
 run. Reports reuse the committed daily or disposable hourly Parquet data.
 Startup recovery does not shift subsequent hourly boundaries.
-These are dispatch times, not guaranteed edit times. Pageviews waits for actual
+Individual Toolforge jobs stagger launches after their source boundaries.
+[Job schedule](docs/administration.md#register-individual-jobs)
+Pageviews waits for actual
 19:00 readiness and uses the frozen midnight titles and assessments. Continuous
 traffic histories receive only their missing tail; gapped histories are
 refetched. Project snapshots always come from new complete queries.

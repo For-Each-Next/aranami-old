@@ -967,6 +967,11 @@
     "zh-hans": "调度已暂停",
     "zh-hant": "排程已暫停"
   },
+  "ops.schedule_configured": {
+    "en": "Configured Toolforge launch",
+    "zh-hans": "Toolforge 计划启动时间",
+    "zh-hant": "Toolforge 排程啟動時間"
+  },
   "ops.schedule_missing": {
     "en": "Schedule unavailable",
     "zh-hans": "执行计划未获取",

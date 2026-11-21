@@ -96,6 +96,38 @@ counts are distinct. Stored Enum declarations preserve observed extra labels;
 readers validate the saved declaration and restore it when a Parquet reader
 returns String. Decode independent encodings before joining tables.
 
+## Toolforge jobs
+
+The public HTTP service runs continuously. Source collection, website and
+newsletter preparation, article queries and each on-wiki routine run as
+individually named scheduled jobs. The Jobs Framework applies each pod's
+resource limits and wall-time deadline. Individual report and collection
+entry points live in `runtime.jobs`. The quality query workers live in
+`runtime.quality_analysis`, and the web entry point lives in `webservice`.
+Editable Vue modules live in `frontend/`, with served assets and templates
+under `src/webservice/`. The public site reads the last
+committed data from shared storage even while another pod starts, stops or
+retries. [Deployment and allocations](administration.md#register-individual-jobs)
+
+The project-data job records a successful UTC hour only after its collection
+completes. Consumers wait for that receipt and use the existing validated
+source cycle. Newsletter preparation also waits for recognition history.
+Wiki reports have independent destinations and use their usual preparation,
+publication checks and completion data. A lease admits one invocation per
+job. Wiki jobs call the wiki directly. Optional article statistics
+launch later and yield to recently observed foreground work.
+
+The activation marker selects individual schedules during cutover. The
+legacy hub remains an operational recovery path. The status reader exposes
+configured Toolforge launch times separately from execution and service
+observations. On-disk datasets and publication evidence are shared between
+the legacy hub and individual jobs.
+
+The tool home provides the shared NFS handoff for accepted data and report
+receipts. The web process can reuse authenticated Article Statistics HTML
+in Toolforge Redis. The cache has fixed variants, a short lifetime and a
+saved-file fallback. [Shared storage and Redis](administration.md)
+
 ## Scheduling and source selection
 
 `shared.config` owns scopes, destinations, UTC triggers and website freshness;
@@ -123,7 +155,7 @@ obtain it under the capture lock rather than substituting live membership.
 Later hourly observations never replace the daily file. Evidence needed by
 future reports is retained before its disposable source cache expires.
 
-The primary project collector starts first in each hourly due batch. At midnight
+The primary project collector starts each hourly due batch. At midnight
 it commits daily observations before retaining the current-hour page list.
 Later hours query current membership once per project. Those lists already
 contain subject and talk `page_latest` values. One indexed category query per
@@ -131,7 +163,8 @@ wiki retains all project category links and complete configured assessment-list
 categories, including matching pages outside project membership. Null category
 placeholders distinguish known uncategorized pages from uncovered IDs.
 
-Collectors reuse the hourly Parquet, then `newsletter-daily` prepares daily facts,
+In the legacy hub, collectors reuse the hourly Parquet, then
+`newsletter-daily` prepares daily facts,
 and only then do independent deferred report consumers run concurrently.
 Website refreshes run independently of on-wiki reports. Article statistics wait
 behind ordinary work and regular reports and never run during hub startup. Waiting phases occupy no executor
@@ -151,7 +184,7 @@ revision IDs and parse changed revisions only. These shortcuts retain current
 membership, category/template aliases, date-window and destination checks;
 unchanged talk revisions cannot justify skipping an entire report pass.
 
-APScheduler coalesces missed triggers and permits one active invocation per
+In the legacy hub, APScheduler coalesces missed triggers and permits one active invocation per
 routine. Startup recovers due work unless
 `run_immediately=False`; shutdown stops dispatch and drains active work before
 closing resources. `runtime.run_once` performs selected work without changing

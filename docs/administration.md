@@ -1,8 +1,8 @@
 # Operating Aranami on Toolforge
 
 Use this guide to deploy a verified source generation, replace services safely
-and recover without losing data. Aranami's runtime is exclusively Toolforge;
-local machines prepare source and run offline tests. [Usage](usage.md) covers
+and recover without losing data. Aranami runs on Toolforge. Local machines
+prepare source and run offline tests. [Usage](usage.md) covers
 report commands, and [Development](development.md) covers verification.
 
 ## Maintain on Toolforge
@@ -15,13 +15,21 @@ become aranami
 cd /data/project/aranami
 ```
 
-The portable tool path can resolve to Toolforge's physical NFS home. Keep
-credentials, `.my.cnf`, Pywikibot configuration and OAuth secrets outside source.
+Job launchers use `TOOL_DATA_DIR` when Toolforge provides it. The usual
+path is `/data/project/aranami`, which can resolve to the tool's physical
+NFS home. Keep credentials, `.my.cnf`, Pywikibot configuration and OAuth
+secrets outside source.
 Do not print account dumps. Preserve platform-managed credential permissions.
 The launchers pin the selected source and its Python 3.15 environment for each
 process lifetime, including manual jobs.
 
 ## Runtime folder architecture
+
+The jobs mount the tool's shared NFS directory with `mount: all`. Use it
+for committed Parquet and JSON files, job receipts and source generations
+that multiple pods need. Writers stage replacements on the same filesystem
+as their destinations. Use the container's `/tmp` for disposable work that
+stays within one pod. [Toolforge shared storage][storage] [Managing files][files]
 
 | Path relative to tool home | Purpose |
 |---|---|
@@ -42,6 +50,7 @@ process lifetime, including manual jobs.
 | `state/observability/status.json` | Versioned service, execution, dataset and publication observations |
 | `state/observability/web-status.json` | Independent Web lifecycle and resource heartbeat |
 | `state/` | Completion checkpoints, publication membership and active execution locks |
+| `state/toolforge-jobs/` | Individual job activation and UTC cycle receipts |
 | `cache/` | Disposable source and presentation optimizations |
 | `logs/activity/` | Versioned UTC activity segments correlated by service/run/attempt |
 | `logs/diagnostics/` | Readable UTC diagnostic segments with bounded tracebacks |
@@ -95,58 +104,124 @@ Promotion verifies the payload, builds an isolated locked environment, and runs
 setup/import validation in a one-off Toolforge job. A matching success receipt
 is mandatory. Setup failure leaves existing services running.
 
-After successful setup, the current hub receives a cooperative SIGUSR1 drain
-request. The process stops scheduling and confirms its active jobs have finished
-before Kubernetes termination begins. The script atomically selects the new
-source, replaces the webservice first, then terminates the old hub pods and
-restores its saved replica count. It never overlaps publishing hubs. Missing or
-deliberately paused services remain stopped. Job definitions, routes, credentials,
-reports, logs and state survive. Requests may be briefly interrupted.
+Scheduled jobs select the new source at their next launch. In-flight jobs finish
+with their pinned interpreter and code. With the legacy hub running, promotion
+drains it before selection and resumes wiki scheduling before replacing the
+website. Web rollout health is checked after the updater resumes. Deliberately
+paused deployments stay paused. Job definitions, routes, credentials, reports,
+logs and state stay outside selected source.
 
-Every retained process stays pinned to its own source/environment. Do not edit
-selected generations or reuse upload tokens. Keep a validated recovery generation
-and every generation still used by an active process.
+Keep both the new generation and the last validated recovery generation. Keep
+every generation used by an active job.
 
-## Start the applications
+## Register individual jobs
 
-Only for initial installation or deliberately missing definitions:
+The generated configuration publishes only `aranami-web`. Each collector and
+wiki routine has its own scheduled Toolforge job, log stream, deadline, CPU
+limit and memory limit. The Jobs Framework runs each in its own pod. The website
+serves committed files, and its request load and container restarts are
+independent of report dispatch. [Toolforge Jobs Framework][jobs]
+
+Run these from the tool directory after promoting the source generation.
 
 ```shell
-toolforge jobs run aranami-hub --image python3.13 --continuous --no-filelog --mount=all --mem 4Gi --command 'exec sh /data/project/aranami/app/scripts/toolforge/run-hub.sh'
-toolforge jobs run aranami-web --image python3.13 --continuous --no-filelog --mount=all --port 8000 --publish --command 'exec sh /data/project/aranami/app/scripts/toolforge/run-web.sh'
+toolforge jobs quota
+kubectl describe resourcequotas
+mkdir -p state
+sh app/scripts/toolforge/run-job.sh --manifest > state/aranami-jobs.yaml
+toolforge jobs load state/aranami-jobs.yaml
 ```
 
-The image label is distinct from the managed Python 3.15 interpreter. Keep one
-hub, preserve `exec` signal handling, and inspect resource use before resizing.
-Normal startup recovers due work; `--no-run-immediately` waits for triggers.
-Daily captures never backfill absent historical dates from current queries.
-The web job reads saved data even while the hub is stopped; debugging/reload
-remain disabled.
+The manifest uses JSON, which is accepted as YAML. Loading a changed job
+definition can replace that job. Use `toolforge jobs load --job NAME FILE`
+for a deliberate change to one job. A run pins the managed Python 3.15
+environment even though the Toolforge image label is `python3.13`.
+
+For a fresh tool, enable the jobs after registration. For migration from a
+running hub, wait for its current work to finish and for its pod to terminate
+before enabling the schedules.
+
+```shell
+kubectl exec deployment/aranami-hub -- python3 /data/project/aranami/app/scripts/toolforge/drain-hub.py
+kubectl scale deployment aranami-hub --current-replicas=1 --replicas=0
+kubectl wait --for=delete pod -l app.kubernetes.io/name=aranami-hub --timeout=180s
+kubectl get pods -l app.kubernetes.io/name=aranami-hub
+```
+
+Confirm the last command lists no pods. Complete source promotions and
+cutovers outside 23:59:00–00:01:59 UTC to protect the daily capture. Then
+enable the schedules and start primary collection for the current hour.
+
+```shell
+mkdir -p state/toolforge-jobs
+touch state/toolforge-jobs/active
+toolforge jobs restart aranami-project-data
+```
+
+A short wait for this hour's collection receipt prevents dependent jobs from
+publishing with incomplete inputs. An absent receipt causes a failed run and
+the configured Toolforge retry. Daily reports select the committed midnight
+snapshot, and Pageviews checks its 19:00 UTC eligibility in the worker.
+`toolforge jobs restart NAME` can retry a failed scheduled job in the current
+cycle. Each job's lease and receipt guard duplicate runs.
+
+### CPU and memory
+
+The starting profile has one continuous job and thirteen scheduled jobs. The
+published web job gets 1 GiB and 250 millicores, while the scheduled jobs get
+512 MiB to 2 GiB each. The projected maximum across planned launch windows
+is 5.75 GiB, 1.3 CPU cores and seven pods including web. With one additional web
+pod and a default setup job, the budget reaches 7.25 GiB, 1.65 cores and nine
+pods. Delayed pods and other jobs also draw from the tool's quota. Check
+actual allocations and runtimes on the tool account before changing limits
+or running extra jobs. [Job quotas][job-quotas] [Kubernetes quotas][quotas]
+
+[Jobs and allocations](../src/shared/toolforge_jobs.py) defines the launch
+minutes and per-job deadlines. Confirm that each collector and report finishes
+within its allocation after the first regular and midnight cycles. Use
+`toolforge jobs logs NAME` and inspect the pod status for deadline, scheduling
+or out-of-memory failures.
+
+## Enable the shared page cache
+
+Toolforge supplies `TOOL_REDIS_URI` to jobs. Create the tool-private signing
+secret once as the tool account, then restart the web job to load it.
+
+```shell
+openssl rand -hex 32 | toolforge envvars create ARANAMI_REDIS_SECRET
+toolforge jobs restart aranami-web
+```
+
+The web job shares small prepared Article Statistics pages for up to 45
+seconds. Entries are authenticated against their exact saved input generation
+and source release. The local page cache and shared files serve requests
+after expiry, an invalid entry or a Redis failure. Rotate the signing secret
+through Toolforge Envvars to create a fresh namespace. [Toolforge Redis][redis]
+[Toolforge Envvars][envvars]
 
 ## Inspect operation
 
 ```shell
 toolforge jobs list
-toolforge jobs show aranami-hub
-toolforge jobs logs aranami-hub
+toolforge jobs show aranami-project-data
+toolforge jobs logs aranami-project-data
+toolforge jobs logs aranami-assessment-log
 toolforge jobs logs aranami-web
 ```
 
-The launch commands send process output to Toolforge's internal logs. Confirm
-`File log` is `no` for both jobs in `toolforge jobs show`. Use
-`toolforge jobs logs -f aranami-web` for web startup and runtime messages.
+The launch commands send process output to Toolforge's internal logs.
+Use `toolforge jobs logs -f aranami-web` for web startup and runtime messages.
 The application also keeps its dated activity and diagnostic streams for the
 public Logs view.
 
-Confirm both services, one hub process, the public website, API configuration,
-version observations and expected UTC schedules. Verify complete adjacent
-project files and their manifests before expecting daily comparisons.
+Confirm the public site, deployed version, next configured launches and
+actual job completions. Verify complete adjacent project files and their
+manifests before expecting daily comparisons.
 Compare `/api/config` with the promoted version after each rollout: ready pods
 alone do not prove which source they selected. If the web process selected the
 previous generation, verify that the new `app` selector is visible inside its
-pod, restart `aranami-web`, and repeat the version check. Inspect the hub's
-source identity independently and use the normal drain procedure for its
-recovery. Keep the prior generation until these checks pass.
+pod, restart `aranami-web`, and repeat the version check. Inspect scheduled
+job outcomes and retained source generations independently.
 Detailed Pageviews is written only after an accepted traffic acquisition.
 Diagnostic Python processes must set `PYTHONPYCACHEPREFIX` to the tool's
 `cache/pycache` directory, or set `PYTHONDONTWRITEBYTECODE=1`, before importing
@@ -165,8 +240,13 @@ rotation prevents a busy day from silently stopping activity recording.
 
 ## Stop or restart a service
 
-Restart the website with `toolforge jobs restart aranami-web`. For the hub,
-drain and stop the current process before restoring its replica:
+Restart the website with `toolforge jobs restart aranami-web`. Use the named
+scheduled job for individual collector or report recovery.
+
+To roll back to the legacy hub, remove `state/toolforge-jobs/active` and wait
+for every running scheduled worker to exit. Check `kubectl get jobs` for active
+workers before starting the original hub replica. If the hub already runs in
+legacy mode, drain and stop it before restoring its replica.
 
 ```shell
 kubectl exec deployment/aranami-hub -- python3 /data/project/aranami/app/scripts/toolforge/drain-hub.py
@@ -207,3 +287,12 @@ project files, detailed traffic, newsletter archives or article evidence as
 caches. Alpha suspends new automatic evidence purges; 2026 facts remain needed
 by newsletters into 2027 and by delayed issues afterward. Legacy retirement
 requires verified replacements and zero remaining consumers, not a date alone.
+
+
+[jobs]: https://wikitech.wikimedia.org/wiki/Help:Toolforge/Running_jobs
+[job-quotas]: https://wikitech.wikimedia.org/wiki/Help:Toolforge/Running_jobs#Job_quotas
+[quotas]: https://wikitech.wikimedia.org/wiki/Help:Toolforge/Kubernetes#Quotas_and_Resources
+[storage]: https://wikitech.wikimedia.org/wiki/Help:Shared_storage
+[files]: https://wikitech.wikimedia.org/wiki/Help:Toolforge/Managing_and_sharing_files
+[redis]: https://wikitech.wikimedia.org/wiki/Help:Toolforge/Redis
+[envvars]: https://wikitech.wikimedia.org/wiki/Help:Toolforge/Envvars
