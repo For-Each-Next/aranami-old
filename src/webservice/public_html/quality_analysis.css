@@ -99,6 +99,7 @@ table.quality-author-directory:has(.quality-column-prose) { min-inline-size: 58e
 .analysis-editor-table th:first-child { inline-size: 6ch; }
 .analysis-editor-table th { overflow-wrap: anywhere; }
 .analysis-editor-table .analysis-editor-total > :is(th[scope="row"], td) { border-top: 2px solid var(--border-color-base); font-weight: 700; }
+.analysis-editor-total strong { font-weight: 700; }
 #quality-authors { margin-top: 2.5rem; }
 #analysis-distribution, #analysis-years, #analysis-articles { margin-top: 2.5rem; }
 @media (max-width: 943px) { .analysis-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }  }

@@ -722,7 +722,8 @@ function EditorRow(context, editor, index) {
     return <tr class={editor.total ? "analysis-editor-total" : undefined}>
         <td class="analysis-number">{index}</td>
         <th scope="row">
-            <OptionalLink href={attribute(editor.url)}>{display(editor.name || editor.label)}</OptionalLink>
+            {editor.total ? <strong>{display(editor.label)}</strong> :
+                <OptionalLink href={attribute(editor.url)}>{display(editor.name || editor.label)}</OptionalLink>}
         </th>
         <td class="analysis-number">{ProseMeasurement(context, editor.characters_label, editor.prose_characters)}</td>
         <td class="analysis-number" title={editor.bytes_title ?? undefined}>{SizeMeasurement(editor.bytes_label, editor.raw_bytes)}</td>

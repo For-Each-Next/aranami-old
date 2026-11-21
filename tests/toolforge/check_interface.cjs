@@ -1660,7 +1660,9 @@ async function checkInterface(assetRoot) {
                             const proofDialog = document.getElementById(proofLink.getAttribute('aria-controls'));
                             const anonymous = [...proofDialog.querySelectorAll('tbody th')].find(cell => cell.textContent.trim() === '192.0.2.1');
                             const totals = [...proofDialog.querySelector('.analysis-editor-total').cells];
-                            const boldTotal = totals.every(cell => Number(getComputedStyle(cell).fontWeight) >= 700);
+                            const count = totals[1].querySelector('strong');
+                            const boldTotal = count && Number(getComputedStyle(count).fontWeight) === 700 &&
+                                totals.every(cell => Number(getComputedStyle(cell).fontWeight) >= 700);
                             const attribution = hasPlusIcon && boldTotal && proofDialog.open && anonymous?.querySelector('a')?.href.includes('Contributions') && proofDialog.textContent.includes('Boundary_Editor') && proofDialog.textContent.includes(form.qualityMetadata.labels.authorship_note);
                             proofDialog.close();
                             const total = () => Number(document.querySelector('[data-matrix-total]').textContent.replaceAll(',', ''));

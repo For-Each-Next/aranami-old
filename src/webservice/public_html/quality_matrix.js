@@ -868,9 +868,11 @@ export function renderAuthorshipDetails(body, proof, labels) {
     head.append(headRow);
     function editorRow(editor, index) {
         const line = node("tr"), name = node("th");
-        if (editor.total) line.className = "analysis-editor-total";
         name.scope = "row";
-        if (editor.url) {
+        if (editor.total) {
+            line.className = "analysis-editor-total";
+            name.append(node("strong", editor.label));
+        } else if (editor.url) {
             const link = node("a", editor.name);
             link.href = editor.url;
             name.append(link);

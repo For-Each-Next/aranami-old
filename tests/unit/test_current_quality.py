@@ -510,7 +510,7 @@ class CurrentQualityTests(TestCase):
             assert '<td class="analysis-number">-</td>' in popup
             assert '<td class="analysis-number">Total</td>' in popup
             assert '<th scope="row">1 other editor</th>' in popup
-            assert '<th scope="row">4 editors</th>' in popup
+            assert '<th scope="row"><strong>4 editors</strong></th>' in popup
             assert "<tfoot" not in popup
             assert ">Minor</a>" not in popup
 

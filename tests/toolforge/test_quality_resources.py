@@ -172,7 +172,7 @@ class QualityResourcePresentationTests(unittest.TestCase):
         ].split("</dialog>", 1)[0]
         assert '<td class="analysis-number">-</td>' in proof
         assert '<td class="analysis-number">合计</td>' in proof
-        assert '<th scope="row">95编者</th>' in proof
+        assert '<th scope="row"><strong>95编者</strong></th>' in proof
         assert "100.0%" in proof
         assert "未归属" not in proof
         author = resources["author-1.html"]
