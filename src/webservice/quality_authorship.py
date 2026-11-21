@@ -12,6 +12,7 @@ from urllib.parse import quote, urlsplit
 from webservice.presentation import (
     Interface,
     display_title,
+    grouped_number,
     relative_units,
     timestamp,
     title_url,
@@ -32,6 +33,21 @@ _GRADES = (
     "Unassessed",
 )
 _DAY_SECONDS = 24 * 60 * 60
+
+
+def article_count_label(count: int, interface: Interface) -> dict[str, str]:
+    """Separate the article count from its localized unit.
+
+    Returns:
+        The complete label and its formatted number and unit.
+    """
+    label = interface.text("quality_authorship.articles", count=count)
+    number = grouped_number(count)
+    return {
+        "summary": label,
+        "article_count_label": number,
+        "article_count_unit": label.removeprefix(number),
+    }
 
 
 def grade_label(code: str, interface: Interface) -> str:
@@ -162,12 +178,6 @@ def quality_authorship_context(
             })
         active = timestamp(source.get("last_active"))
         total = source["credit"]
-        summary = interface.text(
-            "quality_authorship.articles_one"
-            if source["credit"] == 1
-            else "quality_authorship.articles",
-            count=total,
-        )
         featured = sum(
             source["grades"].get(grade, 0) for grade in ("FA", "FL")
         )
@@ -187,7 +197,7 @@ def quality_authorship_context(
                 "quality_authorship.author_all_articles",
                 name=source["name"],
             ),
-            "summary": summary,
+            **article_count_label(total, interface),
             "credit": total,
             "quality_summary": interface.text(
                 "quality_authorship.high_quality",

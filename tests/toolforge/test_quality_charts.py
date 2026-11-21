@@ -103,7 +103,8 @@ class MatplotlibChartTests(TestCase):
             for kind, element in statistics.items()
         } == expected
         assert all(
-            element.find(f"{{{charts._SVG}}}title") is not None
+            element.get("aria-label")
+            and element.find(f"{{{charts._SVG}}}title") is None
             for element in statistics.values()
         )
         assert "lengths collected for 4 articles" in svg.get("aria-label")

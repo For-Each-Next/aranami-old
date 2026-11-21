@@ -322,6 +322,7 @@ class QualityResourcePresentationTests(unittest.TestCase):
         for locale in ("en", "zh-hans", "zh-hant"):
             resources = {}
             prefix = f"/quality-analysis/resources/{locale}/0/current/"
+            interface = Interface(locale)
             output = render_quality_analysis(
                 data,
                 None,
@@ -361,6 +362,14 @@ class QualityResourcePresentationTests(unittest.TestCase):
             assert "Catalog-only article 1 " in detail
             significant = resources["author-1-significant.html"]
             assert 'id="quality-author-user-1-significant"' in significant
+            assert 'class="quality-author-info"' in significant
+            assert (
+                interface.text("quality_authorship.basic_info") in significant
+            )
+            assert (
+                interface.text("quality_authorship.significant_article_list")
+                in significant
+            )
             assert (
                 'data-quality-detail="quality-author-user-1-significant"'
                 in output
@@ -397,7 +406,7 @@ class QualityResourcePresentationTests(unittest.TestCase):
         assert "data-selected-page-ids='[1]'" in output
         assert "data-page-ids='[1, 2]'" in output
         assert 'data-sort="1" class="analysis-number"><a href=' in output
-        assert ">1 article</a>" in output
+        assert '>1<small class="analysis-unit" data-unit="article">' in output
         assert 'data-matrix-author="Unknown activity"' not in output
         detail = resources["author-1.html"]
         assert 'data-matrix-page="2" data-matrix-grade=' in detail
@@ -413,7 +422,7 @@ class QualityResourcePresentationTests(unittest.TestCase):
         for locale in ("en", "zh-hans", "zh-hant"):
             interface = Interface(locale)
             for available, share, expected in (
-                (False, None, None),
+                (False, None, "authorship_unavailable"),
                 (True, None, "no_top_editors"),
                 (True, 0.1, None),
                 (True, 0.10001, None),
@@ -449,18 +458,8 @@ class QualityResourcePresentationTests(unittest.TestCase):
                     locale,
                     _NOW,
                 )
-                assert (
-                    bool(
-                        context["quality_analysis"]["articles"][0][
-                            "authorship_popup_id"
-                        ],
-                    )
-                    == available
-                )
-                assert (
-                    'aria-controls="quality-article-1-authorship"' in output
-                ) == available
-                for key in ("no_top_editors",):
+                assert 'aria-controls="quality-article-1-authorship"' in output
+                for key in ("no_top_editors", "authorship_unavailable"):
                     assert (
                         interface.text(f"quality_analysis.{key}") in output
                     ) == (key == expected)
@@ -523,14 +522,14 @@ class QualityResourcePresentationTests(unittest.TestCase):
                     f"/quality-analysis/resources/{locale}/0/current/"
                 ),
             )
-            select = output.split("data-analysis-author-role>", 1)[1]
-            select = select.split("</select>", 1)[0]
-            assert select.count("<option ") == 2
-            assert '<option value="main">' in select
-            assert '<option value="significant">' in select
-            for key in ("main_contributors", "significant_contributors"):
-                assert interface.text(f"quality_analysis.{key}") in select
-            assert interface.text("quality_analysis.author_role") in output
+            assert (
+                'type="checkbox" class="cdx-checkbox__input"  '
+                'data-analysis-author-role=""' in output
+            )
+            assert (
+                interface.text("quality_analysis.include_significant")
+                in output
+            )
             assert "data-main-authors='[\"Main author\"]'" in output
             assert "data-significant-authors" in output
             assert "data-author-ranks" not in output
@@ -709,30 +708,15 @@ class QualityResourcePresentationTests(unittest.TestCase):
                 Interface(locale),
             )["quality_analysis"]["years"][1]["segments"][0]["color"]
             assert f'fill="{color}"' in legend
-            table = output.split(
-                '<table class="analysis-year-data" data-no-pagination>',
-                1,
-            )[1]
-            table = table.split("</table>", 1)[0]
-            assert '<th scope="row">2025</th>' in table
-            assert '<th scope="row">2026</th>' in table
-            assert '<td class="analysis-total-column">0</td>' in table
-            assert '<td class="analysis-total-column">2</td>' in table
-            assert table.count('<th scope="col"') == 6
+            assert 'class="analysis-year-data"' not in output
             assert 'class="analysis-year-scroll"' in output
             assert "Scroll horizontally to inspect more years" not in output
-            header = table.split("</thead>", 1)[0]
-            assert (
-                '<th scope="col">'
-                + Interface(locale).text("assessment.class.B")
-                + "</th>"
-            ) not in header
             context = quality_analysis_context(
                 data["analysis"],
                 Interface(locale),
             )["quality_analysis"]
             assert [
-                grade["value"] for grade in context["year_table_grades"]
+                grade["value"] for grade in context["year_chart_grades"]
             ] == [
                 "FA",
                 "FL",
@@ -901,7 +885,7 @@ class QualityResourcePresentationTests(unittest.TestCase):
                     value=value,
                 )
                 assert length["marker_titles"][kind] == title
-                assert f"<title>{title}</title>" in output
+                assert f'aria-label="{title}"' in output
             assert 'class="analysis-violin-mean"' in output
             assert isclose(
                 length["mean_x"],
@@ -1208,7 +1192,6 @@ class QualityResourceHTTPTests(unittest.TestCase):
         )
         assert native.count("<tr data-analysis-row ") == 10
         assert "data-page-ids=" not in native
-        assert "selected_page_ids" not in browser
         assert "超級馬力歐" not in browser
 
         def query(**options: object) -> str:
@@ -1265,6 +1248,15 @@ class QualityResourceHTTPTests(unittest.TestCase):
                 ):
                     result = client.get(search).json()
                     assert [row[0] for row in result["rows"]] == [100]
+                assert all(
+                    client.get(query(regex=regular, **options)).json()["total"]
+                    == 0
+                    for regular in (False, True)
+                    for options in (
+                        {"search": "马力欧", "script_sensitive": True},
+                        {"search": "catalog-only", "case_sensitive": True},
+                    )
+                )
                 assert client.get(query(search="[", regex=True)).json() == {
                     "regex_error": True,
                 }
@@ -1305,9 +1297,16 @@ class QualityResourceHTTPTests(unittest.TestCase):
 
     @staticmethod
     def test_author_html_fits_the_saved_report_budget() -> None:
-        """Retain complete author pages within the file budget."""
-        author = "<tr><td>贡献正文</td><td>1,000</td></tr>" * 300
+        """Keep author pages and directories within the file budget."""
+        author = "<tr><td>正文</td><td>1.0千字</td></tr>" * 300
         names = ["author-1.html", "author-1-significant.html"]
+        directory = json.dumps(
+            {"articles": ["超級馬力歐"] * 750},
+            ensure_ascii=False,
+        )
+        directory_name = (
+            f"directory-{sha256(directory.encode()).hexdigest()}.json"
+        )
         with (
             TemporaryDirectory() as temporary,
             patch.object(quality_pages, "MAX_BYTES", 24_000),
@@ -1317,10 +1316,16 @@ class QualityResourceHTTPTests(unittest.TestCase):
                 path,
                 "<main>Articles</main>",
                 (),
-                resources=dict.fromkeys(names, author),
+                resources={
+                    **dict.fromkeys(names, author),
+                    directory_name: directory,
+                },
             )
-            assert path.read_bytes().count(b'"zlib:') == len(names)
+            assert path.read_bytes().count(b'"zlib:') == len(names) + 1
             assert all(
                 quality_pages.read_resource(path, name) == author
                 for name in names
+            )
+            assert (
+                quality_pages.read_resource(path, directory_name) == directory
             )

@@ -4058,8 +4058,8 @@
   },
   "quality_authorship.listed_or_revision": {
     "en": "Listed date / attributed revision",
-    "zh-hans": "品质评级日期／署名版本",
-    "zh-hant": "品質評級日期／署名版本"
+    "zh-hans": "评级时间／署名版本",
+    "zh-hant": "評級時間／署名版本"
   },
   "quality_authorship.current_revision": {
     "en": "Current-revision attribution",
@@ -4093,8 +4093,8 @@
   },
   "quality_authorship.listed": {
     "en": "Quality assessment date",
-    "zh-hans": "品质评级日期",
-    "zh-hant": "品質評級日期"
+    "zh-hans": "评级时间",
+    "zh-hant": "評級時間"
   },
   "quality_authorship.articles": {
     "en": "{count} articles",
@@ -4340,11 +4340,6 @@
     "zh-hans": "入选年份",
     "zh-hant": "入選年份"
   },
-  "quality_analysis.year": {
-    "en": "Year",
-    "zh-hans": "年份",
-    "zh-hant": "年份"
-  },
   "quality_analysis.years_note": {
     "en": "Another {count} articles have no assessment date available.",
     "zh-hans": "另有{count}篇条目未获取到评级时间。",
@@ -4377,8 +4372,8 @@
   },
   "quality_analysis.dated": {
     "en": "Known listing dates",
-    "zh-hans": "品质评级日期已知",
-    "zh-hant": "品質評級日期已知"
+    "zh-hans": "评级时间已知",
+    "zh-hant": "評級時間已知"
   },
   "quality_analysis.median": {
     "en": "Median prose length",
@@ -4386,9 +4381,9 @@
     "zh-hant": "正文長度中位數"
   },
   "quality_analysis.words": {
-    "en": "characters",
-    "zh-hans": "字",
-    "zh-hant": "字"
+    "en": "k chars",
+    "zh-hans": "千字",
+    "zh-hant": "千字"
   },
   "quality_analysis.importance": {
     "en": "Importance",
@@ -4417,8 +4412,8 @@
   },
   "quality_analysis.no_dates": {
     "en": "No supported listing dates are saved yet.",
-    "zh-hans": "尚无已保存且有证据支持的品质评级日期。",
-    "zh-hant": "尚無已儲存且有證據支持的品質評級日期。"
+    "zh-hans": "尚无已保存且有证据支持的评级时间。",
+    "zh-hant": "尚無已儲存且有證據支持的評級時間。"
   },
   "quality_analysis.no_measurements": {
     "en": "No prose measurements are saved yet.",
@@ -4434,21 +4429,6 @@
     "en": "Article title",
     "zh-hans": "条目名",
     "zh-hant": "條目名"
-  },
-  "quality_analysis.rating": {
-    "en": "Rating",
-    "zh-hans": "评级",
-    "zh-hant": "評級"
-  },
-  "quality_analysis.all_grades": {
-    "en": "All grades",
-    "zh-hans": "全部品质",
-    "zh-hant": "全部品質"
-  },
-  "quality_analysis.all_importance": {
-    "en": "All importance levels",
-    "zh-hans": "全部重要度",
-    "zh-hant": "全部重要度"
   },
   "quality_analysis.all_rows": {
     "en": "All rows",
@@ -4560,11 +4540,6 @@
     "zh-hans": "每根竖直柱表示一个入选年份，彩色堆叠部分表示各品质的条目数，柱顶数字为总数。数据表提供精确值。",
     "zh-hant": "每根垂直柱表示一個入選年份，彩色堆疊部分表示各品質的條目數，柱頂數字為總數。資料表提供精確值。"
   },
-  "quality_analysis.chart_data": {
-    "en": "View chart data",
-    "zh-hans": "查看图表数据",
-    "zh-hant": "檢視圖表資料"
-  },
   "quality_analysis.grade_pie": {
     "en": "By grade",
     "zh-hans": "按品质",
@@ -4632,8 +4607,28 @@
   },
   "quality_analysis.editor_share": {
     "en": "Share",
-    "zh-hans": "贡献比例",
-    "zh-hant": "貢獻比例"
+    "zh-hans": "比例",
+    "zh-hant": "比例"
+  },
+  "quality_analysis.editors_other": {
+    "en": "{count} other editors",
+    "zh-hans": "其他{count}编者",
+    "zh-hant": "其他{count}編者"
+  },
+  "quality_analysis.editors_other_one": {
+    "en": "{count} other editor",
+    "zh-hans": "其他{count}编者",
+    "zh-hant": "其他{count}編者"
+  },
+  "quality_analysis.editors_total": {
+    "en": "{count} editors total",
+    "zh-hans": "合计 {count}编者",
+    "zh-hant": "合計 {count}編者"
+  },
+  "quality_analysis.editors_total_one": {
+    "en": "{count} editor total",
+    "zh-hans": "合计 {count}编者",
+    "zh-hant": "合計 {count}編者"
   },
   "quality_analysis.editor_bytes": {
     "en": "Attributed source",
@@ -4646,6 +4641,16 @@
     "zh-hant": "歸屬正文"
   },
   "quality_analysis.regex": {"en": "Use regular expressions", "zh-hans": "使用正则表达式", "zh-hant": "使用正規表示式"},
+  "quality_analysis.case_sensitive": {
+    "en": "Match case",
+    "zh-hans": "区分大小写",
+    "zh-hant": "區分大小寫"
+  },
+  "quality_analysis.script_sensitive": {
+    "en": "Distinguish Simplified and Traditional Chinese",
+    "zh-hans": "区分简繁体",
+    "zh-hant": "區分簡繁體"
+  },
   "quality_analysis.regex_error": {"en": "Invalid regular expression", "zh-hans": "正则表达式无效", "zh-hant": "正規表示式無效"},
   "quality_analysis.editor_bytes_hint": {
     "en": "Attributed wikitext in UTF-8 bytes, including references",
@@ -4692,11 +4697,6 @@
     "zh-hans": "按作者统计",
     "zh-hant": "按作者統計"
   },
-  "quality_analysis.total_column": {
-    "en": "Total",
-    "zh-hans": "合计",
-    "zh-hant": "合計"
-  },
   "quality_analysis.chart_article_count": {
     "en": "{count} articles and lists",
     "zh-hans": "共{count}篇条目及列表",
@@ -4714,8 +4714,8 @@
   },
   "quality_analysis.listing_intro": {
     "en": "Listing dates use the latest award of the current grade. High-quality dates come from the talk page’s Article history template; other grades are inferred from assessment banners in talk-page history.",
-    "zh-hans": "品质评级日期以当前评级最后获评的时间为准。高品质条目的日期来自讨论页 {{Article history}} 模板；其他评级通过解析讨论页历史记录中的评级模板推断。",
-    "zh-hant": "品質評級日期以目前評級最後獲評的時間為準。高品質條目的日期來自討論頁 {{Article history}} 模板；其他評級透過解析討論頁歷史記錄中的評級模板推斷。"
+    "zh-hans": "评级时间以当前评级最后获评的时间为准。高品质条目的日期来自讨论页 {{Article history}} 模板；其他评级通过解析讨论页历史记录中的评级模板推断。",
+    "zh-hant": "評級時間以目前評級最後獲評的時間為準。高品質條目的日期來自討論頁 {{Article history}} 模板；其他評級透過解析討論頁歷史記錄中的評級模板推斷。"
   },
   "quality_analysis.author_intro": {
     "en": "Main-contributor estimates come from WikiWho and may be inaccurate. This page helps editors find experienced contributors to the project.",
@@ -4724,8 +4724,8 @@
   },
   "quality_analysis.year_from": {
     "en": "Listing year from",
-    "zh-hans": "品质评级日期从",
-    "zh-hant": "品質評級日期從"
+    "zh-hans": "评级时间从",
+    "zh-hant": "評級時間從"
   },
   "quality_analysis.year_to": {
     "en": "to",
@@ -4767,25 +4767,35 @@
     "zh-hans": "{name}的主要贡献条目",
     "zh-hant": "{name}的主要貢獻條目"
   },
-  "quality_authorship.author_significant_articles": {
-    "en": "Articles with significant contributions from {name}",
-    "zh-hans": "{name}的重大贡献条目",
-    "zh-hant": "{name}的重大貢獻條目"
+  "quality_authorship.author_info": {
+    "en": "About {name}",
+    "zh-hans": "{name}的贡献资料",
+    "zh-hant": "{name}的貢獻資料"
+  },
+  "quality_authorship.basic_info": {
+    "en": "Basic information",
+    "zh-hans": "基本信息",
+    "zh-hant": "基本資料"
+  },
+  "quality_authorship.video_game_project": {
+    "en": "WikiProject Video Games",
+    "zh-hans": "电子游戏专题",
+    "zh-hant": "電子遊戲專題"
+  },
+  "quality_authorship.significant_article_list": {
+    "en": "Articles with significant contributions",
+    "zh-hans": "重大贡献条目列表",
+    "zh-hant": "重大貢獻條目列表"
+  },
+  "quality_authorship.public_edits": {
+    "en": "Public edits",
+    "zh-hans": "编辑记录",
+    "zh-hant": "編輯紀錄"
   },
   "quality_authorship.main_article_count": {
     "en": "Main contributions",
-    "zh-hans": "主要贡献条目数",
-    "zh-hant": "主要貢獻條目數"
-  },
-  "quality_authorship.contributed_prose": {
-    "en": "Contributed prose",
-    "zh-hans": "贡献正文",
-    "zh-hant": "貢獻正文"
-  },
-  "quality_authorship.contributed_size": {
-    "en": "Contribution size",
-    "zh-hans": "贡献大小",
-    "zh-hant": "貢獻大小"
+    "zh-hans": "主要贡献条目",
+    "zh-hant": "主要貢獻條目"
   },
   "quality_analysis.author_filter": {
     "en": "Contributor",
@@ -4877,15 +4887,10 @@
     "zh-hans": "无法加载作者详情。请重试；若报告已更新，请重新加载页面。",
     "zh-hant": "無法載入作者詳細資料。請重試；若報告已更新，請重新載入頁面。"
   },
-  "quality_analysis.author_role": {
-    "en": "Contribution type",
-    "zh-hans": "贡献类型",
-    "zh-hant": "貢獻類型"
-  },
-  "quality_analysis.main_contributors": {
-    "en": "Main contributors",
-    "zh-hans": "主要贡献者",
-    "zh-hant": "主要貢獻者"
+  "quality_analysis.include_significant": {
+    "en": "Include other significant contributions",
+    "zh-hans": "也列出「重大贡献」条目",
+    "zh-hant": "也列出「重大貢獻」條目"
   },
   "quality_analysis.significant_contributors": {
     "en": "Significant contributors",

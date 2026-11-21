@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "includes/popup_dialog.html" import popup with context %}
-{% from "includes/quality_authorship_tables.html" import table_labels, quality_article_header, quality_article_cells, article_authorship_dialog, author_statistics with context %}
+{% from "includes/quality_authorship_tables.html" import table_labels, quality_article_header, quality_article_cells, article_authorship_dialog, author_statistics, author_profile, detail_info, prose_measurement, size_measurement, article_count, measurement_unit with context %}
 {% block assets %}<link rel="stylesheet" href="{{ asset_url('quality_analysis.css') }}"><script type="module" src="{{ asset_url('quality_analysis.js') }}"></script>{% endblock %}
 {% block contents_links %}<ul><li><a href="#analysis-overview">{{ t.quality_analysis.overview }}</a></li><li><a href="#analysis-articles">{{ t.quality_analysis.articles }}</a></li><li><a href="#quality-authors">{{ t.quality_analysis.by_author }}</a></li></ul>{% endblock %}
 {% macro checkbox(label=none, attrs={}, checked=false) %}
@@ -104,7 +104,6 @@
 <div class="analysis-year-scroll" tabindex="0" role="region" aria-label="{{ t.quality_analysis.years }}">
 <div data-quality-chart="years" data-chart-caption="{{ t.quality_analysis.years }}">{{ quality_analysis.charts.years_svg }}</div></div>
 <ul class="analysis-legend" aria-label="{{ t.quality_analysis.grades }}">{% for grade in quality_analysis.year_legend %}<li><svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><rect width="12" height="12" class="analysis-grade-{{ grade.grade }}" fill="{{ grade.color }}"/></svg> {{ grade.label }}</li>{% endfor %}</ul>
-<details class="analysis-chart-data"><summary>{{ t.quality_analysis.chart_data }}</summary><div class="table-scroll" tabindex="0" role="region" aria-label="{{ t.quality_analysis.years }}"><table class="analysis-year-data" data-no-pagination><caption class="visually-hidden">{{ t.quality_analysis.years }}</caption><thead><tr><th scope="col">{{ t.quality_analysis.year }}</th>{% for grade in quality_analysis.year_table_grades %}<th scope="col">{{ grade.label }}</th>{% endfor %}<th scope="col" class="analysis-total-column">{{ t.quality_analysis.total_column }}</th></tr></thead><tbody>{% for year in quality_analysis.years %}<tr><th scope="row">{{ year.year }}</th>{% for grade in quality_analysis.year_table_grades %}<td>{{ year.grades.get(grade.value, 0) }}</td>{% endfor %}<td class="analysis-total-column">{{ year.count_label }}</td></tr>{% endfor %}</tbody></table></div></details>
 </section>
 {% endif %}</section>
 <section id="analysis-articles" aria-labelledby="analysis-articles-heading"><h2 id="analysis-articles-heading">{{ t.quality_analysis.articles }}</h2>
@@ -116,6 +115,8 @@
       <span class="analysis-filter-title">{{ t.quality_analysis.search }}</span>
       <span class="cdx-text-input"><input class="cdx-text-input__input" type="search" data-analysis-search autocomplete="off" maxlength="200"></span>
     </label>
+    {{ checkbox(t.quality_analysis.case_sensitive, {'data-analysis-case-sensitive': ''}) }}
+    {{ checkbox(t.quality_analysis.script_sensitive, {'data-analysis-script-sensitive': ''}) }}
     {{ checkbox(t.quality_analysis.regex, {'data-analysis-regex': ''}) }}
   </div>
   <div class="analysis-filter-row">
@@ -124,30 +125,7 @@
       <span class="cdx-text-input"><input class="cdx-text-input__input" type="search" data-analysis-author autocomplete="off" maxlength="200" list="analysis-author-names"></span>
     </label>
     <datalist id="analysis-author-names"></datalist>
-    <label class="analysis-filter-field">
-      <span>{{ t.quality_analysis.author_role }}</span>
-      <select class="cdx-select" data-analysis-author-role>
-        <option value="main">{{ t.quality_analysis.main_contributors }}</option>
-        <option value="significant">{{ t.quality_analysis.significant_contributors }}</option>
-      </select>
-    </label>
-  </div>
-  <div class="analysis-filter-row" role="group" aria-labelledby="analysis-rating-label">
-    <span class="analysis-filter-title" id="analysis-rating-label">{{ t.quality_analysis.rating }}</span>
-    <label class="analysis-filter-field">
-      <span>{{ t.quality_authorship.grade }}</span>
-      <select class="cdx-select" data-analysis-grade-filter>
-        <option value="">{{ t.quality_analysis.all_grades }}</option>
-        {% for grade in quality_analysis.grade_options %}<option value="{{ grade.value }}">{{ grade.label }}</option>{% endfor %}
-      </select>
-    </label>
-    <label class="analysis-filter-field">
-      <span>{{ t.quality_analysis.importance }}</span>
-      <select class="cdx-select" data-analysis-importance-filter>
-        <option value="">{{ t.quality_analysis.all_importance }}</option>
-        {% for importance in quality_analysis.importance_options %}<option value="{{ importance.value }}">{{ importance.label }}</option>{% endfor %}
-      </select>
-    </label>
+    {{ checkbox(t.quality_analysis.include_significant, {'data-analysis-author-role': ''}) }}
   </div>
   <div class="analysis-filter-row">
     <button type="button" class="cdx-button cdx-button--action-destructive" data-analysis-reset>{{ t.quality_analysis.reset }}</button>
@@ -177,22 +155,22 @@
 <div class="quality-authorship-table" {{ table_labels() }} data-default-sort="column2">
 <div class="ui-table"><div class="ui-table__table-wrapper table-scroll" tabindex="0" role="region" aria-label="{{ t.quality_authorship.authors }}">
 <table class="ui-table__table quality-data-table quality-author-directory"><caption class="visually-hidden">{{ t.quality_authorship.authors }}</caption><colgroup><col class="quality-column-ordinal"><col class="quality-column-title"><col class="quality-column-count"><col class="quality-column-prose"><col class="quality-column-size"><col class="quality-column-active"></colgroup>
-<thead><tr><th scope="col" class="ui-table__table__cell--align-number">#</th><th scope="col">{{ t.quality_analysis.contributors }}</th><th scope="col" data-sort-type="number">{{ t.quality_authorship.main_article_count }}</th><th scope="col" data-sort-type="number">{{ t.quality_authorship.contributed_prose }}</th><th scope="col" data-sort-type="number">{{ t.quality_authorship.contributed_size }}</th><th scope="col">{{ t.quality_authorship.latest_active }}</th></tr></thead>
+<thead><tr><th scope="col" class="ui-table__table__cell--align-number">#</th><th scope="col">{{ t.quality_analysis.author_filter }}</th><th scope="col" data-sort-type="number">{{ t.quality_authorship.main_article_count }}</th><th scope="col" data-sort-type="number">{{ t.quality_analysis.prose }}</th><th scope="col" data-sort-type="number">{{ t.quality_analysis.source_size }}</th><th scope="col">{{ t.quality_authorship.latest_active }}</th></tr></thead>
 <tbody>{% for author in quality_authorship.authors %}
 <tr data-matrix-author="{{ author.name }}"{% if author.default_selected is defined and not author.default_selected %} hidden data-cohort="0"{% endif %}{% if author.page_ids is defined %} data-page-ids='{{ author.page_ids | tojson }}'{% endif %}{% if author.contributions is defined %} data-author-contributions='{{ author.contributions | tojson }}'{% endif %}>
   <td class="analysis-number">{{ author.number }}</td>
-  <td data-sort="{{ author.name }}"><a href="{{ author.url }}">{{ author.name }}</a>{{ quality_authorship.parenthesis_open }}<a href="{{ author.talk_url }}">{{ t.quality_authorship.talk }}</a>{{ quality_authorship.parenthesis_close }}</td>
-  <td data-sort="{{ author.credit }}" class="analysis-number"><a href="{{ author.detail_url or ('#' ~ author.popup_id) }}"{% if author.detail_url %} data-quality-detail="{{ author.popup_id }}" data-loading="{{ t.quality_analysis.loading_details }}" data-load-failed="{{ t.quality_analysis.details_failed }}"{% endif %} aria-controls="{{ author.popup_id }}" aria-haspopup="dialog">{{ author.summary }}</a></td>
-  <td data-contributed-prose data-sort="{{ author.contributed_prose if author.contributed_prose is not none else '' }}" class="analysis-number"><a href="{{ author.significant_detail_url or ('#' ~ author.significant_popup_id) }}"{% if author.significant_detail_url %} data-quality-detail="{{ author.significant_popup_id }}" data-significant-detail data-loading="{{ t.quality_analysis.loading_details }}" data-load-failed="{{ t.quality_analysis.details_failed }}"{% endif %} aria-controls="{{ author.significant_popup_id }}" aria-label="{{ author.significant_dialog_title }}" aria-haspopup="dialog"><span>{{ author.contributed_prose_label }}</span></a></td>
-  <td data-contributed-bytes data-sort="{{ author.contributed_bytes if author.contributed_bytes is not none else '' }}" class="analysis-number">{{ author.contributed_bytes_label }}{% if author.contributed_bytes is not none %} <small>kB</small>{% endif %}</td>
-  <td data-sort="{{ author.last_active.value if author.last_active else '' }}">{% if author.last_active %}<a href="{{ author.contributions_url }}"><time datetime="{{ author.last_active.value }}" title="{{ author.last_active.title }}">{{ author.last_active.label }}</time></a><span class="context">{{ quality_authorship.parenthesis_open }}{{ author.last_active.age }}{{ quality_authorship.parenthesis_close }}</span>{% else %}<span class="context">{{ t.data.unknown }}</span>{% endif %}</td>
+  <td data-sort="{{ author.name }}"><a href="{{ author.url }}">{{ author.name }}</a>{{ detail_info(author.significant_popup_id, author.info_title, author.significant_detail_url) }}</td>
+  <td data-sort="{{ author.credit }}" class="analysis-number"><a href="{{ author.detail_url or ('#' ~ author.popup_id) }}"{% if author.detail_url %} data-quality-detail="{{ author.popup_id }}" data-loading="{{ t.quality_analysis.loading_details }}" data-load-failed="{{ t.quality_analysis.details_failed }}"{% endif %} aria-controls="{{ author.popup_id }}" aria-haspopup="dialog">{{ article_count(author) }}</a></td>
+  <td data-contributed-prose data-sort="{{ author.contributed_prose if author.contributed_prose is not none else '' }}" class="analysis-number">{{ prose_measurement(author.contributed_prose_label, author.contributed_prose) }}</td>
+  <td data-contributed-bytes data-sort="{{ author.contributed_bytes if author.contributed_bytes is not none else '' }}" class="analysis-number">{{ size_measurement(author.contributed_bytes_label, author.contributed_bytes) }}</td>
+  <td data-sort="{{ author.last_active.value if author.last_active else '' }}">{% if author.last_active %}<a href="{{ author.contributions_url }}"><time datetime="{{ author.last_active.value }}" title="{{ author.last_active.title }}">{{ author.last_active.label }}</time></a>{{ measurement_unit(author.last_active.age) }}{% else %}<span class="context">{{ t.data.unknown }}</span>{% endif %}</td>
 </tr>{% endfor %}</tbody>
 </table></div></div></div>
 {% endif %}
 </section>
 {% for author in quality_authorship.authors %}{% if not author.detail_url %}
 {% call popup(author.popup_id, author.dialog_title, "#quality-authors") %}{{ author_statistics(author.articles, author.dialog_title, author.popup_id) }}{% endcall %}
-{% call popup(author.significant_popup_id, author.significant_dialog_title, "#quality-authors") %}{{ author_statistics(author.significant_articles, author.significant_dialog_title, author.significant_popup_id, true) }}{% endcall %}
+{% call popup(author.significant_popup_id, author.info_title, "#quality-authors") %}{{ author_profile(author) }}{{ author_statistics(author.significant_articles, t.quality_authorship.significant_article_list, author.significant_popup_id) }}{% endcall %}
 {% endif %}{% endfor %}
 
 </div>

@@ -20,8 +20,16 @@ import polars as pl
 
 from data.articles import authorship_store
 from data.articles.storage import AUTHORSHIP_PATH
+from data.caching.project_observations import (
+    link_daily_archive,
+    resolve_daily_alias,
+)
 from data.reports import ReportStore
-from shared.support.assessment_encoding import restore_assessment_schema
+from shared.support.assessment_encoding import (
+    TASKFORCE_FLAG_COLUMNS,
+    TASKFORCE_LIST_COLUMNS,
+    restore_assessment_schema,
+)
 from shared.support.files import atomic_json, read_json_object
 from shared.support.parquet import validate_parquet_metadata
 from shared.support.parquet_tables import (
@@ -35,6 +43,12 @@ from shared.support.parquet_tables import (
 
 _ROOTS = ("data", "cache", "reports", "dry-run")
 _WORK = "scalar-parquet"
+_FLAG_WORK = "taskforce-flags"
+_OLD_TASKFORCE_COLUMNS = {
+    column
+    for name in TASKFORCE_LIST_COLUMNS
+    for column in (name, name + "__length")
+}
 _ACTIVE = Path("state/toolforge-jobs/active")
 _MAX_JSON = 8 * 1024 * 1024
 _LOGGER = logging.getLogger(__name__)
@@ -66,6 +80,27 @@ def _nested(path: Path) -> bool:
     )
 
 
+def _legacy_taskforces(path: Path) -> bool:
+    """Identify an old task-force list or length marker.
+
+    Returns:
+        Whether the legacy membership still needs conversion.
+    """
+    return bool(_OLD_TASKFORCE_COLUMNS & pl.read_parquet_schema(path).keys())
+
+
+def _has_flags(path: Path) -> bool:
+    """Check the six physical membership fields.
+
+    Returns:
+        Whether all six Booleans have replaced the original list.
+    """
+    schema = pl.read_parquet_schema(path)
+    return not (_OLD_TASKFORCE_COLUMNS & schema.keys()) and all(
+        schema.get(name) == pl.Boolean for name in TASKFORCE_FLAG_COLUMNS
+    )
+
+
 def _digest(path: Path) -> str:
     """Hash bytes to identify immutable and staged tables.
 
@@ -80,7 +115,10 @@ def _backup(source: Path, originals: Path) -> None:
     """Retain the original inode before any replacement."""
     destination = originals / source
     destination.parent.mkdir(parents=True, exist_ok=True)
-    os.link(source, destination)
+    if source.suffix == ".parquet":
+        link_table(source, destination)
+    else:
+        os.link(source, destination)
 
 
 def _json(path: Path) -> dict:
@@ -146,6 +184,8 @@ def _stage_one(
     staged: Path,
     originals: Path,
     schema: dict | None,
+    *,
+    flags: bool,
 ) -> dict[str, str]:
     """Save an original and verify logical equality before cutover.
 
@@ -164,7 +204,7 @@ def _stage_one(
     destination.chmod(stat.S_IMODE(path.stat().st_mode))
     restored, _metadata = _load(destination, schema)
     if (
-        _nested(destination)
+        (_nested(destination) or (flags and not _has_flags(destination)))
         or frame.schema != restored.schema
         or not frame.equals(restored)
     ):
@@ -173,7 +213,20 @@ def _stage_one(
     return {"old": _digest(source), "new": converted}
 
 
-def _plan(work: Path) -> None:
+def _daily_alias(path: Path) -> Path:
+    """Resolve the project archive behind its hourly alias.
+
+    Returns:
+        The archive path or the standalone file path.
+    """
+    dry = path.parts[0] == "dry-run"
+    relative = path.relative_to("dry-run") if dry else path
+    root = Path("dry-run") if dry else Path()
+    archive = resolve_daily_alias(relative.as_posix(), Path.cwd() / root)
+    return root / archive
+
+
+def _plan(work: Path, *, flags: bool) -> None:  # ruff: ignore[too-many-locals] - Keep staged operations together.
     """Stage verified conversions before changing live files.
 
     Raises:
@@ -181,19 +234,30 @@ def _plan(work: Path) -> None:
     """
     files = _files()
     reports = _report_tables(files)
-    candidates = [
-        path for path in files if path.suffix == ".parquet" and _nested(path)
-    ]
+    needs_conversion = _legacy_taskforces if flags else _nested
+    candidates = {
+        path
+        for path in files
+        if path.suffix == ".parquet" and needs_conversion(path)
+    }
     with TemporaryDirectory(
         prefix=".scalar-plan-",
         dir=work.parent,
     ) as temporary:
-        directory = Path(temporary) / _WORK
+        directory = Path(temporary) / work.name
         originals = directory / "originals"
         staged = directory / "prepared"
         standalone = {}
         bundles = {}
-        for path in candidates:
+        aliases = {}
+        for path in sorted(candidates):
+            archive = _daily_alias(path)
+            if archive != path and archive in candidates:
+                aliases[str(path)] = {
+                    "archive": str(archive),
+                    "old": _digest(path),
+                }
+                continue
             if path == AUTHORSHIP_PATH:
                 _backup(path, originals)
                 continue
@@ -204,13 +268,20 @@ def _plan(work: Path) -> None:
                     staged,
                     originals,
                     None,
+                    flags=flags,
                 )
                 continue
             manifest, name, entry = report
             records = bundles.setdefault(str(manifest), {})
             if not records:
                 _backup(manifest, originals)
-            change = _stage_one(path, staged, originals, entry.get("schema"))
+            change = _stage_one(
+                path,
+                staged,
+                originals,
+                entry.get("schema"),
+                flags=flags,
+            )
             if change["old"] != entry["sha256"]:
                 message = f"Report manifest digest differs for {path}"
                 raise ValueError(message)
@@ -221,6 +292,7 @@ def _plan(work: Path) -> None:
             {
                 "standalone": standalone,
                 "bundles": bundles,
+                "aliases": aliases,
                 "authorship": AUTHORSHIP_PATH in candidates,
             },
             max_bytes=_MAX_JSON,
@@ -244,6 +316,25 @@ def _install(path: Path, change: dict, work: Path) -> None:
     elif seen != change["new"]:
         message = f"Live data changed during migration at {path}"
         raise ValueError(message)
+
+
+def _install_alias(path: Path, change: dict) -> None:
+    """Rejoin a daily alias to its new archive generation.
+
+    Raises:
+        ValueError: The live alias changed since preparing the plan.
+    """
+    archive = Path(change["archive"])
+    if path.samefile(archive):
+        return
+    if _digest(path) != change["old"]:
+        message = f"Live daily alias changed during migration at {path}"
+        raise ValueError(message)
+    link_daily_archive(
+        archive,
+        Path.cwd(),
+        dry=path.parts[0] == "dry-run",
+    )
 
 
 def _commit_report(manifest: Path, changes: dict, work: Path) -> None:
@@ -273,7 +364,7 @@ def _commit_report(manifest: Path, changes: dict, work: Path) -> None:
         atomic_json(manifest, current, max_bytes=_MAX_JSON)
 
 
-def _verify(work: Path, plan: dict) -> None:
+def _verify(work: Path, plan: dict, *, flags: bool) -> None:  # ruff: ignore[complex-structure] - Verify each table owner.
     """Verify published digests and scan all runtime roots.
 
     Raises:
@@ -295,10 +386,16 @@ def _verify(work: Path, plan: dict) -> None:
     }
     for filename, change in selected.items():
         path = Path(filename)
-        if _digest(path) != change["new"]:
+        if _digest(path) != change["new"] or (flags and not _has_flags(path)):
             message = f"Unverified published table {path}"
             raise ValueError(message)
         _load(path)
+    aliases = plan.get("aliases", {})
+    for filename, change in aliases.items():
+        path = Path(filename)
+        if not path.samefile(change["archive"]):
+            message = f"Unverified daily alias {path}"
+            raise ValueError(message)
     if plan["authorship"]:
         original = authorship_store.load(work / "originals" / AUTHORSHIP_PATH)
         if AUTHORSHIP_PATH.exists() or not original.equals(
@@ -307,22 +404,24 @@ def _verify(work: Path, plan: dict) -> None:
             message = "Unverified published listing and contributor tables."
             raise ValueError(message)
     files = [path for path in _files() if path.suffix == ".parquet"]
-    nested = [str(path) for path in files if _nested(path)]
-    if nested:
-        message = f"Nested columns remain in {nested}"
+    needs_conversion = _legacy_taskforces if flags else _nested
+    remaining = [str(path) for path in files if needs_conversion(path)]
+    if remaining:
+        message = f"Unconverted columns remain in {remaining}"
         raise ValueError(message)
     receipt = {
         "tables_scanned": len(files),
-        "nested_tables": 0,
+        "taskforce_list_tables" if flags else "nested_tables": 0,
         "converted_originals": len(selected) + int(plan["authorship"]),
+        "relinked_aliases": len(aliases),
         "listing_authorship": plan["authorship"],
     }
     atomic_json(
-        work.parent / "scalar-parquet-verified.json",
+        work.parent / f"{work.name}-verified.json",
         receipt,
         max_bytes=_MAX_JSON,
     )
-    _LOGGER.info("Verified scalar Parquet: %s", json.dumps(receipt))
+    _LOGGER.info("Verified %s: %s", work.name, json.dumps(receipt))
 
 
 def main() -> None:
@@ -334,6 +433,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("pause_record", type=Path)
+    parser.add_argument("--taskforce-flags", action="store_true")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--verify", action="store_true")
     mode.add_argument("--plan-only", action="store_true")
@@ -346,9 +446,9 @@ def main() -> None:
     ):
         message = "Expected the saved Toolforge pause record and paused jobs."
         raise ValueError(message)
-    work = record / _WORK
+    work = record / (_FLAG_WORK if args.taskforce_flags else _WORK)
     if not work.exists() and not args.verify:
-        _plan(work)
+        _plan(work, flags=args.taskforce_flags)
     if args.plan_only:
         return
     plan = _json(work / "plan.json")
@@ -357,13 +457,15 @@ def main() -> None:
             _install(Path(filename), change, work)
         for manifest, changes in plan["bundles"].items():
             _commit_report(Path(manifest), changes, work)
+        for filename, change in plan.get("aliases", {}).items():
+            _install_alias(Path(filename), change)
         if (
             plan["authorship"]
             and AUTHORSHIP_PATH.exists()
             and authorship_store.normalize_storage(AUTHORSHIP_PATH)
         ):
             AUTHORSHIP_PATH.unlink()
-    _verify(work, plan)
+    _verify(work, plan, flags=args.taskforce_flags)
 
 
 if __name__ == "__main__":

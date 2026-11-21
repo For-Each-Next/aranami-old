@@ -1,5 +1,5 @@
 {% from "includes/popup_dialog.html" import popup with context %}
-{% from "includes/quality_authorship_tables.html" import author_statistics with context %}
+{% from "includes/quality_authorship_tables.html" import author_statistics, author_profile with context %}
 <!doctype html>
 <html lang="{{ language_tag }}">
 <head>
@@ -15,7 +15,10 @@
 <main class="shell">
   <h1>{{ dialog_title }}</h1>
   <p><a href="{{ return_url }}#quality-authors">{{ t.quality_analysis.by_author }}</a></p>
-  {% call popup(dialog_id, dialog_title, return_url ~ "#quality-authors", opened=true) %}{{ author_statistics(articles, dialog_title, dialog_id, significant) }}{% endcall %}
+  {% call popup(dialog_id, dialog_title, return_url ~ "#quality-authors", opened=true) %}
+    {% if author_info %}{{ author_profile(author_info) }}{% endif %}
+    {{ author_statistics(articles, dialog_title, dialog_id) }}
+  {% endcall %}
 </main>
 </body>
 </html>

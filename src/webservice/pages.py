@@ -64,7 +64,10 @@ from webservice.quality_analysis import (
     prepare_author_articles,
     quality_analysis_context,
 )
-from webservice.quality_authorship import quality_authorship_context
+from webservice.quality_authorship import (
+    article_count_label,
+    quality_authorship_context,
+)
 from webservice.quality_charts import render_charts
 from webservice.status_view import report_context, status_context
 
@@ -1622,7 +1625,7 @@ def _quality_analysis_view(  # ruff: ignore[too-many-arguments]
             ],
             "grade_codes": [
                 row["value"]
-                for row in context["quality_analysis"]["year_table_grades"]
+                for row in context["quality_analysis"]["year_chart_grades"]
             ],
         },
         page.interface,
@@ -1778,11 +1781,8 @@ def _quality_author_resources(
             author["default_selected"] = bool(visible)
             number += int(bool(visible))
             author["number"] = number
-            author["summary"] = Interface(analysis["locale"]).text(
-                "quality_authorship.articles_one"
-                if visible == 1
-                else "quality_authorship.articles",
-                count=visible,
+            author.update(
+                article_count_label(visible, Interface(analysis["locale"])),
             )
         user_id = author["user_id"]
         if user_id:
@@ -1826,8 +1826,10 @@ def _quality_author_detail(
             **context,
             "articles": author[f"{kind}articles"],
             "dialog_id": dialog_id,
-            "dialog_title": author[f"{kind}dialog_title"],
-            "significant": significant,
+            "dialog_title": author[
+                "info_title" if significant else "dialog_title"
+            ],
+            "author_info": author if significant else None,
             "return_url": return_url,
         },
     )

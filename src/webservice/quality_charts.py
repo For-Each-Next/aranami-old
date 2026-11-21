@@ -49,7 +49,7 @@ _MEDIAN_SAMPLE = 3
 _SVG = "http://www.w3.org/2000/svg"
 _XLINK = "http://www.w3.org/1999/xlink"
 _STATISTICS = ("minimum", "p25", "p50", "p75", "maximum", "mean")
-_VIOLIN_LABELS = (*_STATISTICS, "summary", "range", "single")
+_VIOLIN_LABELS = (*_STATISTICS, "summary", "range", "single", "unit")
 ET.register_namespace("", _SVG)
 ET.register_namespace("xlink", _XLINK)
 
@@ -430,10 +430,10 @@ def _violin(  # ruff: ignore[too-many-arguments,too-many-locals] - Explicit char
                 **attributes,
                 "data-statistic": kind,
                 "data-value": str(value),
+                "aria-label": summary
+                if kind == "length"
+                else titles[kind].format(value=_number(value)),
             },
-            "title": summary
-            if kind == "length"
-            else titles[kind].format(value=_number(value)),
         }
     result = _svg(
         figure,
@@ -441,6 +441,10 @@ def _violin(  # ruff: ignore[too-many-arguments,too-many-locals] - Explicit char
         {
             "class": "analysis-mini-violin",
             "data-analysis-violin": code,
+            "data-length-start": "5.4",
+            "data-length-end": "354.6",
+            "data-length-maximum": str(maximum),
+            "data-length-unit": titles["unit"],
             "aria-label": f"{label} · {summary}",
             "preserveAspectRatio": "none",
         },
@@ -613,7 +617,11 @@ def render_charts(data: dict, interface: Interface) -> dict:
         "importance": interface.text("quality_analysis.importance_pie"),
     }
     titles = tuple(
-        interface.text(f"quality_analysis.violin_{kind}")
+        interface.text(
+            "quality_analysis.words"
+            if kind == "unit"
+            else f"quality_analysis.violin_{kind}",
+        )
         for kind in _VIOLIN_LABELS
     )
     profiles = _length_profiles(articles, options)

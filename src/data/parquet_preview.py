@@ -23,7 +23,7 @@ from data.paths import read_storage_path, storage_key
 from data.project_data import snapshot_path
 from shared.support.assessment_encoding import restore_assessment_schema
 from shared.support.parquet import validate_parquet_metadata
-from shared.support.parquet_tables import RELATIONS
+from shared.support.parquet_tables import RELATIONS, TASKFORCE_FLAGS
 
 PAGE_SIZE = 10
 PAGE_SIZES = (PAGE_SIZE, 20, 50, 100)
@@ -309,11 +309,18 @@ def read_preview(  # ruff: ignore[too-many-locals]
         page = min(page, page_count)
         frame = scan.slice((page - 1) * page_size, page_size).collect()
         frame = _restore_columns(frame, metadata)
-        if manifest is not None and RELATIONS not in metadata:
-            frame = restore_assessment_schema(frame, manifest["columns"])
-            if manifest.get("rows") != row_count or manifest["columns"] != {
+        if manifest is not None:
+            uses_physical_schema = (
+                RELATIONS in metadata or TASKFORCE_FLAGS in metadata
+            )
+            if not uses_physical_schema:
+                frame = restore_assessment_schema(frame, manifest["columns"])
+            columns = {
                 name: str(dtype) for name, dtype in frame.schema.items()
-            }:
+            }
+            if manifest.get("rows") != row_count or (
+                not uses_physical_schema and manifest["columns"] != columns
+            ):
                 message = "Project preview metadata contradicts its file."
                 raise ValueError(message)
         if frame.estimated_size() > _MAX_PAGE_BYTES:

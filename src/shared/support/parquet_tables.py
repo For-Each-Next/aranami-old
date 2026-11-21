@@ -21,7 +21,11 @@ from uuid import uuid4
 
 import polars as pl
 
-from shared.support.assessment_encoding import restore_assessment_schema
+from shared.support.assessment_encoding import (
+    encode_taskforce_flags,
+    restore_assessment_schema,
+    restore_taskforce_flags,
+)
 from shared.support.files import open_regular, staging_directory
 from shared.support.parquet import parquet_metadata, validate_parquet_metadata
 
@@ -30,6 +34,7 @@ if TYPE_CHECKING:
     from typing import BinaryIO
 
 RELATIONS = "aranami.relations"
+TASKFORCE_FLAGS = "aranami.taskforce_flags"
 _STORAGE = "aranami.storage"
 _DIRECTORY = "parquet-children"
 _ROW = "__row_id"
@@ -333,6 +338,19 @@ def _split(
     return parent, {"columns": frame.columns, "relations": relations}
 
 
+def _column_metadata(metadata: str, frame: pl.DataFrame) -> str:
+    """Update the schema in an existing storage envelope.
+
+    Returns:
+        Storage metadata for the physical columns.
+    """
+    envelope = json.loads(metadata)
+    envelope["columns"] = {
+        name: str(dtype) for name, dtype in frame.schema.items()
+    }
+    return json.dumps(envelope, ensure_ascii=False, separators=(",", ":"))
+
+
 def write_table(
     path: Path,
     frame: pl.DataFrame,
@@ -351,6 +369,25 @@ def write_table(
     Raises:
         ValueError: A table exceeds the compressed or metadata bound.
     """
+    columns = frame.columns
+    frame, taskforce_types = encode_taskforce_flags(frame)
+    if taskforce_types:
+        previous = metadata.get(_STORAGE)
+        descriptor = json.dumps(
+            {
+                "schema": 1,
+                "columns": columns,
+                "types": taskforce_types,
+                "storage": previous,
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        if len(descriptor.encode()) > _MAX_META:
+            raise ValueError(_INVALID)
+        metadata = {**metadata, TASKFORCE_FLAGS: descriptor}
+        if previous is not None:
+            metadata[_STORAGE] = _column_metadata(previous, frame)
     if not any(is_nested(dtype) for dtype in frame.dtypes):
         digest = _write(path, frame, metadata)
         if path.stat().st_size > max_bytes:
@@ -362,15 +399,12 @@ def write_table(
     physical, layout = _split(frame, directory, "")
     previous = metadata.get(_STORAGE)
     envelope = (
-        json.loads(previous)
-        if previous
-        else json.loads(
-            parquet_metadata(physical, contract="scalar-parquet")[_STORAGE],
-        )
+        previous
+        or parquet_metadata(
+            physical,
+            contract="scalar-parquet",
+        )[_STORAGE]
     )
-    envelope["columns"] = {
-        name: str(dtype) for name, dtype in physical.schema.items()
-    }
     descriptor = json.dumps(
         {
             "schema": 1,
@@ -388,7 +422,7 @@ def write_table(
         physical,
         {
             **metadata,
-            _STORAGE: json.dumps(envelope, ensure_ascii=False),
+            _STORAGE: _column_metadata(envelope, physical),
             RELATIONS: descriptor,
         },
     )
@@ -550,6 +584,57 @@ def _restore(
     return frame.select(layout["columns"])
 
 
+def _restore_memberships(
+    frame: pl.DataFrame,
+    metadata: dict[str, str],
+) -> tuple[pl.DataFrame, dict[str, str]]:
+    """Restore membership lists and their original storage metadata.
+
+    Returns:
+        Original rows and owner-facing metadata.
+
+    Raises:
+        ValueError: The layout or the stored flags are invalid.
+    """
+    encoded = metadata.get(TASKFORCE_FLAGS)
+    if encoded is None:
+        return frame, metadata
+    if len(encoded.encode()) > _MAX_META:
+        raise ValueError(_INVALID)
+    descriptor = json.loads(encoded)
+    if (
+        not isinstance(descriptor, dict)
+        or set(descriptor) != {"schema", "columns", "types", "storage"}
+        or descriptor["schema"] != 1
+    ):
+        raise ValueError(_INVALID)
+    columns, types, storage = (
+        descriptor["columns"],
+        descriptor["types"],
+        descriptor["storage"],
+    )
+    if (
+        not isinstance(columns, list)
+        or not all(isinstance(name, str) for name in columns)
+        or not isinstance(types, dict)
+        or not all(isinstance(dtype, str) for dtype in types.values())
+        or not isinstance(storage, str | None)
+    ):
+        raise ValueError(_INVALID)
+    try:
+        frame = restore_taskforce_flags(frame, columns, types)
+    except pl.exceptions.PolarsError as error:
+        raise ValueError(_INVALID) from error
+    logical = dict(metadata)
+    logical.pop(TASKFORCE_FLAGS)
+    if storage is None:
+        logical.pop(_STORAGE, None)
+    else:
+        logical[_STORAGE] = storage
+    validate_parquet_metadata(logical, frame)
+    return frame, logical
+
+
 def read_table(
     path: Path,
     stream: BinaryIO,
@@ -568,7 +653,12 @@ def read_table(
     metadata = _metadata(stream)
     layout = _layout(metadata)
     if layout is None:
-        return pl.read_parquet(stream, n_rows=max_rows + 1), metadata
+        frame = (
+            _physical(stream, metadata, max_rows)
+            if TASKFORCE_FLAGS in metadata and _STORAGE in metadata
+            else pl.read_parquet(stream, n_rows=max_rows + 1)
+        )
+        return _restore_memberships(frame, metadata)
     physical = _physical(stream, metadata, max_rows)
     directory = _generation(path, layout["id"])
     if directory.is_symlink():
@@ -595,7 +685,7 @@ def read_table(
     else:
         logical[_STORAGE] = layout["storage"]
     validate_parquet_metadata(logical, frame)
-    return frame, logical
+    return _restore_memberships(frame, logical)
 
 
 @contextmanager

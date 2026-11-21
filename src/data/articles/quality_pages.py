@@ -28,7 +28,7 @@ AUTHOR_DETAIL_NAME = re.compile(
 HASHED_AUTHOR_DETAIL_NAME = re.compile(
     r"author-quality-author-[1-9][0-9]*(?:-significant)?-[0-9a-f]{64}\.html",
 )
-_PACKED_AUTHOR_PREFIX = "zlib:"
+_PACKED_RESOURCE_PREFIX = "zlib:"
 _RESOURCE_NAME = re.compile(
     r"(?:(?:catalog|directory)-[0-9a-f]{64}\.json|"
     rf"{HASHED_AUTHOR_DETAIL_NAME.pattern}|"
@@ -139,10 +139,8 @@ def read_resource(path: Path, name: str) -> str | None:
     if content is None and not current_author:
         content = value.get("previous_resources", {}).get(name)
     if content is not None:
-        if content.startswith(_PACKED_AUTHOR_PREFIX) and (
-            current_author or HASHED_AUTHOR_DETAIL_NAME.fullmatch(name)
-        ):
-            content = _unpack_author(content)
+        if content.startswith(_PACKED_RESOURCE_PREFIX):
+            content = _unpack_resource(content)
         if current_author:
             return content
         expected = name.rsplit("-", 1)[1].split(".", 1)[0]
@@ -152,19 +150,19 @@ def read_resource(path: Path, name: str) -> str | None:
     return content
 
 
-def _unpack_author(content: str) -> str:
-    """Decode a compressed author page within the resource bound.
+def _unpack_resource(content: str) -> str:
+    """Decode a compressed page resource within the storage bound.
 
     Returns:
-        The original UTF-8 HTML.
+        The original UTF-8 data.
 
     Raises:
         ValueError: The resource cannot be decoded within its bound.
     """
-    message = "Invalid compressed quality author detail."
+    message = "Invalid compressed quality resource."
     try:
         encoded = b64decode(
-            content.removeprefix(_PACKED_AUTHOR_PREFIX),
+            content.removeprefix(_PACKED_RESOURCE_PREFIX),
             validate=True,
         )
         stream = zlib.decompressobj()
@@ -176,25 +174,20 @@ def _unpack_author(content: str) -> str:
         raise ValueError(message) from error
 
 
-def _pack_resource(name: str, content: str) -> str:
-    """Compress repetitive author tables without changing catalog bytes.
+def _pack_resource(content: str) -> str:
+    """Compress resources without changing their served bytes.
 
     Returns:
-        Compressed author HTML when smaller, or the original resource.
+        The smaller of the compressed and original representations.
 
     Raises:
-        ValueError: The author HTML exceeds the bounded resource size.
+        ValueError: The resource exceeds the bounded storage size.
     """
-    if not (
-        AUTHOR_DETAIL_NAME.fullmatch(name)
-        or HASHED_AUTHOR_DETAIL_NAME.fullmatch(name)
-    ):
-        return content
     raw = content.encode()
     if len(raw) > MAX_BYTES:
-        message = "The quality author detail exceeds its size limit."
+        message = "The quality resource exceeds its size limit."
         raise ValueError(message)
-    packed = _PACKED_AUTHOR_PREFIX + b64encode(
+    packed = _PACKED_RESOURCE_PREFIX + b64encode(
         zlib.compress(raw, level=1),
     ).decode("ascii")
     return packed if len(packed) < len(raw) else content
@@ -218,7 +211,7 @@ def save(
         value["browser"] = browser
     if resources is not None:
         resources = {
-            name: _pack_resource(name, content)
+            name: _pack_resource(content)
             for name, content in resources.items()
         }
         value.update(schema=2, resources=resources)

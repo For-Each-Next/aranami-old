@@ -115,6 +115,19 @@ After verifying the rollout, remove superseded staging directories. Keep the
 new generation, the last validated recovery generation, and every generation
 used by an active job.
 
+## Migrate retained task-force membership
+
+Pause job admission and save the CronJob suspension settings in
+`deployment-backups/<pause-record>/cron-suspensions`. Wait for data jobs to
+finish and promote a source generation that reads the six Boolean fields.
+Run `scripts/toolforge/migrate-scalar-parquet.py <pause-record> --taskforce-flags
+--plan-only` with the selected runtime interpreter from the tool directory.
+The plan validates the exact rows and saved types before publication. Run the
+same command without `--plan-only` to replace the original files and relink
+the midnight aliases. Verify `taskforce-flags-verified.json` in the pause record
+before restoring job admission. The pause record retains the original tables
+for recovery.
+
 ## Register grouped jobs
 
 On the first rollout after promoting the verified source, activate the grouped

@@ -215,15 +215,16 @@ PROJECT_DATA_SCOPES: tuple[tuple[str, str], ...] = (
     ("en", "Video games"),
 )
 
+PROJECT_DATA_TASKFORCE_FLAGS = {
+    "电子游戏/宝可梦工作组": "pa_taskforce_pokemon",
+    "电子游戏/我的世界": "pa_taskforce_minecraft",
+    "电子游戏/史克威尔艾尼克斯工作组": "pa_taskforce_square_enix",
+    "电子游戏/世嘉工作组": "pa_taskforce_sega",
+    "电子游戏/任天堂工作组": "pa_taskforce_nintendo",
+    "电子游戏/米哈游工作组": "pa_taskforce_mihoyo",
+}
 PROJECT_DATA_TASKFORCES: dict[tuple[str, str], tuple[str, ...]] = {
-    ("zhwiki", "电子游戏"): (
-        "电子游戏/宝可梦工作组",
-        "电子游戏/我的世界",
-        "电子游戏/史克威尔艾尼克斯工作组",
-        "电子游戏/世嘉工作组",
-        "电子游戏/任天堂工作组",
-        "电子游戏/米哈游工作组",
-    ),
+    ("zhwiki", "电子游戏"): tuple(PROJECT_DATA_TASKFORCE_FLAGS),
 }
 
 WEBSITE_REFRESH_INTERVALS: dict[str, float] = {

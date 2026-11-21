@@ -469,6 +469,20 @@ class CurrentQualityTests(TestCase):
                 editor["bytes"] for editor in article["authorship_editors"]
             ] == [5_000, 3_500, 1_000]
             assert set(article) == set(store.ARTICLE_SCHEMA)
+            assert article["authorship_summary"] == {
+                "other": {
+                    "editors": 1,
+                    "prose_characters": 200,
+                    "raw_bytes": 600,
+                    "bytes": 500,
+                },
+                "total": {
+                    "editors": 4,
+                    "prose_characters": 4000,
+                    "raw_bytes": 10400,
+                    "bytes": 10000,
+                },
+            }
             authors = main_author_directory(
                 selection["articles"],
                 selection["authors"],
@@ -488,8 +502,15 @@ class CurrentQualityTests(TestCase):
             popup = popup.split("</dialog>", 1)[0]
             assert ">Boundary</a>" in popup
             assert ">10.0%</td>" in popup
-            assert 'title="1\N{THIN SPACE}100">1.1 kB</td>' in popup
-            assert ">400</td>" in popup
+            assert 'title="1\N{THIN SPACE}100">1.1<small' in popup
+            assert (
+                '>0.4<small class="analysis-unit" data-unit="k chars">'
+                in popup
+            )
+            assert '<td class="analysis-number">*</td>' in popup
+            assert '<th scope="row">1 other editor</th>' in popup
+            assert '<th scope="row">4 editors total</th>' in popup
+            assert "<tfoot" not in popup
             assert ">Minor</a>" not in popup
 
     @staticmethod

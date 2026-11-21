@@ -527,53 +527,6 @@ function QualityOverview(context) {
                                 </li>
                             ))}
                         </ul>
-                        <details class="analysis-chart-data">
-                            <summary>{t.quality_analysis.chart_data}</summary>
-                            <div
-                                class="table-scroll"
-                                tabindex="0"
-                                role="region"
-                                aria-label={attribute(t.quality_analysis.years)}
-                            >
-                                <table class="analysis-year-data" data-no-pagination="">
-                                    <caption class="visually-hidden">
-                                        {display(t.quality_analysis.years)}
-                                    </caption>
-                                    <thead>
-                                        <tr>
-                                            <th scope="col">{display(t.quality_analysis.year)}</th>
-                                            {(quality_analysis?.year_table_grades ?? []).map(
-                                                (grade, gradeIndex) => (
-                                                    <th key={gradeIndex} scope="col">
-                                                        {display(grade?.label)}
-                                                    </th>
-                                                ),
-                                            )}
-                                            <th scope="col" class="analysis-total-column">
-                                                {display(t.quality_analysis.total_column)}
-                                            </th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {(quality_analysis?.years ?? []).map((year, yearIndex) => (
-                                            <tr key={yearIndex}>
-                                                <th scope="row">{display(year?.year)}</th>
-                                                {(quality_analysis?.year_table_grades ?? []).map(
-                                                    (grade, gradeIndex) => (
-                                                        <td key={gradeIndex}>
-                                                            {display(year?.grades?.[grade?.value] ?? 0)}
-                                                        </td>
-                                                    ),
-                                                )}
-                                                <td class="analysis-total-column">
-                                                    {display(year?.count_label)}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </details>
                     </section>
                 </>
             )}
@@ -581,7 +534,7 @@ function QualityOverview(context) {
     );
 }
 
-function DirectoryFilters({ quality_analysis, t }) {
+function DirectoryFilters({ t }) {
     const labels = t.quality_analysis;
     return (
         <div class="analysis-filters" data-analysis-controls="" hidden>
@@ -592,6 +545,8 @@ function DirectoryFilters({ quality_analysis, t }) {
                         <input class="cdx-text-input__input" type="search" data-analysis-search="" autocomplete="off" maxlength="200" />
                     </span>
                 </label>
+                <AnalysisCheckbox label={labels.case_sensitive} input={{"data-analysis-case-sensitive": ""}} />
+                <AnalysisCheckbox label={labels.script_sensitive} input={{"data-analysis-script-sensitive": ""}} />
                 <AnalysisCheckbox label={labels.regex} input={{"data-analysis-regex": ""}} />
             </div>
             <div class="analysis-filter-row">
@@ -602,34 +557,7 @@ function DirectoryFilters({ quality_analysis, t }) {
                     </span>
                 </label>
                 <datalist id="analysis-author-names"></datalist>
-                <label class="analysis-filter-field">
-                    <span>{labels.author_role}</span>
-                    <select class="cdx-select" data-analysis-author-role="">
-                        <option value="main">{labels.main_contributors}</option>
-                        <option value="significant">{labels.significant_contributors}</option>
-                    </select>
-                </label>
-            </div>
-            <div class="analysis-filter-row" role="group" aria-labelledby="analysis-rating-label">
-                <span class="analysis-filter-title" id="analysis-rating-label">{labels.rating ?? t.quality_authorship.grade}</span>
-                <label class="analysis-filter-field">
-                    <span>{t.quality_authorship.grade}</span>
-                    <select class="cdx-select" data-analysis-grade-filter="">
-                        <option value="">{labels.all_grades}</option>
-                        {(quality_analysis.grade_options ?? []).map(grade => (
-                            <option key={grade.value} value={grade.value}>{grade.label}</option>
-                        ))}
-                    </select>
-                </label>
-                <label class="analysis-filter-field">
-                    <span>{labels.importance}</span>
-                    <select class="cdx-select" data-analysis-importance-filter="">
-                        <option value="">{labels.all_importance}</option>
-                        {(quality_analysis.importance_options ?? []).map(importance => (
-                            <option key={importance.value} value={importance.value}>{importance.label}</option>
-                        ))}
-                    </select>
-                </label>
+                <AnalysisCheckbox label={labels.include_significant} input={{"data-analysis-author-role": ""}} />
             </div>
             <div class="analysis-filter-row">
                 <button type="button" class="cdx-button cdx-button--action-destructive" data-analysis-reset="">
@@ -640,7 +568,7 @@ function DirectoryFilters({ quality_analysis, t }) {
     );
 }
 
-function ArticleHeaders(context, title, showContributors = true, contribution = false) {
+function ArticleHeaders(context, title, showContributors = true) {
     const { t } = context;
     return (
         <>
@@ -664,10 +592,10 @@ function ArticleHeaders(context, title, showContributors = true, contribution = 
                     <th scope="col">{display(t.quality_authorship.listed)}</th>
                     {showContributors ? <th scope="col">{display(t.quality_analysis.contributors)}</th> : null}
                     <th scope="col" data-sort-type="number">
-                        {display(contribution ? t.quality_authorship.contributed_prose : t.quality_analysis.prose)}
+                        {display(t.quality_analysis.prose)}
                     </th>
                     <th scope="col" data-sort-type="number">
-                        {display(contribution ? t.quality_authorship.contributed_size : t.quality_analysis.source_size)}
+                        {display(t.quality_analysis.source_size)}
                     </th>
                 </tr>
             </thead>
@@ -675,26 +603,49 @@ function ArticleHeaders(context, title, showContributors = true, contribution = 
     );
 }
 
-function AuthorshipInfo(context, article) {
-    const { authorship_popup_id: id, authorship_popup_title: title } = article;
+function DetailInfo(context, id, title, url, more = false) {
     if (!id) return null;
     return (
         <>
             {" "}
             <a
                 class="analysis-authorship-info"
-                href={"#" + id}
+                href={attribute(url || "#" + id)}
                 aria-controls={id}
                 aria-haspopup="dialog"
                 title={attribute(title)}
                 aria-label={attribute(title)}
+                {...(url ? {
+                    "data-quality-detail": id,
+                    "data-significant-detail": "",
+                    "data-loading": context.t.quality_analysis.loading_details,
+                    "data-load-failed": context.t.quality_analysis.details_failed,
+                } : {})}
             >
-                <svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-                    <use href={iconHref(context, "message-notice")}></use>
-                </svg>
+                {more ? <span class="analysis-more-authors" aria-hidden="true">{"+"}</span> :
+                    <svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                        <use href={iconHref(context, "message-notice")}></use>
+                    </svg>}
             </a>
         </>
     );
+}
+
+function MeasurementUnit(label) {
+    const unit = String(label ?? "").trim();
+    return <small class="analysis-unit" data-unit={unit}><span>{" " + unit}</span></small>;
+}
+
+function ProseMeasurement(context, label, value) {
+    return <>{display(label)}{value != null ? MeasurementUnit(context.t.quality_analysis.words) : null}</>;
+}
+
+function SizeMeasurement(label, value) {
+    return <>{display(label)}{value != null ? MeasurementUnit("kB") : null}</>;
+}
+
+function AuthorArticleCount(author) {
+    return <>{display(author.article_count_label)}{MeasurementUnit(author.article_count_unit)}</>;
 }
 
 function AssessmentLabel({ color, label }) {
@@ -709,20 +660,14 @@ function AssessmentLabel({ color, label }) {
 }
 
 function ArticleCells(context, article, number, showContributors = true) {
-    const { quality_analysis, quality_authorship, t } = context;
+    const { t } = context;
     const { authorship, contributors, listed_date, prose_characters, source_bytes } = article;
     return (
         <>
             <td class="analysis-number">{number}</td>
             <td data-sort={attribute(article.title_label)}>
                 <a href={attribute(article.url)}>{display(article.title_label)}</a>
-                {showContributors ? null : AuthorshipInfo(context, article)}
-                {" "}
-                <span class="analysis-talk">
-                    {display(quality_authorship?.parenthesis_open)}
-                    <a href={attribute(article.talk_url)}>{display(t.quality_authorship.talk)}</a>
-                    {display(quality_authorship?.parenthesis_close)}
-                </span>
+                {DetailInfo(context, article.authorship_popup_id, article.authorship_popup_title)}
             </td>
             <td data-sort={attribute(article.grade_order)}>
                 <AssessmentLabel color={article.grade_color} label={article.grade_label} />
@@ -748,7 +693,9 @@ function ArticleCells(context, article, number, showContributors = true) {
                         <Fragment key={index}>
                             {index ? "、" : null}
                             {author.url ? (
-                                <a href={attribute(author.url)}>{display(author.label)}</a>
+                                <a href={attribute(author.url)} title={author.article_label ? attribute(author.label) : undefined}>
+                                    {display(author.article_label || author.label)}
+                                </a>
                             ) : (
                                 <span>{display(author.label)}</span>
                             )}
@@ -758,24 +705,30 @@ function ArticleCells(context, article, number, showContributors = true) {
                             {display(authorship.available ? t.quality_analysis.no_main_contributors : t.quality_analysis.main_unavailable)}
                         </span>
                     )}
-                    {AuthorshipInfo(context, article)}
+                    {(authorship.editors?.length || 0) > contributors.length
+                        ? DetailInfo(context, article.authorship_popup_id, article.authorship_popup_title, undefined, true) : null}
                 </td>
             ) : null}
             <td data-sort={attribute(prose_characters ?? "")} class="analysis-number">
-                {display(article.characters_label)}
-                {prose_characters != null ? (
-                    <>
-                        {quality_analysis.locale === "en" ? " " : null}
-                        <small>{display(t.quality_analysis.words)}</small>
-                    </>
-                ) : null}
+                {ProseMeasurement(context, article.characters_label, prose_characters)}
             </td>
             <td data-sort={attribute(source_bytes ?? "")} class="analysis-number">
-                {display(article.source_label)}
-                {source_bytes != null ? <>{" "}<small>{"kB"}</small></> : null}
+                {SizeMeasurement(article.source_label, source_bytes)}
             </td>
         </>
     );
+}
+
+function EditorRow(context, editor, index) {
+    return <tr class={editor.total ? "analysis-editor-total" : undefined}>
+        <td class="analysis-number">{index}</td>
+        <th scope="row">
+            <OptionalLink href={attribute(editor.url)}>{display(editor.name || editor.label)}</OptionalLink>
+        </th>
+        <td class="analysis-number">{ProseMeasurement(context, editor.characters_label, editor.prose_characters)}</td>
+        <td class="analysis-number" title={editor.bytes_title ?? undefined}>{SizeMeasurement(editor.bytes_label, editor.raw_bytes)}</td>
+        <td class="analysis-number">{display(editor.share_label)}</td>
+    </tr>;
 }
 
 function ArticleAuthorshipDialog(context, article, returnTo) {
@@ -823,18 +776,12 @@ function ArticleAuthorshipDialog(context, article, returnTo) {
                             </thead>
                             <tbody>
                                 {authorship.editors.length ? authorship.editors.map((editor, index) => (
-                                    <tr key={index}>
-                                        <td class="analysis-number">{index + 1}</td>
-                                        <th scope="row">
-                                            <OptionalLink href={attribute(editor.url)}>{display(editor.name)}</OptionalLink>
-                                        </th>
-                                        <td class="analysis-number">{display(editor.characters_label)}</td>
-                                        <td class="analysis-number" title={editor.bytes_title ?? undefined}>{display(editor.bytes_label)}</td>
-                                        <td class="analysis-number">{display(editor.share_label)}</td>
-                                    </tr>
+                                    <Fragment key={index}>{EditorRow(context, editor, index + 1)}</Fragment>
                                 )) : (
                                     <tr><td colspan="5">{display(t.quality_analysis.no_top_editors)}</td></tr>
                                 )}
+                                {(authorship.summary_rows ?? []).map(editor =>
+                                    <Fragment key={editor.index}>{EditorRow(context, editor, editor.index)}</Fragment>)}
                             </tbody>
                         </table>
                     </div>
@@ -850,15 +797,47 @@ function ArticleAuthorshipDialog(context, article, returnTo) {
     );
 }
 
-function AuthorStatistics(context, articles, id, title, contribution = false) {
+function AuthorProfile(context, author) {
+    const { quality_analysis, t } = context;
+    const labels = t.quality_authorship;
+    const active = author.last_active;
+    return <>
+        <div class="quality-author-info">
+            <h4>{display(labels.basic_info)}</h4>
+            <dl>
+                <dt>{display(t.quality_analysis.author_filter)}</dt>
+                <dd><a href={attribute(author.url)}>{display(author.name)}</a></dd>
+                <dt>{display(labels.latest_active)}</dt>
+                <dd>{active ? <>
+                    <time datetime={attribute(active.value)} title={attribute(active.title)}>{display(active.label)}</time>
+                    {MeasurementUnit(active.age)}
+                </> : display(t.data.unknown)}</dd>
+            </dl>
+            <p>
+                <a href={attribute(author.talk_url)}>{display(t.consistency.talk)}</a>{" · "}
+                <a href={attribute(author.contributions_url)}>{display(labels.public_edits)}</a>
+            </p>
+            <h4><a href={attribute(quality_analysis.project_url)}>{display(labels.video_game_project)}</a></h4>
+            <dl>
+                <dt>{display(labels.main_article_count)}</dt><dd data-author-main="">{AuthorArticleCount(author)}</dd>
+                <dt>{display(t.quality_analysis.prose)}</dt><dd data-author-prose="">{ProseMeasurement(context, author.contributed_prose_label, author.contributed_prose)}</dd>
+                <dt>{display(t.quality_analysis.source_size)}</dt><dd data-author-size="">{SizeMeasurement(author.contributed_bytes_label, author.contributed_bytes)}</dd>
+            </dl>
+        </div>
+        <h4>{display(labels.significant_article_list)}</h4>
+    </>;
+}
+
+function AuthorStatistics(context, articles, id, title, author) {
     return popup(
         context,
         <>
+            {author ? AuthorProfile(context, author) : null}
             <div class="quality-authorship-table" {...table_labels(context)} data-default-sort="column4">
                 <div class="ui-table">
                     <div class="ui-table__table-wrapper table-scroll" tabindex="0" role="region" aria-label={attribute(title)}>
                         <table class="ui-table__table quality-data-table quality-article-directory quality-author-article-directory">
-                            {ArticleHeaders(context, title, false, contribution)}
+                            {ArticleHeaders(context, author ? context.t.quality_authorship.significant_article_list : title, false)}
                             <tbody>
                                 {articles.map((article, index) => (
                                     <tr
@@ -1126,12 +1105,12 @@ function QualityContributors(context) {
                                         <th scope="col" class="ui-table__table__cell--align-number">
                                             {"#"}
                                         </th>
-                                        <th scope="col">{display(t.quality_analysis.contributors)}</th>
+                                        <th scope="col">{display(t.quality_analysis.author_filter)}</th>
                                         <th scope="col" data-sort-type="number">
                                             {display(t.quality_authorship.main_article_count)}
                                         </th>
-                                        <th scope="col" data-sort-type="number">{display(t.quality_authorship.contributed_prose)}</th>
-                                        <th scope="col" data-sort-type="number">{display(t.quality_authorship.contributed_size)}</th>
+                                        <th scope="col" data-sort-type="number">{display(t.quality_analysis.prose)}</th>
+                                        <th scope="col" data-sort-type="number">{display(t.quality_analysis.source_size)}</th>
                                         <th scope="col">
                                             {display(t.quality_authorship.latest_active)}
                                         </th>
@@ -1165,11 +1144,7 @@ function QualityContributors(context) {
                                                 <a href={attribute(author?.url)}>
                                                     {display(author?.name)}
                                                 </a>
-                                                {display(quality_authorship?.parenthesis_open)}
-                                                <a href={attribute(author?.talk_url)}>
-                                                    {display(t.quality_authorship.talk)}
-                                                </a>
-                                                {display(quality_authorship?.parenthesis_close)}
+                                                {DetailInfo(context, author.significant_popup_id, author.info_title, author.significant_detail_url)}
                                             </td>
                                             <td data-sort={attribute(author?.credit)} class="analysis-number">
                                                 <a
@@ -1193,28 +1168,14 @@ function QualityContributors(context) {
                                                     aria-controls={attribute(author?.popup_id)}
                                                     aria-haspopup="dialog"
                                                 >
-                                                    {display(author?.summary)}
+                                                    {AuthorArticleCount(author)}
                                                 </a>
                                             </td>
                                             <td data-contributed-prose="" data-sort={attribute(author.contributed_prose ?? "")} class="analysis-number">
-                                                <a
-                                                    href={attribute(author.significant_detail_url || "#" + author.significant_popup_id)}
-                                                    {...(author.significant_detail_url ? {
-                                                        "data-quality-detail": author.significant_popup_id,
-                                                        "data-significant-detail": "",
-                                                        "data-loading": t.quality_analysis.loading_details,
-                                                        "data-load-failed": t.quality_analysis.details_failed,
-                                                    } : {})}
-                                                    aria-controls={attribute(author.significant_popup_id)}
-                                                    aria-label={attribute(author.significant_dialog_title)}
-                                                    aria-haspopup="dialog"
-                                                >
-                                                    <span>{display(author.contributed_prose_label)}</span>
-                                                </a>
+                                                {ProseMeasurement(context, author.contributed_prose_label, author.contributed_prose)}
                                             </td>
                                             <td data-contributed-bytes="" data-sort={attribute(author.contributed_bytes ?? "")} class="analysis-number">
-                                                {display(author.contributed_bytes_label)}
-                                                {author.contributed_bytes != null ? <> {" "}<small>{"kB"}</small></> : null}
+                                                {SizeMeasurement(author.contributed_bytes_label, author.contributed_bytes)}
                                             </td>
                                             <td
                                                 data-sort={attribute(
@@ -1237,15 +1198,7 @@ function QualityContributors(context) {
                                                                 {display(author?.last_active?.label)}
                                                             </time>
                                                         </a>
-                                                        <span class="context">
-                                                            {display(
-                                                                quality_authorship?.parenthesis_open,
-                                                            )}
-                                                            {display(author?.last_active?.age)}
-                                                            {display(
-                                                                quality_authorship?.parenthesis_close,
-                                                            )}
-                                                        </span>
+                                                        {MeasurementUnit(author.last_active.age)}
                                                     </>
                                                 ) : (
                                                     <span class="context">
@@ -1288,7 +1241,7 @@ export function QualityAnalysis(context) {
                         {!hasContent(author?.detail_url)
                             ? <>
                                   {AuthorStatistics(context, author.articles, author.popup_id, author.dialog_title)}
-                                  {AuthorStatistics(context, author.significant_articles, author.significant_popup_id, author.significant_dialog_title, true)}
+                                  {AuthorStatistics(context, author.significant_articles, author.significant_popup_id, author.info_title, author)}
                               </>
                             : null}
                     </Fragment>

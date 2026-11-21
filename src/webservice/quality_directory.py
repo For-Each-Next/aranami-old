@@ -6,7 +6,7 @@ import json
 import unicodedata
 from base64 import b64decode
 from binascii import Error as Base64Error
-from functools import lru_cache
+from functools import lru_cache, partial
 from operator import itemgetter
 from time import monotonic
 from typing import TYPE_CHECKING
@@ -36,14 +36,22 @@ _FIELD_TYPES = {
             "search",
             "author",
             "role",
-            "grade",
-            "importance",
             "group",
             "value",
         ),
         str,
     ),
-    **dict.fromkeys(("unknown", "regex", "descending", "measured"), bool),
+    **dict.fromkeys(
+        (
+            "unknown",
+            "regex",
+            "case_sensitive",
+            "script_sensitive",
+            "descending",
+            "measured",
+        ),
+        bool,
+    ),
     **dict.fromkeys(("first", "last", "page", "size", "column", "year"), int),
     "cells": list,
 }
@@ -157,8 +165,6 @@ def _selection(query: dict, saved: dict) -> set[str]:
         <= query.get("first", 0)
         <= query.get("last", 0)
         <= saved["last_year"]
-        or query.get("grade", "") not in {"", *saved["grades"]}
-        or query.get("importance", "") not in {"", *saved["importance"]}
     ):
         message = "Selection is outside the saved directory."
         raise ValueError(message)
@@ -214,12 +220,17 @@ def _has_authorship(row: dict) -> bool:
 
 
 @lru_cache(maxsize=32_768)
-def _folded(value: str) -> str:
+def _folded(
+    value: str,
+    *,
+    case_sensitive: bool = False,
+    script_sensitive: bool = False,
+) -> str:
     """Return the normalized text used by literal search."""
-    return display_title(
-        unicodedata.normalize("NFKC", value),
-        "zh-hans",
-    ).lower()
+    text = unicodedata.normalize("NFKC", value)
+    if not script_sensitive:
+        text = display_title(text, "zh-hans")
+    return text if case_sensitive else text.lower()
 
 
 def _matcher(
@@ -227,6 +238,8 @@ def _matcher(
     *,
     regular: bool,
     whole: bool = False,
+    case_sensitive: bool = False,
+    script_sensitive: bool = False,
 ) -> Callable[[str], bool]:
     """Build a literal or time-bounded match for one query field.
 
@@ -237,12 +250,22 @@ def _matcher(
         DirectorySearchError: The expression is invalid or too slow.
     """
     if not regular or not text:
-        needle = _folded(text)
+        fold = partial(
+            _folded,
+            case_sensitive=case_sensitive,
+            script_sensitive=script_sensitive,
+        )
+        needle = fold(text)
         if whole:
-            return lambda value: _folded(value) == needle
-        return lambda value: needle in _folded(value)
+            return lambda value: fold(value) == needle
+        return lambda value: needle in fold(value)
+    if not script_sensitive:
+        text = display_title(text, "zh-hant")
+    flags = regex.VERSION0
+    if not case_sensitive:
+        flags |= regex.IGNORECASE
     try:
-        pattern = regex.compile(text, regex.IGNORECASE | regex.VERSION0)
+        pattern = regex.compile(text, flags)
     except regex.error as error:
         message = "Invalid directory regular expression."
         raise DirectorySearchError(message) from error
@@ -250,6 +273,8 @@ def _matcher(
 
     def matches(value: str) -> bool:
         nonlocal remaining
+        if not script_sensitive:
+            value = display_title(value, "zh-hant")
         started = monotonic()
         try:
             return bool(pattern.search(value, timeout=remaining))
@@ -285,32 +310,30 @@ def _article_filter(
     search = query.get("search", "").strip()
     author = query.get("author", "").strip()
     role = query.get("role", "main")
-    title_matches = _matcher(search, regular=query.get("regex", False))
-    name_matches = _matcher(
-        author,
-        regular=query.get("regex", False),
-        whole=True,
-    )
-    author_prefix = _folded(author)
-    grade, importance = query.get("grade"), query.get("importance")
+    matching = {
+        "regular": query.get("regex", False),
+        "case_sensitive": query.get("case_sensitive", False),
+        "script_sensitive": query.get("script_sensitive", False),
+    }
+    title_matches = _matcher(search, **matching)
+    name_matches = _matcher(author, whole=True, **matching)
+    suggests = _matcher(author, **{**matching, "regular": False})
     suggestions = set()
     filtered = []
     for row in rows:
         if author:
             names = _role_names(record, row, interface)
             labels = names["labels" if role == "main" else "significant"]
-            suggestions.update(
-                name for name in labels if author_prefix in _folded(name)
-            )
+            suggestions.update(name for name in labels if suggests(name))
             if not any(name_matches(name) for name in [*names[role], *labels]):
                 continue
-        if (grade and row["grade"] != grade) or (
-            importance and _importance(row) != importance
-        ):
-            continue
         if search and not (
             title_matches(row["title"])
-            or title_matches(_display_title(row, interface))
+            or title_matches(
+                row["title"].replace("_", " ")
+                if matching["script_sensitive"]
+                else _display_title(row, interface),
+            )
         ):
             continue
         filtered.append(row)
@@ -554,8 +577,5 @@ def read_directory(path: Path, name: str, locale: str, encoded: str) -> dict:
             interface,
         )
     page = _page(_sort_articles(filtered, record, query, interface), query)
-    page["rows"] = [
-        catalog_article(row, interface, include_authorship=view != "chart")
-        for row in page["rows"]
-    ]
+    page["rows"] = [catalog_article(row, interface) for row in page["rows"]]
     return {**page, "cohort": len(cohort), "suggestions": suggestions}

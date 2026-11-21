@@ -114,10 +114,9 @@ facts remain durable; report bundles retain two complete generations. Fixed
 identify the latest prepared report, without date-suffixed duplicate copies.
 
 Pokemon, Minecraft, Nintendo, Sega, Square Enix and miHoYo have **no separate
-page-list files**. Pageviews filters the parent archive's `pa_taskforces` list
-and uses the parent page identities, titles and assessments. It neither queries
-nor captures these six project populations again. Other independent projects
-such as ACG can have their own page list when configured.
+page-list files**. Pageviews uses the task-force membership flags, page
+identities, titles, and assessments from the parent archive. Other independent
+projects such as ACG can have their own page list when configured.
 
 Revision shards remain `00`–`FF`; no `0x` prefix or separate index is necessary.
 A successful midnight update prunes Chinese revision files absent from both the
@@ -144,15 +143,21 @@ aliases do not change the on-disk schema.
 | `talk_page_latest` | nullable Int64 | Exact observed talk revision |
 | `pa_class` | nullable Enum | Original project class, preserving extra labels |
 | `pa_importance` | nullable Enum | Original project importance |
-| `pa_taskforces` | nullable List[Enum] | Sorted configured taskforce names |
+| `pa_taskforce_pokemon` | nullable Boolean | Pokémon task-force membership |
+| `pa_taskforce_minecraft` | nullable Boolean | Minecraft task-force membership |
+| `pa_taskforce_square_enix` | nullable Boolean | Square Enix task-force membership |
+| `pa_taskforce_sega` | nullable Boolean | Sega task-force membership |
+| `pa_taskforce_nintendo` | nullable Boolean | Nintendo task-force membership |
+| `pa_taskforce_mihoyo` | nullable Boolean | miHoYo task-force membership |
 | `page_is_redirect` | nullable Boolean | `true`/`false`; historical unknown is null |
 | `page_length` | nullable Int64 | Source byte length, independent of prose metrics |
 
-Taskforce Enum vocabulary is saved in `metadata.taskforce_projects` (daily) or
-`aranami.taskforce_projects` (hourly). An empty list means confirmed no taskforce;
-null means not observed. Class/importance profiles and their Enum declarations
-are also retained. Unknown historical revision IDs remain null; migration never
-substitutes today's revisions or creates an observation for a missing day.
+Each flag is true for a member, false for a confirmed nonmember, and null when
+membership is unavailable. Readers reconstruct the saved membership lists for
+calculations and preserve their declared types. Task-force vocabulary stays in
+`metadata.taskforce_projects` (daily) or `aranami.taskforce_projects` (hourly).
+Class and importance Enum declarations are retained. Unknown historical revision
+IDs remain null.
 
 The parent and its configured child projects are captured with **one SQL
 statement**, joining subject pages, current revision timestamps, corresponding

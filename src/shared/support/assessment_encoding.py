@@ -1,4 +1,4 @@
-"""Encode assessment strings for Parquet and restore String schemas."""
+"""Encode and restore stored assessments and task-force memberships."""
 
 from __future__ import annotations
 
@@ -9,9 +9,117 @@ from typing import TYPE_CHECKING
 import polars as pl
 
 from shared.assessment_profiles import OBSERVED_PROFILE
+from shared.config import PROJECT_DATA_TASKFORCE_FLAGS
 
 if TYPE_CHECKING:
     from shared.assessment_profiles import AssessmentProfile
+
+TASKFORCE_LIST_COLUMNS = ("pa_taskforces", "taskforces")
+TASKFORCE_FLAG_COLUMNS = tuple(PROJECT_DATA_TASKFORCE_FLAGS.values())
+_TASKFORCE_LIST = pl.List(pl.String)
+_INVALID_FLAGS = "Invalid saved task-force membership flags."
+
+
+def _taskforce_members() -> pl.Expr:
+    """Reconstruct sorted memberships and null observations.
+
+    Returns:
+        A list expression over the six saved Boolean columns.
+    """
+    members = pl.concat_list([
+        pl.when(pl.col(flag)).then(pl.lit(name))
+        for name, flag in sorted(PROJECT_DATA_TASKFORCE_FLAGS.items())
+    ]).list.drop_nulls()
+    return pl.when(pl.col(TASKFORCE_FLAG_COLUMNS[0]).is_not_null()).then(
+        members,
+    )
+
+
+def encode_taskforce_flags(
+    frame: pl.DataFrame,
+) -> tuple[pl.DataFrame, dict[str, str]]:
+    """Replace canonical membership lists with nullable Boolean fields.
+
+    Returns:
+        Physical rows and the original list types. Noncanonical lists
+        retain their original representation so no information is lost.
+    """
+    types = {
+        name: dtype
+        for name, dtype in frame.schema.items()
+        if name in TASKFORCE_LIST_COLUMNS
+        and isinstance(dtype, pl.List)
+        and (dtype.inner == pl.String or isinstance(dtype.inner, pl.Enum))
+    }
+    if not types or set(TASKFORCE_FLAG_COLUMNS).intersection(frame.columns):
+        return frame, {}
+    source = next(iter(types))
+    members = pl.col(source).cast(_TASKFORCE_LIST)
+    flags = frame.select(
+        members.list.contains(name).alias(flag)
+        for name, flag in PROJECT_DATA_TASKFORCE_FLAGS.items()
+    )
+    restored = flags.select(_taskforce_members()).to_series()
+    if any(
+        not frame[name].cast(_TASKFORCE_LIST).equals(restored)
+        for name in types
+    ):
+        return frame, {}
+    names = frame.columns
+    index = names.index(source)
+    names[index:index] = TASKFORCE_FLAG_COLUMNS
+    return (
+        frame.hstack(flags).select(
+            name for name in names if name not in types
+        ),
+        {name: str(dtype) for name, dtype in types.items()},
+    )
+
+
+def restore_taskforce_flags(
+    frame: pl.DataFrame,
+    columns: list[str],
+    types: dict[str, str],
+) -> pl.DataFrame:
+    """Restore the saved membership list types and column positions.
+
+    Returns:
+        Logical rows with the original membership observations.
+
+    Raises:
+        ValueError: Saved flags disagree with their descriptor.
+    """
+    flags = TASKFORCE_FLAG_COLUMNS
+    schema = frame.schema
+    if (
+        not types
+        or not types.keys() <= set(TASKFORCE_LIST_COLUMNS)
+        or types.keys() & schema.keys()
+        or any(schema.get(flag) != pl.Boolean for flag in flags)
+    ):
+        raise ValueError(_INVALID_FLAGS)
+    logical_names = (schema.keys() - set(flags)) | types.keys()
+    if len(columns) != len(logical_names) or set(columns) != logical_names:
+        raise ValueError(_INVALID_FLAGS)
+    null_mismatch = pl.any_horizontal(
+        pl.col(flag).is_null() != pl.col(flags[0]).is_null()
+        for flag in flags[1:]
+    )
+    if frame.select(null_mismatch.any()).item():
+        raise ValueError(_INVALID_FLAGS)
+    members = _taskforce_members()
+    restored = []
+    for name, dtype in types.items():
+        if dtype == str(_TASKFORCE_LIST):
+            restored.append(members.alias(name))
+        elif dtype.startswith("List(Enum(categories=") and dtype.endswith(
+            "))",
+        ):
+            enum = _saved_enum(dtype[5:-1])
+            restored.append(members.cast(pl.List(enum)).alias(name))
+        else:
+            raise ValueError(_INVALID_FLAGS)
+    return frame.with_columns(restored).select(columns)
 
 
 def _categories(

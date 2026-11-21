@@ -7,7 +7,19 @@ let tableSequence = 0;
 const detailRequests = new Map();
 
 /** Keep delayed details consistent with the currently selected matrix cohort. */
-export function applyQualityDetailCohort(dialog) {
+export function applyQualityDetailCohort(dialog, opener) {
+    const author = opener?.closest("[data-matrix-author]");
+    if (author && dialog.querySelector(".quality-author-info")) {
+        for (const [name, source] of [
+            ["main", author.cells[2].querySelector("a")],
+            ["prose", author.querySelector("[data-contributed-prose]")],
+            ["size", author.querySelector("[data-contributed-bytes]")],
+        ]) {
+            dialog.querySelector(`[data-author-${name}]`).replaceChildren(
+                ...[...source.childNodes].map(node => node.cloneNode(true)),
+            );
+        }
+    }
     const form = document.querySelector("[data-quality-matrix]");
     if (form?.dataset?.directoryUrl && form.qualitySelection) {
         for (const row of dialog.querySelectorAll("[data-matrix-page][data-matrix-importance]")) {
@@ -155,7 +167,7 @@ export function initializeQualityDetails() {
                 (document.querySelector("[data-quality-results]") || document.body).append(incoming);
                 dialog = incoming;
             }
-            applyQualityDetailCohort(dialog);
+            applyQualityDetailCohort(dialog, link);
             initializeQualityAuthorship(dialog);
             dialog.dispatchEvent(new Event("quality-detail-open"));
             openers.set(dialog, link);
@@ -180,7 +192,7 @@ export function initializeQualityDetails() {
                 link.hasAttribute("data-quality-detail")) return;
         const dialog = document.getElementById(link.getAttribute("aria-controls"));
         if (dialog?.nodeName === "DIALOG") {
-            applyQualityDetailCohort(dialog);
+            applyQualityDetailCohort(dialog, link);
             initializeQualityAuthorship(dialog);
             dialog.dispatchEvent(new Event("quality-detail-open"));
         }

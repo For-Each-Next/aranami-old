@@ -227,7 +227,7 @@ class QualityAnalysisPresentationTests(unittest.TestCase):
         ]
         assert context["median"] == "9\N{THIN SPACE}876"
         assert context["articles"][1]["characters_label"] == "—"
-        assert context["articles"][2]["characters_label"] == "0"
+        assert context["articles"][2]["characters_label"] == "0.0"
         assert context["articles"][1]["date_label"] is None
         assert context["articles"][0]["review_url"] is None
         assert context["articles"][0]["source_url"].endswith("oldid=124")

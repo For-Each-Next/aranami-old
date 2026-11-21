@@ -9,6 +9,7 @@ from unittest import TestCase
 
 import polars as pl
 
+from shared.config import PROJECT_DATA_TASKFORCE_FLAGS
 from shared.support.parquet import parquet_metadata
 from shared.support.parquet_tables import (
     MAX_BYTES,
@@ -91,6 +92,29 @@ class TestScalarParquet(TestCase):
         self.publish(self.frame.head(1))
         remove_table(self.parent)
         assert self.read(baseline).equals(self.frame)
+
+    def test_taskforce_flags_preserve_exact_saved_memberships(self) -> None:
+        """Store one Boolean per configured group in the parent."""
+        names = sorted(PROJECT_DATA_TASKFORCE_FLAGS)
+        rows = pl.DataFrame(
+            [(1, names, names), (2, [], []), (3, None, None)],
+            schema={
+                "id": pl.Int64,
+                "taskforces": pl.List(pl.String),
+                "pa_taskforces": pl.List(pl.Enum(names)),
+            },
+            orient="row",
+        )
+        self.publish(rows)
+        saved = pl.read_parquet(self.parent)
+        assert saved.columns == ["id", *PROJECT_DATA_TASKFORCE_FLAGS.values()]
+        for flag in PROJECT_DATA_TASKFORCE_FLAGS.values():
+            assert saved.schema[flag] == pl.Boolean
+            assert saved[flag].to_list() == [True, False, None]
+        assert not (self.root / "parquet-children").exists()
+        restored = self.read(self.parent)
+        assert restored.schema == rows.schema
+        assert restored.equals(rows)
 
     def test_modified_child_fails_closed(self) -> None:
         """Reject a different table with the same child filename."""

@@ -46,13 +46,18 @@ test("listing dates use ISO order and identical titles remain stable", () => {
     assert.equal(compare(row(1, "遊戲"), row(1, "遊戲"), 1, false, "zh-Hant"), 0);
 });
 
-test("plain titles fold Chinese characters and regex keeps pattern syntax", () => {
+test("literal and regex searches apply independent case and Han sensitivity", () => {
     const match = context.searchMatcher;
     assert.equal(match("马力欧", false, "zh-Hans")("超級馬力歐銀河2"), true);
     assert.equal(match("馬力歐", false, "zh-Hant")("超级马力欧银河2"), true);
     assert.equal(match("(游戏)", false, "zh-Hans")("蔚藍（遊戲）"), true);
     assert.equal(match("^超級.*[12]$", true, "zh-Hant")("超級馬力歐銀河2"), true);
-    assert.equal(match("^超級.*[12]$", true, "zh-Hant")("超级马力欧银河2"), false);
+    assert.equal(match("^超級.*[12]$", true, "zh-Hant")("超级马力欧银河2"), true);
+    for (const regex of [true, false]) {
+        assert.equal(match("Game遊戲", regex, "zh-Hans")("game游戏"), true);
+        assert.equal(match("Game遊戲", regex, "zh-Hans", false, {caseSensitive: true})("game游戏"), false);
+        assert.equal(match("Game遊戲", regex, "zh-Hans", false, {scriptSensitive: true})("Game游戏"), false);
+    }
     assert.equal(match("[", true, "zh-Hans"), null);
 });
 
@@ -281,6 +286,7 @@ function detailFixture() {
             href: `https://aranami.example/quality-analysis/resources/${id}.html#${id}`,
             dataset: {qualityDetail: id}, textContent: "40 articles", isConnected: true, attributes: new Map(),
             hasAttribute(name) {return this.attributes.has(name);},
+            closest() {return null;},
             setAttribute(name, value) {this.attributes.set(name, value);},
             removeAttribute(name) {this.attributes.delete(name);},
             after() {}, focus() {this.focused = true;},
@@ -474,7 +480,7 @@ test("saved qualifying contributors retain their exact labels and optional evide
         available: true, range_end: null, visualization_url: "https://example.org/evidence",
         editors: [{name: "Qualifying editor", url: "https://example.org/user", share_label: "10.1%", bytes_label: "101"}],
     }, view.labels);
-    assert.match(view.body.textContent, /Qualifying editor10110.1%/);
+    assert.match(view.body.textContent, /Qualifying editor—10110.1%/);
     assert.equal(view.body.childNodes[1].getAttribute("data-no-pagination"), "");
     assert.doesNotMatch(view.body.textContent, /Data not acquired|no editor contributed/);
     assert.equal(view.body.childNodes[0].childNodes[0].href, "https://example.org/evidence");
@@ -496,19 +502,20 @@ test("every article render creates fresh rows while preserving initial escaped m
     assert.equal(view.context.articleElement(original).textContent, "<escaped title>");
 });
 
-test("catalog rows rebuild the prepared table's chips, talk links, evidence and measurement styling", () => {
+test("catalog rows rebuild article titles, assessment chips, review dates and measurements", () => {
     const view = attributionFixture();
     const article = {page_id: 12, title: "Example Title", title_label: "Example Title", grade: "GA", importance: "High", listed_date: "2026-01-02", listed_oldid: 123,
         date_label: "2026-01-02", authors: ["Editor"], prose_characters: 1234, source_bytes: 12500,
         review_url: "https://zh.wikipedia.org/wiki/Talk:Example_Title#Review", authorship: {available: true}, main_contributors: [{name: "Editor", label: "Editor", url: "https://zh.wikipedia.org/wiki/User:Editor"}]};
     const metadata = {grades: [{value: "GA", article_label: "Good article", color: "#abcdef"}], importance: [{value: "High", label: "High", article_color: "#fedcba"}], authorshipIcon: "/icons.svg#notice",
-        labels: {...view.labels, parenthesis_open: " (", parenthesis_close: ")", talk: "talk", review: "review", listing_evidence: "Listing revision", authorship_details: "Attribution: {title}", words: "characters"}};
+        labels: {...view.labels, review: "review", authorship_details: "Attribution: {title}", words: "k chars"}};
     const record = {article, metadata, dataset: {pageId: "12"}, cells: Array.from({length: 8}, (_, i) => ({textContent: String(i), dataset: {sort: String(i)}}))};
     const row = view.context.articleElement(record), again = view.context.articleElement(record);
     assert.notEqual(row, again);
     assert.equal(Object.hasOwn(record, "element"), false);
-    assert.equal(row.cells[1].childNodes[2].className, "analysis-talk");
-    assert.match(row.cells[1].textContent, /Example Title\s+\(talk\)/);
+    assert.equal(row.cells[1].childNodes.length, 3);
+    assert.equal(row.cells[1].textContent.trim(), "Example Title");
+    assert.equal(row.cells[1].childNodes[0].href, "https://zh.wikipedia.org/wiki/Example_Title");
     assert.equal(row.cells[2].childNodes[0].className, "analysis-assessment-label");
     assert.equal(row.cells[2].childNodes[0].childNodes[0].getAttribute("class"), "analysis-swatch");
     assert.equal(row.cells[2].childNodes[0].childNodes[0].childNodes[0].getAttribute("fill"), "#abcdef");
@@ -519,11 +526,11 @@ test("catalog rows rebuild the prepared table's chips, talk links, evidence and 
     assert.equal(row.cells[4].childNodes[0].childNodes[0].tagName, "time");
     assert.equal(row.cells[4].childNodes[0].childNodes[0].dateTime, "2026-01-02");
     assert.equal(row.cells[4].childNodes.length, 1);
-    assert.equal(row.cells[5].childNodes.at(-1).className, "analysis-authorship-info");
-    assert.equal(row.cells[5].childNodes.at(-1).handlers.click.length, 1);
-    assert.equal(again.cells[5].childNodes.at(-1).handlers.click.length, 1);
+    assert.equal(row.cells[1].childNodes.at(-1).className, "analysis-authorship-info");
+    assert.equal(row.cells[1].childNodes.at(-1).handlers.click.length, 1);
+    assert.equal(again.cells[1].childNodes.at(-1).handlers.click.length, 1);
     assert.equal(row.cells[6].className, "analysis-number");
-    assert.equal(row.cells[6].textContent, "1\u2009234 characters");
+    assert.equal(row.cells[6].textContent, "1.2 k chars");
     assert.equal(row.cells[7].textContent, "12.5 kB");
     article.review_url = null;
     assert.equal(view.context.articleElement(record).cells[4].childNodes[0].tagName, "time");

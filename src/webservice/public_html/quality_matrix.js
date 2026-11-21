@@ -114,15 +114,28 @@ export function selectedAuthorTotals(contributions, ids) {
     return {prose, bytes};
 }
 
-function renderAuthorTotals(row, {prose, bytes}) {
+function measurementUnit(label) {
+    const unit = label.trim();
+    const small = node("small", undefined, "analysis-unit");
+    small.dataset.unit = unit;
+    small.append(node("span", " " + unit));
+    return small;
+}
+
+function displayProse(cell, count, unit) {
+    cell.textContent = count == null ? "—" : groupedNumber(count / 1000, true);
+    if (count != null) cell.append(measurementUnit(unit));
+}
+
+function renderAuthorTotals(row, {prose, bytes}, words) {
     const proseCell = row.querySelector("[data-contributed-prose]");
     const sizeCell = row.querySelector("[data-contributed-bytes]");
     if (!proseCell || !sizeCell) return;
     proseCell.dataset.sort = prose ?? "";
-    proseCell.querySelector("a span").textContent = prose === null ? "—" : groupedNumber(prose);
+    displayProse(proseCell, prose, words);
     sizeCell.dataset.sort = bytes ?? "";
     sizeCell.textContent = bytes === null ? "—" : groupedNumber(bytes / 1000, true);
-    if (bytes !== null) sizeCell.append(document.createTextNode(" "), node("small", "kB"));
+    if (bytes !== null) sizeCell.append(measurementUnit("kB"));
 }
 
 /** Use the same confirmed grade, importance and year in every browse view. */
@@ -204,6 +217,13 @@ export function proseLengthPosition(characters, maximum) {
     if (characters <= 25000) return Math.max(0, characters / 25000 * 900);
     if (maximum <= 25000) return 900;
     return Math.min(1000, 900 + 100 * Math.log(characters / 25000) / Math.log(maximum / 25000));
+}
+
+/** Read a prose measurement from the shared linear and logarithmic axis. */
+export function proseLengthAt(position, maximum) {
+    if (position <= 900 || maximum <= 25000)
+        return Math.max(0, Math.min(900, position)) / 900 * 25000;
+    return 25000 * (maximum / 25000) ** ((Math.min(1000, position) - 900) / 100);
 }
 
 /** Round prose measurements to two significant digits with integer labels. */
@@ -369,6 +389,8 @@ function violinFigure(summary, group, option, labels, maximum, maximumMeasured) 
         viewBox: "0 0 1020 44", preserveAspectRatio: "none", role: "group",
         class: "analysis-mini-violin", "aria-label": caption,
         "data-analysis-violin": option.value, "data-chart-renderer": "browser",
+        "data-length-start": 10, "data-length-end": 1010,
+        "data-length-maximum": maximum, "data-length-unit": labels.words,
     });
     const plot = svgNode("g");
     const x = value => 10 + proseLengthPosition(value, maximum);
@@ -418,11 +440,13 @@ function violinFigure(summary, group, option, labels, maximum, maximumMeasured) 
                 ...(kind === "minimum" || kind === "maximum" ? {"data-extreme": kind} : {}),
             });
         }
-        mark.append(svgNode("title", {}, kind === "length" ? description : violinMarkerTitle(kind, value, labels)));
+        mark.setAttribute("aria-label", kind === "length" ? description : violinMarkerTitle(kind, value, labels));
         plot.append(mark);
     }
-    const link = plotLink(group, option, plot, caption);
+    const link = chartLink(group, option.value, option.label, undefined, true);
+    link.setAttribute("aria-label", caption);
     link.dataset.chartMeasured = "1";
+    link.append(plot);
     svg.append(link);
     return svg;
 }
@@ -518,7 +542,7 @@ export function initializeQualityFigures(form) {
     }
     const host = document.querySelector('[data-quality-chart="years"]');
     if (!host) return;
-    const grades = analysis.year_table_grades;
+    const grades = analysis.year_chart_grades;
     const years = analysis.years.map(({year, pages, grades: counts}) => ({
         year, pages, grades: grades.map(grade => counts[grade.value] ?? 0),
     }));
@@ -589,13 +613,10 @@ export function articleElement(record) {
     if (!record.article) return record.cloneNode(true);
     const article = record.article, metadata = record.metadata, row = node("tr");
     const labels = metadata.labels;
-    const parenthesis = [labels.parenthesis_open || " (", labels.parenthesis_close || ")"];
     row.setAttribute("data-analysis-row", ""); Object.assign(row.dataset, record.dataset);
     const wikiLink = (title, label) => {const link = node("a", label); link.href = `https://zh.wikipedia.org/wiki/${encodeURIComponent(title.replaceAll(" ", "_"))}`; return link;};
     for (const cell of record.cells) {const item = node("td", cell.textContent); Object.assign(item.dataset, cell.dataset); row.append(item);}
-    const talk = node("span", undefined, "analysis-talk");
-    talk.append(document.createTextNode(parenthesis[0]), wikiLink(`Talk:${article.title}`, labels.talk || "talk"), document.createTextNode(parenthesis[1]));
-    row.cells[1].replaceChildren(wikiLink(article.title, article.title_label), document.createTextNode(" "), talk);
+    row.cells[1].replaceChildren(wikiLink(article.title, article.title_label));
     for (const [column, options, value] of [[2, metadata.grades, article.grade], [3, metadata.importance, article.importance]]) {
         const assessment = options.find(item => item.value === value);
         const label = node("span", undefined, "analysis-assessment-label");
@@ -617,32 +638,42 @@ export function articleElement(record) {
         } else row.cells[4].append(time);
     } else row.cells[4].append(node("span", labels.unknown_listing, "context"));
     renderMainContributors(row.cells[5], article, labels);
-    if (article.authorship?.available === true) {
-        const popupId = `quality-article-${article.page_id}-authorship`;
-        const details = node("a", undefined, "analysis-authorship-info");
-        details.href = `#${popupId}`; details.title = metadata.labels.authorship_details.replace("{title}", article.title_label);
-        details.setAttribute("aria-label", details.title); details.setAttribute("aria-haspopup", "dialog"); details.setAttribute("aria-controls", popupId);
-        const icon = svgNode("svg", {width:16,height:16,viewBox:"0 0 20 20","aria-hidden":"true",focusable:"false"});
-        icon.append(svgNode("use", {href: metadata.authorshipIcon})); details.append(icon);
-        details.addEventListener("click", event => {
-            if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-            event.preventDefault(); event.stopPropagation();
-            let dialog = document.querySelector("[data-catalog-authorship]");
-            if (!dialog) {dialog = node("dialog", undefined, "ui-dialog page-updates analysis-authorship-dialog"); dialog.setAttribute("data-catalog-authorship", ""); document.body.append(dialog);}
-            dialog.id = popupId; dialog.setAttribute("aria-labelledby", `${popupId}-heading`);
-            const header = node("header", undefined, "ui-dialog__header"), heading = node("h3", details.getAttribute("aria-label"), "ui-dialog__header__title"), close = node("button", "×", "ui-button ui-dialog__header__close-button"), body = node("div", undefined, "ui-dialog__body");
-            heading.id = `${popupId}-heading`; close.type = "button"; close.addEventListener("click", () => dialog.close()); header.append(heading, close); body.append(node("p", metadata.labels.authorship_note));
-            renderAuthorshipDetails(body, article.authorship, metadata.labels);
-            dialog.replaceChildren(header, body); details.focus(); dialog.showModal();
-        });
-        row.cells[5].append(document.createTextNode(" "), details);
-    }
-    row.cells[6].textContent = article.prose_characters === null ? "—" : groupedNumber(article.prose_characters);
+    row.cells[1].append(document.createTextNode(" "), articleAttributionLink(article, metadata));
+    if ((article.authorship?.editors?.length || 0) > (article.main_contributors?.length || 0))
+        row.cells[5].append(document.createTextNode(" "), articleAttributionLink(article, metadata, true));
+    displayProse(row.cells[6], article.prose_characters, labels.words);
     row.cells[7].textContent = article.source_bytes === null ? "—" : groupedNumber(article.source_bytes / 1000, true);
     for (const column of [0, 6, 7]) row.cells[column].classList.add("analysis-number");
-    if (article.prose_characters !== null) {if (document.documentElement.lang === "en") row.cells[6].append(document.createTextNode(" ")); row.cells[6].append(node("small", metadata.labels.words));}
-    if (article.source_bytes !== null) row.cells[7].append(document.createTextNode(" "), node("small", "kB"));
+    if (article.source_bytes !== null) row.cells[7].append(measurementUnit("kB"));
     return row;
+}
+
+function articleAttributionLink(article, metadata, more = false) {
+    const popupId = `quality-article-${article.page_id}-authorship`;
+    const details = node("a", undefined, "analysis-authorship-info");
+    details.href = `#${popupId}`; details.title = metadata.labels.authorship_details.replace("{title}", article.title_label);
+    details.setAttribute("aria-label", details.title); details.setAttribute("aria-haspopup", "dialog"); details.setAttribute("aria-controls", popupId);
+    if (more) {
+        const plus = node("span", "+", "analysis-more-authors");
+        plus.setAttribute("aria-hidden", "true");
+        details.append(plus);
+    } else {
+        const icon = svgNode("svg", {width:16,height:16,viewBox:"0 0 20 20","aria-hidden":"true",focusable:"false"});
+        icon.append(svgNode("use", {href: metadata.authorshipIcon})); details.append(icon);
+    }
+    details.addEventListener("click", event => {
+        if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        if (document.getElementById(popupId)?.matches("dialog:not([data-catalog-authorship])")) return;
+        event.preventDefault(); event.stopPropagation();
+        let dialog = document.querySelector("[data-catalog-authorship]");
+        if (!dialog) {dialog = node("dialog", undefined, "ui-dialog page-updates analysis-authorship-dialog"); dialog.setAttribute("data-catalog-authorship", ""); document.body.append(dialog);}
+        dialog.id = popupId; dialog.setAttribute("aria-labelledby", `${popupId}-heading`);
+        const header = node("header", undefined, "ui-dialog__header"), heading = node("h3", details.getAttribute("aria-label"), "ui-dialog__header__title"), close = node("button", "×", "ui-button ui-dialog__header__close-button"), body = node("div", undefined, "ui-dialog__body");
+        heading.id = `${popupId}-heading`; close.type = "button"; close.addEventListener("click", () => dialog.close()); header.append(heading, close); body.append(node("p", metadata.labels.authorship_note));
+        renderAuthorshipDetails(body, article.authorship, metadata.labels);
+        dialog.replaceChildren(header, body); details.focus(); dialog.showModal();
+    });
+    return details;
 }
 
 /** Show qualified main contributors without turning missing evidence into none. */
@@ -660,8 +691,9 @@ export function renderMainContributors(cell, article, labels) {
     for (const contributor of contributors) {
         if (cell.childNodes.length) cell.append(document.createTextNode("、"));
         if (contributor.url) {
-            const link = node("a", contributor.label);
+            const link = node("a", contributor.article_label || contributor.label);
             link.href = contributor.url;
+            if (contributor.article_label) link.title = contributor.label;
             cell.append(link);
         } else cell.append(node("span", contributor.label));
     }
@@ -701,27 +733,32 @@ export function renderAuthorshipDetails(body, proof, labels) {
         headRow.append(heading);
     }
     head.append(headRow);
-    for (const [index, editor] of proof.editors.entries()) {
+    function editorRow(editor, index) {
         const line = node("tr"), name = node("th");
+        if (editor.total) line.className = "analysis-editor-total";
         name.scope = "row";
         if (editor.url) {
             const link = node("a", editor.name);
             link.href = editor.url;
             name.append(link);
-        } else name.textContent = editor.name;
+        } else name.textContent = editor.name || editor.label;
         const source = node("td", editor.bytes_label, "analysis-number");
+        if (editor.raw_bytes != null) source.append(measurementUnit("kB"));
         if (editor.bytes_title) source.title = editor.bytes_title;
-        line.append(node("td", index + 1, "analysis-number"), name,
-            node("td", editor.characters_label, "analysis-number"), source,
+        const prose = node("td", undefined, "analysis-number");
+        displayProse(prose, editor.prose_characters, labels.words);
+        line.append(node("td", index, "analysis-number"), name, prose, source,
             node("td", editor.share_label, "analysis-number"));
-        tbody.append(line);
+        return line;
     }
+    proof.editors.forEach((editor, index) => tbody.append(editorRow(editor, index + 1)));
     if (!proof.editors.length) {
         const row = node("tr"), message = node("td", labels.no_top_editors);
         message.colSpan = 5;
         row.append(message);
         tbody.append(row);
     }
+    for (const editor of proof.summary_rows || []) tbody.append(editorRow(editor, editor.index));
     table.append(head, tbody);
     body.append(table);
 }
@@ -790,10 +827,6 @@ export function initializeQualityMatrix() {
     const results = document.querySelector("[data-quality-results]");
     const grades = data.grades;
     const key = (grade, level) => grade + ":" + level;
-    const yearTable = document.querySelector(".analysis-year-data");
-    const yearHead = yearTable?.tHead.rows[0];
-    const yearLabel = yearHead?.cells[0].textContent;
-    const totalLabel = yearHead?.cells[yearHead.cells.length - 1].textContent;
     const yearHost = document.querySelector('[data-quality-chart="years"]');
     const gradeHost = document.querySelector('[data-quality-chart="grades"]');
     const importanceHost = document.querySelector('[data-quality-chart="importance"]');
@@ -802,7 +835,7 @@ export function initializeQualityMatrix() {
         const link = row.cells[2].querySelector("a");
         return {
             row, link,
-            label: link.textContent.replace(/\d+(?:[,\u2009\u202f]\d{3})*/, "{count}"),
+            unit: link.querySelector(".analysis-unit")?.dataset.unit || "",
             pages: row.dataset.pageIds ? JSON.parse(row.dataset.pageIds).map(String) : null,
             contributions: row.dataset.authorContributions ? JSON.parse(row.dataset.authorContributions) : [],
         };
@@ -865,28 +898,13 @@ export function initializeQualityMatrix() {
     }
 
     function renderYears(selected, selectedGrades, firstYear, lastYear) {
-        if (!yearTable || !yearHost) return;
+        if (!yearHost) return;
         const {years, legend} = qualityYearSummary(selected, selectedGrades, firstYear, lastYear);
         const legendList = document.querySelector(".analysis-legend");
         if (legendList) legendList.replaceChildren(...legend.map(grade => {
             const item = node("li");
             item.append(swatch(grade.color), document.createTextNode(" " + grade.label));
             return item;
-        }));
-        const head = node("tr");
-        for (const label of [yearLabel, ...selectedGrades.map(grade => grade.label), totalLabel]) {
-            const column = node("th", label);
-            column.scope = "col";
-            head.append(column);
-        }
-        head.lastElementChild.className = "analysis-total-column";
-        yearTable.tHead.replaceChildren(head);
-        yearTable.tBodies[0].replaceChildren(...years.map(year => {
-            const row = node("tr"), label = node("th", year.year);
-            label.scope = "row";
-            row.append(label, ...year.grades.map(count => node("td", count)));
-            row.append(node("td", format(year.pages), "analysis-total-column"));
-            return row;
         }));
         yearHost.replaceChildren(annualFigure(years, selectedGrades, chartCaption(yearHost)));
     }
@@ -923,7 +941,7 @@ export function initializeQualityMatrix() {
                 row.dataset.cohort = ids.has(row.dataset.matrixPage) ? "1" : "0";
             }
         }
-        for (const {row, link, label, pages, contributions} of authorRows) {
+        for (const {row, link, unit, pages, contributions} of authorRows) {
             const dialog = pages ? null : document.getElementById(link.getAttribute("aria-controls"));
             const name = row.dataset.matrixAuthor;
             const count = summary
@@ -932,11 +950,12 @@ export function initializeQualityMatrix() {
                     dialog?.querySelectorAll('[data-matrix-page][data-cohort="1"]').length ?? 0);
             row.dataset.cohort = count ? "1" : "0";
             row.cells[2].dataset.sort = String(count);
-            link.textContent = label.replace("{count}", groupedNumber(count));
+            const countUnit = data.labels[count === 1 ? "article_count_unit_one" : "article_count_unit"] ?? unit;
+            link.replaceChildren(document.createTextNode(groupedNumber(count)), measurementUnit(countUnit));
             const totals = summary
                 ? (Object.hasOwn(summary.author_totals || {}, name) ? summary.author_totals[name] : null)
                 : selectedAuthorTotals(contributions, ids);
-            if (totals) renderAuthorTotals(row, totals);
+            if (totals) renderAuthorTotals(row, totals, data.labels.words);
         }
         const totalNode = document.querySelector("[data-matrix-total]");
         if (totalNode) totalNode.textContent = format(total);

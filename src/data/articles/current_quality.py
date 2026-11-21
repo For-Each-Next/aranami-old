@@ -39,6 +39,12 @@ _LOGGER = logging.getLogger(__name__)
 GRADES = quality_analysis.GRADES
 _QUALITY = quality_analysis.QUALITY_GRADES
 _CONTRIBUTORS = pl.List(pl.Struct(authorship_store.CONTRIBUTOR_SCHEMA))
+_EDITOR_TOTALS = pl.Struct({
+    "editors": pl.UInt32,
+    "prose_characters": pl.UInt64,
+    "raw_bytes": pl.UInt64,
+    "bytes": pl.UInt64,
+})
 _PROOF_SCHEMA = {
     "page_id": pl.Int64,
     "authorship_start_revision": pl.Int64,
@@ -57,6 +63,10 @@ ARTICLE_SCHEMA = {
     },
     "authorship_available": pl.Boolean,
     "authorship_editors": _CONTRIBUTORS,
+    "authorship_summary": pl.Struct({
+        "other": _EDITOR_TOTALS,
+        "total": _EDITOR_TOTALS,
+    }),
 }
 _QUANTILES = {
     "median_characters": pl.Float64,
@@ -210,6 +220,24 @@ def _proofs(
     return pl.concat([high, b]).cast(_PROOF_SCHEMA)
 
 
+def _editor_totals(scope: pl.Expr) -> pl.Expr:
+    """Aggregate a complete set of retained contributor measurements.
+
+    Returns:
+        Editor count and sums with unavailable measurements left null.
+    """
+    return pl.struct(
+        scope.sum().alias("editors"),
+        *(
+            pl
+            .when(pl.col(name).filter(scope).null_count() == 0)
+            .then(pl.col(name).filter(scope).cast(pl.UInt64).sum())
+            .alias(name)
+            for name in ("prose_characters", "raw_bytes", "bytes")
+        ),
+    )
+
+
 def _article_rows(
     articles: pl.DataFrame,
     proofs: pl.DataFrame,
@@ -224,13 +252,16 @@ def _article_rows(
         .select("page_id", "authorship_eligible_bytes", "contributors")
         .explode("contributors", empty_as_null=False)
         .unnest("contributors")
+        .with_columns(
+            (
+                pl.col("bytes").cast(pl.UInt64) * 10
+                >= pl.col("authorship_eligible_bytes").cast(pl.UInt64)
+            ).alias("_significant"),
+        )
     )
     editors = (
         contributors
-        .filter(
-            pl.col("bytes").cast(pl.UInt64) * 10
-            >= pl.col("authorship_eligible_bytes").cast(pl.UInt64),
-        )
+        .filter(pl.col("_significant"))
         .sort("page_id", "bytes", "editor", descending=[False, True, False])
         .group_by("page_id", maintain_order=True)
         .agg(
@@ -238,6 +269,12 @@ def _article_rows(
                 "authorship_editors",
             ),
         )
+    )
+    summary = contributors.group_by("page_id").agg(
+        pl.struct(
+            _editor_totals(~pl.col("_significant")).alias("other"),
+            _editor_totals(pl.col("editor").is_not_null()).alias("total"),
+        ).alias("authorship_summary"),
     )
     return (
         articles
@@ -248,6 +285,7 @@ def _article_rows(
             validate="1:1",
         )
         .join(editors, on="page_id", how="left", validate="1:1")
+        .join(summary, on="page_id", how="left", validate="1:1")
         .with_columns(
             pl
             .col("authorship_end_revision")

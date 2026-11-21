@@ -5,7 +5,7 @@ v0.8.8 was consolidated into the v0.9.2 release.
 
 ## Until 0.11
 
-### 0.10.0.dev11 (2026-11-21 10:06 UTC)
+### 0.10.0.dev12 (2026-11-21 11:04 UTC)
 
 Overview: Separated source acquisition from analysis and publication while
 consolidating Toolforge services, standardizing saved tables, and refining
@@ -46,8 +46,16 @@ Article Statistics and Parquet previews.
 - Linked assessment dates to reviews and expanded author dialogs with article
   statistics and significant-contributor details.
 - Summed saved prose and size measurements for significant contributions.
-- Stored author detail pages compressed within the prepared report size limit.
+- Stored author detail pages and directory data within the prepared report size limit.
 - Harmonized article tables and added editable page numbers between pager buttons.
+- Opened author profiles and article contributor lists from icons beside their
+  names, with the full set of qualifying contributors in one table.
+- Added independent case and script matching options to article search.
+- Kept assessment filters in the overview and included significant
+  contributions through a checkbox in the article list.
+- Displayed prose in thousands of characters and added a length guide to violins.
+- Replaced task-force relation tables with six Boolean fields and preserved the
+  original memberships in migrated files.
 - Filled the available Parquet preview width and retained scroll position while
   paging. Displayed file metadata and schema without pagination.
 

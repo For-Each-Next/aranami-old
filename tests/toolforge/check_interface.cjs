@@ -266,6 +266,7 @@ async function checkInterface(assetRoot) {
                             return [...range.getClientRects()].every(rect => Math.abs(rect.top - range.getBoundingClientRect().top) < font);
                         }),
                         nameHeading:headings[title].textContent.trim(),
+                        hasMeasurements:columns.some(column => column.classList.contains('quality-column-prose')),
                         wraps, stable:Math.abs(table.getBoundingClientRect().width - originalWidth) <= 1};
                 }
                 return {kind:table.className, widths, centered: headings.every(cell => getComputedStyle(cell).textAlign === 'center' && (!cell.querySelector('button') || getComputedStyle(cell.querySelector('button')).justifyContent === 'center')), widerTitle: compact.every(width => widths[title] > width * 1.2),
@@ -277,7 +278,7 @@ async function checkInterface(assetRoot) {
             assert.ok(tables.length > 0 && tables.every(table => table.centered && table.widerTitle && table.localScroll && table.fits && table.articleTitleBounded), 'article/user names need more room than compact columns and overflow must stay in table scrollers: ' + JSON.stringify(tables));
             assert.ok(tables.every(table => table.missing.every(text => text.includes(table.missingLabel) && !text.includes(table.misleadingLabel))), 'missing listing dates must use the localized unavailable date label: ' + JSON.stringify(tables));
             const directories = tables.flatMap(table => table.authorDirectory ? [table.authorDirectory] : []);
-            assert.ok(directories.every(table => Math.abs(table.width - table.target) <= 1 && Math.abs(table.countWidth - table.countTarget) <= 1 && Math.abs(table.activeWidth - table.activeTarget) <= 1 && table.activeSingleLine && table.nameHeading === interfaceMessages['quality_analysis.contributors'][locale] && table.wraps && table.stable), 'author directories must fill the available width, wrap long names and preserve count width: ' + JSON.stringify(directories));
+            assert.ok(directories.every(table => Math.abs(table.width - table.target) <= 1 && Math.abs(table.countWidth - table.countTarget) <= 1 && Math.abs(table.activeWidth - table.activeTarget) <= 1 && table.activeSingleLine && table.nameHeading === interfaceMessages[table.hasMeasurements ? 'quality_analysis.author_filter' : 'quality_analysis.contributors'][locale] && table.wraps && table.stable), 'author directories must fill the available width, wrap long names and preserve count width: ' + JSON.stringify(directories));
         };
         const checkQualityText = async phase => {
             const unresolved = await evaluate(`(() => {
@@ -398,7 +399,7 @@ async function checkInterface(assetRoot) {
                         ...(sample.length >= 4 ? {p25:percentile(.25), p75:percentile(.75)} : {})};
                     const marks = [...svg.querySelectorAll('[data-statistic]')];
                     return svg.dataset.chartRenderer === 'browser' && Boolean(svg.getAttribute('aria-label'))
-                        && marks.length === Object.keys(values).length && marks.every(mark => Math.abs(Number(mark.dataset.value) - values[mark.dataset.statistic]) < .001 && Boolean(mark.querySelector('title')?.textContent));
+                        && marks.length === Object.keys(values).length && marks.every(mark => Math.abs(Number(mark.dataset.value) - values[mark.dataset.statistic]) < .001 && Boolean(mark.getAttribute('aria-label')));
                 });
                 const plots = [...document.querySelectorAll('[data-quality-chart] > svg')];
                 return {browserFigures:plots.length === 3 && plots.every(svg => svg.dataset.chartRenderer === 'browser'),
@@ -1522,15 +1523,15 @@ async function checkInterface(assetRoot) {
                             records: host.analysisRows.length, enhanced: host.hasAttribute('data-analysis-enhanced'),
                             unknown: matrix.querySelector('[data-matrix-unknown]').checked,
                             countsHidden: !matrix.querySelector('[data-matrix-count], [data-matrix-grade-count]'),
-                            fixedTables: !document.querySelector('[data-quality-matrix] .ui-table-pager, .analysis-pie-panel .ui-table-pager, .analysis-chart-data .ui-table-pager'),
+                            fixedTables: !document.querySelector('[data-quality-matrix] .ui-table-pager, .analysis-pie-panel .ui-table-pager'),
                             from: matrix.querySelector('[data-matrix-from]').value,
-                            firstYear: Number(document.querySelector('.analysis-year-data tbody th').textContent),
+                            chartDataRemoved: !document.querySelector('.analysis-chart-data, .analysis-year-data'),
                             pies: document.querySelectorAll('[data-analysis-pie]').length,
                             footer: Boolean(host.querySelector('.ui-table-pager__start') && host.querySelector('.ui-table-pager__center') && host.querySelector('.ui-table-pager__end')),
                             sizesUnlinked: !host.querySelector('tbody td:last-child a'),
                             fits: document.documentElement.scrollWidth <= innerWidth + 1};
                     })()`);
-                    assert.deepEqual(metrics, {rows: 10, records: 48, enhanced: true, unknown: true, countsHidden: true, fixedTables: true, from: '2009', firstYear: 2009, pies: 2, footer: true, sizesUnlinked: true, fits: true});
+                    assert.deepEqual(metrics, {rows: 10, records: 48, enhanced: true, unknown: true, countsHidden: true, fixedTables: true, from: '2009', chartDataRemoved: true, pies: 2, footer: true, sizesUnlinked: true, fits: true});
                     await checkQualityOrdinals();
                     await checkQualityTableLayout(locale);
                     const coverage = await evaluate(`(() => {
@@ -1559,19 +1560,28 @@ async function checkInterface(assetRoot) {
                         return zoomed && panned && svg.getAttribute('viewBox') === original && !host.querySelector('button');
                     }))()`);
                     assert.ok(chartControls.length === 3 && chartControls.every(Boolean), 'Figures must support keyboard navigation and retain unobstructed charts');
+                    assert.equal(await evaluate(`(() => {
+                        const plot = [...document.querySelectorAll('svg[data-length-maximum]')].find(svg => svg.querySelector('[data-statistic]'));
+                        const box = plot.getBoundingClientRect();
+                        plot.dispatchEvent(new PointerEvent('pointermove', {clientX: box.left + box.width / 2, clientY: box.top + box.height / 2, pointerType: 'mouse'}));
+                        const guide = plot.querySelector('.analysis-violin-guide');
+                        const label = document.querySelector('.analysis-violin-length-label');
+                        const shown = guide && guide.getAttribute('x1') === guide.getAttribute('x2') &&
+                            label && !label.hidden && label.dataset.unit === plot.dataset.lengthUnit && /[0-9]+\\.[0-9]$/.test(label.textContent);
+                        plot.dispatchEvent(new PointerEvent('pointerleave'));
+                        return Boolean(shown && !plot.querySelector('.analysis-violin-guide') && label.hidden);
+                    })()`), true, 'hovering a measured violin must show a short reading and a vertical guide on the plot');
 
                     const initialYears = await evaluate(`(() => {
                         const data = document.querySelector('[data-quality-matrix]').qualityMetadata;
-                        const expected = data.grades.filter(grade => grade.checked).map(grade => grade.label);
-                        const columns = [...document.querySelectorAll('.analysis-year-data thead th')].slice(1, -1).map(cell => cell.textContent);
                         const plotted = new Set([...document.querySelectorAll('.analysis-year-columns [data-chart-value]')].map(link => link.dataset.chartValue));
                         const legend = [...document.querySelectorAll('.analysis-legend li')];
                         const actual = data.grades.filter(grade => plotted.has(grade.value));
-                        return {columns: JSON.stringify(columns) === JSON.stringify(expected),
+                        return {selected: [...plotted].every(code => data.grades.some(grade => grade.value === code && grade.checked)),
                             legend: legend.length === actual.length && legend.every((item, index) => item.textContent.trim() === actual[index].label && item.querySelector('rect').getAttribute('fill') === actual[index].color),
                             noScrollHint: !document.querySelector('.analysis-year-scroll + p.context')};
                     })()`);
-                    assert.deepEqual(initialYears, {columns: true, legend: true, noScrollHint: true}, 'initial annual table and legend must match the prepared cohort without a scroll hint');
+                    assert.deepEqual(initialYears, {selected: true, legend: true, noScrollHint: true}, 'initial annual chart and legend must match the prepared cohort without a scroll hint');
                     if ([320, 1440].includes(width)) {
                         const interaction = await evaluate(`(async () => {
                             const host = document.querySelector('[data-quality-analysis]'), form = document.querySelector('[data-quality-matrix]');
@@ -1621,13 +1631,20 @@ async function checkInterface(assetRoot) {
                             host.querySelector('[data-analysis-next]').click();
                             const visible = [...host.querySelectorAll('[data-analysis-row]')];
                             const pagination = visible.length === 10 && visible.every((row,index) => Number(row.cells[0].textContent) === 11 + index);
-                            const rowParity = visible.every(row => JSON.stringify(rowStyles(row)) === JSON.stringify(initialStyles) && row.querySelectorAll('.analysis-assessment-label .analysis-swatch').length === 2 && Boolean(row.querySelector('.analysis-talk')));
+                            const rowParity = visible.every(row => JSON.stringify(rowStyles(row)) === JSON.stringify(initialStyles) && row.querySelectorAll('.analysis-assessment-label .analysis-swatch').length === 2 && Boolean(row.cells[1].querySelector('.analysis-authorship-info')) && !row.querySelector('.analysis-talk'));
                             host.querySelector('[data-analysis-prev]').click();
                             const freshRows = host.querySelector('[data-analysis-row]') !== previousRow;
                             host.querySelector('[data-analysis-next]').click();
                             const headings = [...host.querySelectorAll('thead th')].slice(-2).map(item => item.textContent);
                             const shortHeaders = document.documentElement.lang === 'en' || headings.join('/') === '正文/大小';
-                            const compactUnits = visible.filter(row => row.dataset.measured === '1').every(row => row.cells[6].querySelector('small') && (document.documentElement.lang === 'en' || !row.cells[6].textContent.includes(' 字')));
+                            const compactUnits = [...host.querySelectorAll('[data-analysis-row][data-measured="1"]')].every(row => {
+                                const cell = row.cells[6], unit = cell.querySelector('.analysis-unit');
+                                const range = document.createRange(); range.selectNodeContents(cell);
+                                const selection = getSelection(); selection.removeAllRanges(); selection.addRange(range);
+                                const copied = unit && selection.toString().endsWith(' ' + unit.dataset.unit) && getComputedStyle(unit, '::after').content.includes(unit.dataset.unit);
+                                selection.removeAllRanges();
+                                return copied;
+                            });
                             const oldImportance = host.analysisRows.map(row => row.dataset.importance);
                             host.analysisRows.forEach(row => row.dataset.importance = 'High');
                             document.querySelector('[data-chart-group="importance"][data-chart-value="High"]').dispatchEvent(new MouseEvent('click', {bubbles:true,cancelable:true}));
@@ -1655,20 +1672,19 @@ async function checkInterface(assetRoot) {
                             dialog.close(); host.analysisRows.forEach((row,index) => row.dataset.importance = oldImportance[index]);
                             const author = host.querySelector('[data-analysis-author]'); author.value = 'Author_B'; author.dispatchEvent(new Event('input'));
                             const role = host.querySelector('[data-analysis-author-role]');
-                            const exactRoles = [...role.options].map(option => option.value).join(',') === 'main,significant';
-                            role.value = 'main'; role.dispatchEvent(new Event('change'));
+                            const exactRoles = role.type === 'checkbox';
+                            role.checked = false; role.dispatchEvent(new Event('change'));
                             const secondaryNotMain = host.querySelectorAll('[data-analysis-row]').length === 0;
-                            role.value = 'significant'; role.dispatchEvent(new Event('change'));
+                            role.checked = true; role.dispatchEvent(new Event('change'));
                             const secondarySignificant = host.querySelectorAll('[data-analysis-row]').length > 0;
                             author.value = 'Author_A'; author.dispatchEvent(new Event('input'));
-                            role.value = 'main'; role.dispatchEvent(new Event('change'));
+                            role.checked = false; role.dispatchEvent(new Event('change'));
                             const primaryMatches = host.querySelectorAll('[data-analysis-row]').length > 0;
                             author.value = 'Boundary_Editor'; author.dispatchEvent(new Event('input'));
-                            role.value = 'significant'; role.dispatchEvent(new Event('change'));
+                            role.checked = true; role.dispatchEvent(new Event('change'));
                             const boundaryIncluded = host.querySelectorAll('[data-analysis-row]').length > 0 && [...host.querySelectorAll('#analysis-author-names option')].some(option => option.value === 'Boundary_Editor');
                             host.querySelector('[data-analysis-reset]').click();
                             const totalsOnly = [...document.querySelectorAll('[data-matrix-author]')].every(row => row.cells[2].querySelectorAll('a').length === 1);
-                            const annual = document.querySelector('.analysis-year-data');
                             const selectAnnualGrade = async code => {
                                 for (const input of form.querySelectorAll('[data-matrix-cell]')) input.checked = input.dataset.grade === code;
                                 form.querySelector('[data-matrix-cell]').dispatchEvent(new Event('change'));
@@ -1678,7 +1694,7 @@ async function checkInterface(assetRoot) {
                                 const legend = [...document.querySelectorAll('.analysis-legend li')];
                                 const bars = [...document.querySelectorAll('.analysis-year-columns [data-chart-value]')];
                                 const fills = link => link.querySelector('path[fill], rect[fill]')?.getAttribute('fill')?.toLowerCase() === grade.color.toLowerCase();
-                                return annual.tHead.rows[0].cells.length === 3 && annual.tHead.rows[0].cells[1].textContent === grade.label && [...annual.tBodies[0].rows].every(row => row.cells.length === 3) && legend.length === Number(hasBars) && legend.every(item => item.textContent.trim() === grade.label && fills(item)) && Boolean(bars.length) === hasBars && bars.every(link => link.dataset.chartValue === code && fills(link));
+                                return legend.length === Number(hasBars) && legend.every(item => item.textContent.trim() === grade.label && fills(item)) && Boolean(bars.length) === hasBars && bars.every(link => link.dataset.chartValue === code && fills(link));
                             };
                             const yearSelection = await selectAnnualGrade('GA') && await selectAnnualGrade('FA');
                             from.value = '2026'; from.dispatchEvent(new Event('change'));
@@ -1696,7 +1712,7 @@ async function checkInterface(assetRoot) {
                             for (const input of form.querySelectorAll('[data-matrix-cell]')) input.checked = false;
                             form.querySelector('[data-matrix-cell]').dispatchEvent(new Event('change'));
                             await apply();
-                            const emptySelection = annual.tHead.rows[0].cells.length === 2 && [...annual.tBodies[0].rows].every(row => row.cells.length === 2) && document.querySelectorAll('.analysis-legend li, .analysis-year-columns [data-chart-value]').length === 0 && host.querySelectorAll('[data-analysis-row]').length === 0;
+                            const emptySelection = document.querySelectorAll('.analysis-legend li, .analysis-year-columns [data-chart-value]').length === 0 && host.querySelectorAll('[data-analysis-row]').length === 0;
                             const defaultGrades = form.qualityMetadata.grades.filter(item => item.checked).map(item => item.value);
                             for (const input of form.querySelectorAll('[data-matrix-cell]')) input.checked = defaultGrades.includes(input.dataset.grade);
                             form.querySelector('[data-matrix-cell]').dispatchEvent(new Event('change'));
